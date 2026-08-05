@@ -363,8 +363,7 @@ wirePasswordStrengthMeter(document.getElementById("reset-password"), document.ge
 // resulting blob to a Supabase Storage bucket and returns just the public
 // URL — that's what gets stored in the row instead.
 async function uploadImageToStorage(file, bucket, pathPrefix, maxSize){
-  const dataUrl = await resizeImageFile(file, maxSize || 800);
-  const blob = await (await fetch(dataUrl)).blob();
+  const blob = await resizeImageToBlob(file, maxSize || 800);
   const fileName = `${pathPrefix}/${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}.jpg`;
   const { error: uploadError } = await supabase.storage.from(bucket).upload(fileName, blob, {
     contentType: "image/jpeg",
@@ -1230,6 +1229,45 @@ function resizeImageFile(file, maxSize){
         canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// FIX (regression): resizeImageFile() above returns a data: URL, and the
+// original version of uploadImageToStorage() converted that to a Blob via
+// fetch(dataUrl). That fetch() is subject to the page's Content-Security-
+// Policy connect-src directive, which didn't list the `data:` scheme —
+// so the browser silently blocked it, the upload threw, and no photo
+// ever got attached (this is what looked like "the Photo button doesn't
+// work"). This version resizes straight to a Blob via canvas.toBlob(),
+// so there's no fetch() of any kind involved — avoids the CSP issue
+// entirely rather than just widening the policy, and is a bit faster/
+// lighter than round-tripping through base64 anyway.
+function resizeImageToBlob(file, maxSize){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not load image"));
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h) {
+          if (w > maxSize) { h = Math.round(h * (maxSize / w)); w = maxSize; }
+        } else {
+          if (h > maxSize) { w = Math.round(w * (maxSize / h)); h = maxSize; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Could not process image"));
+        }, "image/jpeg", 0.85);
       };
       img.src = e.target.result;
     };
@@ -3729,7 +3767,7 @@ function createSizeBuilderRow(unitType, optionValue, existing){
       </div>
       <div class="size-builder-image">
         <div class="size-thumb">${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(label)} photo" loading="lazy" decoding="async">` : ""}</div>
-        <label class="link-btn size-builder-upload-label">Photo<input type="file" accept="image/*" class="hidden size-builder-upload" ${checked ? "" : "disabled"}></label>
+        <label class="link-btn size-builder-upload-label">Photo<input type="file" accept="image/*" class="hidden size-builder-upload"></label>
         <span class="avatar-upload-status hidden size-builder-upload-status">Uploading…</span>
       </div>
     </div>
@@ -3752,9 +3790,16 @@ function renderSizeBuilder(containerEl, existingSizes, unitType){
     checkbox.addEventListener("change", () => {
       priceInput.disabled = !checkbox.checked;
       stockInput.disabled = !checkbox.checked;
-      uploadInput.disabled = !checkbox.checked;
     });
 
+    // FIX: the Photo input used to be `disabled` whenever the row's
+    // checkbox wasn't ticked yet, matching Price/Stock — but a disabled
+    // <input type="file"> can't be triggered by its wrapping <label> at
+    // all, so clicking "Photo" on an unchecked row silently did nothing
+    // (the click just fell through to normal text selection instead).
+    // Photo is never disabled now — it works regardless of checkbox
+    // state, and picking a photo auto-checks the box for you, since
+    // adding a photo for a size clearly means you want that size active.
     uploadInput.addEventListener("change", async () => {
       const file = uploadInput.files[0];
       if (!file) return;
@@ -3763,6 +3808,12 @@ function renderSizeBuilder(containerEl, existingSizes, unitType){
         const url = await uploadImageToStorage(file, "product-images", "sizes", 500);
         row.dataset.image = url;
         row.querySelector(".size-thumb").innerHTML = `<img src="${escapeHtml(url)}" alt="size photo" loading="lazy" decoding="async">`;
+        if (!checkbox.checked) {
+          checkbox.checked = true;
+          priceInput.disabled = false;
+          stockInput.disabled = false;
+          priceInput.focus();
+        }
       } catch (err) {
         console.error("[Dagoldol] Could not upload size photo:", err);
         showErrorBanner("Could not upload that photo. Check your connection and try again.");
