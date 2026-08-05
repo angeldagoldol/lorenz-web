@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DAGOLDOL — Fine Everyday Goods</title>
+<meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
+<link rel="canonical" href="https://dagoldol.example.com/">
+
+<!-- =====================================================================
+     SECURITY FIX #2: Content-Security-Policy
+     Restricts script/style/connect sources to only what this app actually
+     needs: self (this origin), the Supabase project (config.js defines
+     SUPABASE_URL — update the connect-src host below to match it),
+     Google Fonts, jsdelivr (for the supabase-js CDN bundle), and the
+     OSM/Nominatim + OSRM routing hosts used for delivery-fee calculation.
+     object-src/base-uri/frame-ancestors are locked down to block classic
+     injection/clickjacking vectors. If you self-host supabase-js or move
+     SUPABASE_URL to a different project, update this policy to match.
+     ===================================================================== -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://cdn.jsdelivr.net;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data: https:;
+  connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://router.project-osrm.org;
+  object-src 'none';
+  base-uri 'self';
+  frame-ancestors 'none';
+  form-action 'self';
+  upgrade-insecure-requests;
+">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Dagoldol">
+<meta property="og:title" content="DAGOLDOL — Fine Everyday Goods">
+<meta property="og:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
+<meta property="og:url" content="https://dagoldol.example.com/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DAGOLDOL — Fine Everyday Goods">
+<meta name="twitter:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== GLOBAL ERROR BANNER =====================
+     FIX #12: a single, shared, visible place for any load function to
+     surface a Supabase error to the user instead of only console.error.
+     showErrorBanner(message) in script.js populates and reveals this. -->
+<div id="global-error-banner" class="global-error-banner hidden" role="alert" aria-live="assertive">
+  <span id="global-error-banner-text"></span>
+  <button type="button" id="global-error-banner-close" aria-label="Dismiss">&times;</button>
+</div>
+
+<!-- ===================== LOGIN SCREEN ===================== -->
+<section id="login-screen" class="screen">
+
+  <!-- Login card -->
+  <div class="login-card" id="login-card">
+    <button type="button" class="login-screen-back" id="login-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
+
+    <div class="seal">
+      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
+        <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="68" r="3" fill="currentColor"/>
+      </svg>
+    </div>
+
+    <p class="eyebrow">Members' Entrance</p>
+    <h1 class="brand">Dagoldol</h1>
+    <p class="tagline">Fine everyday goods, kept behind the counter.</p>
+
+    <p id="login-gate-message" class="login-gate-message hidden"></p>
+
+    <p id="login-success" class="success-message hidden"></p>
+
+    <form id="login-form" novalidate>
+      <label class="field">
+        <span>Email address</span>
+        <input type="email" id="login-email" autocomplete="username" placeholder="you@example.com" required>
+      </label>
+
+      <label class="field">
+        <span>Password</span>
+        <input type="password" id="password" autocomplete="current-password" placeholder="Enter your password" required>
+      </label>
+
+      <!-- SECURITY FIX #5: honeypot field. Real users never see or fill
+           this (it's visually hidden, not display:none, so basic bots
+           that skip hidden fields still fall for it). If it has any
+           value on submit, script.js silently drops the request. -->
+      <div class="hp-field" aria-hidden="true">
+        <label for="login-hp">Leave this field blank</label>
+        <input type="text" id="login-hp" name="company_website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p id="error-message" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Unlock the shop</button>
+    </form>
+
+    <p class="hint"><button type="button" class="link-btn" id="show-forgot">Forgot your password?</button></p>
+    <p class="hint">New here? <button type="button" class="link-btn" id="show-signup">Create an account</button></p>
+  </div>
+
+  <!-- Sign-up card -->
+  <div class="login-card hidden" id="signup-card">
+    <button type="button" class="login-screen-back" id="signup-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
+
+    <div class="seal">
+      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
+        <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="68" r="3" fill="currentColor"/>
+      </svg>
+    </div>
+
+    <p class="eyebrow">Join the Register</p>
+    <h1 class="brand">Create Account</h1>
+    <p class="tagline">Set up your own key to the shop.</p>
+
+    <form id="signup-form" novalidate>
+      <label class="field">
+        <span>Email address</span>
+        <input type="email" id="signup-email" autocomplete="username" placeholder="you@example.com" required>
+      </label>
+
+      <label class="field">
+        <span>Choose a display name</span>
+        <input type="text" id="signup-username" autocomplete="nickname" placeholder="e.g. j.rivera" required>
+      </label>
+
+      <label class="field">
+        <span>Choose a password</span>
+        <input type="password" id="signup-password" autocomplete="new-password" placeholder="At least 8 characters" required minlength="8">
+      </label>
+      <!-- FIX #4: live strength meter, purely client-side UX feedback —
+           the real minimum-length enforcement happens in script.js. -->
+      <div class="pw-strength-row" id="signup-pw-strength-row">
+        <div class="pw-strength-bar"><div class="pw-strength-fill" id="signup-pw-strength-fill"></div></div>
+        <span class="pw-strength-label" id="signup-pw-strength-label">Enter a password</span>
+      </div>
+
+      <label class="field">
+        <span>Confirm password</span>
+        <input type="password" id="signup-confirm" autocomplete="new-password" placeholder="Type it again" required>
+      </label>
+
+      <div class="hp-field" aria-hidden="true">
+        <label for="signup-hp">Leave this field blank</label>
+        <input type="text" id="signup-hp" name="company_website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p id="signup-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Create my account</button>
+    </form>
+
+    <p class="hint">Already registered? <button type="button" class="link-btn" id="show-login">Log in instead</button></p>
+  </div>
+
+  <!-- Forgot-password card (FIX #9) -->
+  <div class="login-card hidden" id="forgot-card">
+    <button type="button" class="login-screen-back" id="forgot-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
+
+    <div class="seal">
+      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
+        <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="68" r="3" fill="currentColor"/>
+      </svg>
+    </div>
+
+    <p class="eyebrow">Members' Entrance</p>
+    <h1 class="brand">Reset Password</h1>
+    <p class="tagline">We'll email you a link to set a new one.</p>
+
+    <form id="forgot-form" novalidate>
+      <label class="field">
+        <span>Email address</span>
+        <input type="email" id="forgot-email" autocomplete="username" placeholder="you@example.com" required>
+      </label>
+
+      <div class="hp-field" aria-hidden="true">
+        <label for="forgot-hp">Leave this field blank</label>
+        <input type="text" id="forgot-hp" name="company_website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p id="forgot-success" class="success-message hidden"></p>
+      <p id="forgot-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Send reset link</button>
+    </form>
+
+    <p class="hint"><button type="button" class="link-btn" id="forgot-show-login">Back to log in</button></p>
+  </div>
+
+  <!-- Set-new-password card — shown when the person arrives via the
+       reset-password email link (Supabase appends a recovery session). -->
+  <div class="login-card hidden" id="reset-card">
+    <div class="seal">
+      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
+        <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="50" cy="68" r="3" fill="currentColor"/>
+      </svg>
+    </div>
+    <p class="eyebrow">Members' Entrance</p>
+    <h1 class="brand">Choose New Password</h1>
+    <p class="tagline">At least 8 characters.</p>
+
+    <form id="reset-form" novalidate>
+      <label class="field">
+        <span>New password</span>
+        <input type="password" id="reset-password" autocomplete="new-password" placeholder="At least 8 characters" required minlength="8">
+      </label>
+      <div class="pw-strength-row" id="reset-pw-strength-row">
+        <div class="pw-strength-bar"><div class="pw-strength-fill" id="reset-pw-strength-fill"></div></div>
+        <span class="pw-strength-label" id="reset-pw-strength-label">Enter a password</span>
+      </div>
+      <label class="field">
+        <span>Confirm new password</span>
+        <input type="password" id="reset-confirm" autocomplete="new-password" placeholder="Type it again" required>
+      </label>
+      <p id="reset-error" class="error-message" role="alert" aria-live="polite"></p>
+      <button type="submit" class="btn-primary">Save new password</button>
+    </form>
+  </div>
+
+</section>
+
+<!-- ===================== SHOP SCREEN ===================== -->
+<section id="shop-screen" class="screen hidden">
+  <header class="shop-header">
+    <div class="brand-mark">
+      <svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
+        <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Dagoldol</span>
+    </div>
+
+    <div class="header-actions" id="header-actions">
+      <button id="cart-btn" class="btn-cart" type="button" aria-label="View cart">
+        <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+          <path d="M3 4h2l2.4 12.4a2 2 0 0 0 2 1.6h7.2a2 2 0 0 0 2-1.6L20.5 8H6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="10" cy="21" r="1.4" fill="currentColor"/>
+          <circle cx="17" cy="21" r="1.4" fill="currentColor"/>
+        </svg>
+        <span class="cart-label">Cart</span>
+        <span id="cart-count" class="cart-count hidden">0</span>
+      </button>
+
+      <div class="account-menu-wrap">
+        <button type="button" class="btn-cart" id="account-menu-toggle" aria-expanded="false" aria-haspopup="true" aria-controls="account-menu" aria-label="Account menu">
+          <div class="header-avatar" id="header-avatar"></div>
+          <span class="cart-label" id="account-menu-label">Account</span>
+          <span id="chat-count" class="cart-count hidden">0</span>
+        </button>
+
+        <div class="account-menu hidden" id="account-menu" role="menu">
+          <button type="button" class="account-menu-item" id="menu-login-btn" role="menuitem">Log in</button>
+          <button type="button" class="account-menu-item" id="menu-signup-btn" role="menuitem">Create account</button>
+          <div class="account-menu-divider hidden" id="account-menu-divider-guest"></div>
+
+          <button type="button" class="account-menu-item hidden" id="orders-btn" role="menuitem">My Orders</button>
+          <button type="button" class="account-menu-item hidden" id="profile-btn" role="menuitem">Profile</button>
+          <button type="button" class="account-menu-item hidden" id="chat-btn" role="menuitem">Chat with the seller</button>
+
+          <button type="button" class="account-menu-item" id="contact-btn" role="menuitem">Contact</button>
+
+          <div class="account-menu-divider hidden" id="account-menu-divider-logout"></div>
+          <button type="button" class="account-menu-item account-menu-item-danger hidden" id="logout-btn" role="menuitem">Log out</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow">Autumn Collection · No. 04</p>
+    <h2>Objects worth keeping<br>for a long while.</h2>
+    <p class="hero-sub">Dagoldol sells fine everyday goods by the foot — cut to the length you actually need, made from materials meant to outlast a season. No account required to look around; browse the full catalogue, and we'll only ask you to log in when you're ready to check out.</p>
+    <a href="#catalogue" class="btn-primary hero-cta">Shop Now</a>
+  </section>
+
+  <section class="reco-section hidden" id="recommended-section">
+    <div class="bundles-heading">
+      <p class="eyebrow">Just For You</p>
+      <h3 id="recommended-heading">Recommended for You</h3>
+    </div>
+    <div class="catalogue reco-list" id="recommended-list"></div>
+  </section>
+
+  <section class="reco-section hidden" id="trending-section">
+    <div class="bundles-heading">
+      <p class="eyebrow">Hot Right Now</p>
+      <h3>🔥 Trending This Week</h3>
+    </div>
+    <div class="catalogue reco-list" id="trending-list"></div>
+  </section>
+
+  <section class="bundles-section hidden" id="bundles-section">
+    <div class="bundles-heading">
+      <p class="eyebrow">Bundle &amp; Save</p>
+      <h3>Put together, for less.</h3>
+    </div>
+    <div class="bundles-list" id="bundles-list"></div>
+  </section>
+
+  <!-- FIX #10: search + category (brand) + price filter bar -->
+  <section class="filter-bar" id="filter-bar">
+    <div class="filter-bar-inner">
+      <label class="filter-search-field">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input type="search" id="catalogue-search" placeholder="Search products…" aria-label="Search products">
+      </label>
+      <select id="catalogue-brand-filter" aria-label="Filter by brand">
+        <option value="">All brands</option>
+      </select>
+      <select id="catalogue-price-filter" aria-label="Filter by price">
+        <option value="">Any price</option>
+        <option value="0-500">Under ₱500</option>
+        <option value="500-1500">₱500 – ₱1,500</option>
+        <option value="1500-5000">₱1,500 – ₱5,000</option>
+        <option value="5000-999999">₱5,000+</option>
+      </select>
+      <select id="catalogue-sort" aria-label="Sort by">
+        <option value="default">Sort: Featured</option>
+        <option value="price-asc">Price: Low to High</option>
+        <option value="price-desc">Price: High to Low</option>
+        <option value="rating-desc">Rating: Highest</option>
+      </select>
+      <button type="button" class="link-btn" id="catalogue-filter-clear">Clear</button>
+    </div>
+    <p id="catalogue-result-count" class="filter-result-count"></p>
+  </section>
+
+  <main class="catalogue" id="catalogue">
+    <!-- products injected by script.js -->
+  </main>
+
+  <!-- FIX #8: pagination for the main catalogue -->
+  <div class="load-more-row" id="catalogue-load-more-row">
+    <button type="button" class="btn-secondary load-more-btn hidden" id="catalogue-load-more-btn">Load more products</button>
+  </div>
+
+  <footer class="shop-footer">
+    <p>&copy; 2026 Dagoldol Trading Co. — Everything here was made on purpose.</p>
+  </footer>
+</section>
+
+<!-- ===================== ADMIN SCREEN ===================== -->
+<section id="admin-screen" class="screen hidden">
+  <header class="shop-header">
+    <div class="brand-mark">
+      <svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
+        <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
+        <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Dagoldol — Admin</span>
+    </div>
+    <p class="welcome-msg">Signed in as <span id="admin-welcome-name">Admin</span></p>
+    <div class="header-actions">
+      <button id="admin-logout-btn" class="btn-ghost">Log out</button>
+    </div>
+  </header>
+
+  <nav class="admin-tabs">
+    <button type="button" class="admin-tab-btn active" data-tab="orders">Orders</button>
+    <button type="button" class="admin-tab-btn" data-tab="products">Products</button>
+    <button type="button" class="admin-tab-btn" data-tab="bundles">Bundles</button>
+    <button type="button" class="admin-tab-btn" data-tab="brands">Brands</button>
+    <button type="button" class="admin-tab-btn" data-tab="flash-sales">Flash Sales</button>
+    <button type="button" class="admin-tab-btn" data-tab="promos">Vouchers &amp; Coupons</button>
+    <button type="button" class="admin-tab-btn" data-tab="chat">Live Chat <span id="admin-chat-tab-badge" class="admin-tab-btn-dot hidden"></span></button>
+    <button type="button" class="admin-tab-btn" data-tab="messages">Messages</button>
+    <button type="button" class="admin-tab-btn" data-tab="accounts">Accounts</button>
+    <button type="button" class="admin-tab-btn" data-tab="analytics">Analytics</button>
+    <button type="button" class="admin-tab-btn" data-tab="activity">Activity</button>
+    <button type="button" class="admin-tab-btn" data-tab="settings">Payment Settings</button>
+  </nav>
+
+  <main class="admin-panel">
+    <div class="admin-tab-panel" id="admin-tab-orders"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-products"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-bundles"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-brands"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-flash-sales"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-promos"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-chat"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-messages"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-accounts"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-analytics"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-activity"></div>
+    <div class="admin-tab-panel hidden" id="admin-tab-settings"></div>
+  </main>
+</section>
+
+<!-- ===================== SIZE SELECT MODAL ===================== -->
+<div id="size-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="size-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Choose Your Size</p>
+    <h2 class="modal-item-name" id="size-modal-product-name">Item</h2>
+
+    <div class="size-modal-photo" id="size-modal-photo"></div>
+
+    <div class="size-options" id="size-options">
+      <!-- feet options injected by script.js -->
+    </div>
+
+    <div class="fbt-section hidden" id="size-modal-fbt"></div>
+
+    <div class="qty-row" style="margin:16px 0 6px;">
+      <span>Qty</span>
+      <input type="number" class="qty-input" id="size-modal-qty" min="1" max="10000" value="1">
+      <span>(1–10,000)</span>
+    </div>
+
+    <p id="size-modal-error" class="error-message" role="alert" aria-live="polite"></p>
+
+    <button type="button" class="btn-primary" id="size-modal-confirm">Continue</button>
+  </div>
+</div>
+
+<!-- ===================== PROFILE MODAL ===================== -->
+<div id="profile-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="profile-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Members' Entrance</p>
+    <h2 class="modal-item-name">My Profile</h2>
+    <p class="modal-sub">This is stored on your account only — add whatever helps the owner know you.</p>
+
+    <form id="profile-form" novalidate>
+      <div class="avatar-field">
+        <div class="profile-avatar-preview" id="profile-avatar-preview"></div>
+        <div class="avatar-field-controls">
+          <label class="link-btn avatar-upload-label" for="profile-avatar-input">Choose photo</label>
+          <input type="file" id="profile-avatar-input" accept="image/*" class="hidden">
+          <button type="button" class="link-btn avatar-remove-btn" id="profile-avatar-remove">Remove photo</button>
+          <span class="avatar-upload-status hidden" id="profile-avatar-upload-status">Uploading…</span>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Display name / username</span>
+        <input type="text" id="profile-username-display" disabled>
+      </label>
+
+      <label class="field">
+        <span>Full name</span>
+        <input type="text" id="profile-name" placeholder="Full name">
+      </label>
+
+      <label class="field">
+        <span>Contact email</span>
+        <input type="email" id="profile-email" placeholder="you@example.com">
+      </label>
+
+      <label class="field">
+        <span>Phone number</span>
+        <input type="tel" id="profile-phone" placeholder="Phone number">
+      </label>
+
+      <label class="field">
+        <span>About you (optional)</span>
+        <textarea id="profile-bio" rows="3" placeholder="Anything you'd like the owner to know — favorite items, sizing notes, etc."></textarea>
+      </label>
+
+      <p id="profile-success" class="success-message hidden"></p>
+      <p id="profile-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Save profile</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== CART MODAL ===================== -->
+<div id="cart-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="cart-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Your Cart</p>
+    <h2 class="modal-item-name">What you've added</h2>
+
+    <div id="cart-items-list" class="cart-items-list">
+      <!-- cart line items injected by script.js -->
+    </div>
+
+    <div class="cart-total-row">
+      <span>Subtotal</span>
+      <span id="cart-total">₱0</span>
+    </div>
+
+    <button type="button" class="btn-primary" id="cart-checkout-btn">Checkout</button>
+  </div>
+</div>
+
+<!-- ===================== ORDER MODAL ===================== -->
+<div id="order-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Place Order</p>
+    <h2 class="modal-item-name">Order summary</h2>
+
+    <div id="modal-items-list" class="cart-items-list modal-items-list">
+      <!-- order line items injected by script.js -->
+    </div>
+
+    <form id="order-form" novalidate>
+      <label class="field">
+        <span>Full name</span>
+        <input type="text" id="order-name" placeholder="Full name" required>
+      </label>
+
+      <label class="field">
+        <span>Phone number</span>
+        <input type="tel" id="order-phone" placeholder="Phone number" required>
+      </label>
+
+      <label class="field">
+        <span>Street address</span>
+        <input type="text" id="order-address" placeholder="House no., street" required>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>City</span>
+          <input type="text" id="order-city" placeholder="City" required>
+        </label>
+        <label class="field">
+          <span>Postal code</span>
+          <input type="text" id="order-postal" placeholder="Postal code" required>
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Landmark / how to find your place</span>
+        <textarea id="order-landmark" rows="3" placeholder="e.g. Blue gate beside Mang Tomas store, 2nd house after the chapel, white house with a mango tree out front..." required></textarea>
+      </label>
+      <p class="field-hint">Maps can only get us to your street — this helps the rider actually find your door.</p>
+
+      <p id="delivery-distance-status" class="delivery-status">Enter your address to calculate the delivery fee.</p>
+
+      <label class="checkbox-field">
+        <input type="checkbox" id="order-save" checked>
+        <span>Remember this address for next time</span>
+      </label>
+
+      <div class="promo-section">
+        <span class="field-label-standalone">Voucher / coupon code</span>
+        <div class="promo-row">
+          <input type="text" id="order-promo-code" placeholder="Enter code (optional)">
+          <button type="button" class="btn-secondary promo-apply-btn" id="order-promo-apply">Apply</button>
+        </div>
+        <p id="promo-status" class="promo-status"></p>
+      </div>
+
+      <div class="payment-section">
+        <span class="field-label-standalone">Payment method</span>
+
+        <div class="payment-methods" id="payment-methods">
+          <label class="payment-option">
+            <input type="radio" name="payment-method" value="gcash" checked>
+            <span>GCash</span>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="payment-method" value="bank">
+            <span>Bank Transfer</span>
+          </label>
+        </div>
+
+        <label class="checkbox-field" id="half-payment-row">
+          <input type="checkbox" id="order-half-payment">
+          <span>Pay half now, balance on delivery (GCash / Bank Transfer only)</span>
+        </label>
+
+        <div class="payment-detail" id="payment-detail-gcash">
+          <div class="qr-box" id="gcash-qr-box" aria-hidden="true">
+            <img id="gcash-qr-img" src="" alt="Owner's GCash QR code" class="hidden" width="88" height="88" loading="lazy" decoding="async">
+            <svg id="gcash-qr-placeholder" viewBox="0 0 100 100" width="88" height="88">
+              <rect x="4" y="4" width="92" height="92" fill="none" stroke="currentColor" stroke-width="2"/>
+              <rect x="12" y="12" width="24" height="24" fill="currentColor"/>
+              <rect x="64" y="12" width="24" height="24" fill="currentColor"/>
+              <rect x="12" y="64" width="24" height="24" fill="currentColor"/>
+              <rect x="42" y="12" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="26" width="8" height="8" fill="currentColor"/>
+              <rect x="56" y="42" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="42" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="56" width="8" height="8" fill="currentColor"/>
+              <rect x="56" y="70" width="8" height="8" fill="currentColor"/>
+              <rect x="70" y="56" width="8" height="8" fill="currentColor"/>
+              <rect x="84" y="70" width="8" height="8" fill="currentColor"/>
+              <rect x="70" y="84" width="8" height="8" fill="currentColor"/>
+            </svg>
+          </div>
+          <p>Scan the QR code, or send payment via GCash to <strong id="gcash-number-text">0963 202 0564</strong> (Dagoldol Trading Co.). Bring your reference number for delivery.</p>
+        </div>
+
+        <div class="payment-detail hidden" id="payment-detail-bank">
+          <p>Send a bank transfer to:<br>
+          <strong>BDO Unibank</strong> — Dagoldol Trading Co.<br>
+          Account number: <strong>0012 3456 7890</strong></p>
+        </div>
+
+        <div class="payment-proof-block" id="payment-proof-block">
+          <label class="field" id="payment-reference-field">
+            <span>Payment reference number</span>
+            <input type="text" id="order-payment-ref" placeholder="Reference no. from your GCash / bank receipt" required>
+          </label>
+
+          <div class="avatar-field payment-proof-field">
+            <div class="size-thumb payment-proof-thumb" id="payment-proof-preview"></div>
+            <div class="avatar-field-controls">
+              <label class="link-btn avatar-upload-label" for="order-payment-proof-input">Upload payment screenshot</label>
+              <input type="file" id="order-payment-proof-input" accept="image/*" class="hidden">
+              <button type="button" class="link-btn avatar-remove-btn hidden" id="order-payment-proof-remove">Remove photo</button>
+              <span class="avatar-upload-status hidden" id="payment-proof-upload-status">Uploading…</span>
+            </div>
+          </div>
+
+          <p class="field-hint">Please send your payment first using the details above, then enter the reference number here (a screenshot helps too) — orders can't be confirmed without it.</p>
+        </div>
+      </div>
+
+      <div class="order-cost-breakdown" id="order-cost-breakdown">
+        <div class="cost-row"><span>Subtotal</span><span id="cost-subtotal">₱0</span></div>
+        <div class="cost-row hidden" id="cost-promo-row"><span id="cost-promo-label">Discount</span><span id="cost-promo">-₱0</span></div>
+        <div class="cost-row"><span>Delivery fee</span><span id="cost-delivery">₱0</span></div>
+        <div class="cost-row hidden" id="cost-bulk-row"><span id="cost-bulk-label">Bulk order fee</span><span id="cost-bulk">₱0</span></div>
+        <div class="cost-row cost-row-total"><span>Total</span><span id="cost-total">₱0</span></div>
+        <div class="cost-row cost-row-due-now hidden" id="cost-due-now-row"><span>Due now (half payment)</span><span id="cost-due-now">₱0</span></div>
+        <div class="cost-row cost-row-due-later hidden" id="cost-due-later-row"><span>Balance due on delivery</span><span id="cost-due-later">₱0</span></div>
+      </div>
+
+      <p id="order-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Confirm order</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== MY ORDERS / TRACKING MODAL ===================== -->
+<div id="orders-modal" class="modal-overlay hidden">
+  <div class="modal-panel modal-panel-wide">
+    <button type="button" class="modal-close" id="orders-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Order History</p>
+    <h2 class="modal-item-name">My Orders</h2>
+
+    <div id="orders-list" class="orders-list">
+      <!-- order cards injected by script.js -->
+    </div>
+
+    <!-- FIX #8: pagination for order history -->
+    <div class="load-more-row">
+      <button type="button" class="btn-secondary load-more-btn hidden" id="orders-load-more-btn">Load more orders</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CONTACT MODAL ===================== -->
+<div id="contact-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="contact-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Get in Touch</p>
+    <h2 class="modal-item-name">Contact the Owner</h2>
+    <p class="modal-sub">Questions about an order, a product, or anything else — send a note straight to the shop owner.</p>
+
+    <form id="contact-form" novalidate>
+      <label class="field">
+        <span>Your name</span>
+        <input type="text" id="contact-name" placeholder="Your name" required>
+      </label>
+
+      <label class="field">
+        <span>Email address</span>
+        <input type="email" id="contact-email" placeholder="you@example.com" required>
+      </label>
+
+      <label class="field">
+        <span>Message</span>
+        <textarea id="contact-message" rows="4" placeholder="How can we help?" required></textarea>
+      </label>
+
+      <div class="hp-field" aria-hidden="true">
+        <label for="contact-hp">Leave this field blank</label>
+        <input type="text" id="contact-hp" name="company_website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p id="contact-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Send message</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== LIVE CHAT MODAL ===================== -->
+<div id="chat-modal" class="modal-overlay hidden">
+  <div class="modal-panel modal-panel-wide">
+    <button type="button" class="modal-close" id="chat-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Live Chat</p>
+    <h2 class="modal-item-name">Chat with the Shop</h2>
+
+    <div class="chat-online-status" id="chat-online-status">
+      <span class="offline-dot"></span> Checking status…
+    </div>
+
+    <button type="button" class="link-btn chat-enable-notifs" id="chat-enable-notifs">Enable message notifications</button>
+
+    <div class="chat-messages-list" id="chat-messages-list"></div>
+    <p class="chat-typing-indicator hidden" id="chat-typing-indicator">The seller is typing…</p>
+
+    <form class="chat-input-row" id="chat-form">
+      <input type="text" id="chat-input" placeholder="Type a message…" autocomplete="off" maxlength="2000">
+      <button type="submit" class="btn-primary" style="width:auto;">Send</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== CONFIRMATION TOAST ===================== -->
+<div id="order-toast" class="toast hidden">
+  <p id="toast-message">Order placed.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
