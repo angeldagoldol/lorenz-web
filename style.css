@@ -1,19 +1,21 @@
 /* ===================== Tokens ===================== */
 :root{
-  --charcoal-950:#141210;
-  --charcoal-900:#1c1916;
-  --charcoal-800:#242019;
-  --charcoal-700:#312b22;
-  --brass:#c9a25c;
-  --brass-bright:#e0bd7c;
-  --cream:#f3ede1;
-  --cream-dim:#b8ae9b;
-  --rust:#b8492f;
-  --green:#7a966e;
-  --line: rgba(201,162,92,0.22);
-  --glow-purple:#9333ea;
-  --glow-purple-bright:#c084fc;
-  --glow-purple-deep:#6b21c7;
+  /* Surfaces — light, minimal, near-white with subtle depth steps */
+  --charcoal-950:#ffffff;
+  --charcoal-900:#ffffff;
+  --charcoal-800:#f6f5f3;
+  --charcoal-700:#eeece8;
+  /* Accent — flat ink instead of gold/glow */
+  --brass:#171512;
+  --brass-bright:#000000;
+  /* Text */
+  --cream:#171512;
+  --cream-dim:#767268;
+  /* Status */
+  --rust:#b3402b;
+  --green:#4d7a41;
+  --line: rgba(23,21,18,0.10);
+  --muted:#9a968c;
   --font-display:'Fraunces', Georgia, serif;
   --font-body:'Work Sans', -apple-system, sans-serif;
 }
@@ -30,6 +32,26 @@ body{
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
 }
+
+/* ===================== Baseline transitions (minimalist, consistent) =====
+   Every interactive element gets a short, clean transition by default so
+   hovers/focus states never feel abrupt. More specific rules further down
+   can still override individual properties/durations where needed. */
+button,
+a,
+input,
+select,
+textarea,
+.link-btn,
+.size-option,
+.payment-option{
+  transition:background-color 0.15s ease, border-color 0.15s ease,
+             color 0.15s ease, opacity 0.15s ease, transform 0.15s ease,
+             box-shadow 0.15s ease;
+}
+
+button:not(:disabled){ cursor:pointer; }
+button:disabled{ cursor:not-allowed; }
 
 .hidden{ display:none !important; }
 
@@ -114,7 +136,7 @@ a{ color:inherit; }
   justify-content:center;
   padding:32px 20px;
   background:
-    radial-gradient(circle at 50% 0%, rgba(201,162,92,0.10), transparent 60%),
+    radial-gradient(circle at 50% 0%, rgba(23,21,18,0.03), transparent 60%),
     var(--charcoal-950);
 }
 
@@ -142,10 +164,11 @@ a{ color:inherit; }
   padding:8px;
 }
 
-.login-screen-back:hover{ color:var(--brass); }
+.login-screen-back:hover{ color:var(--brass); transform:scale(1.05); }
+.login-screen-back:active{ transform:scale(0.95); }
 
 .login-gate-message{
-  background:rgba(201,162,92,0.1);
+  background:rgba(23,21,18,0.04);
   border:1px solid var(--line);
   color:var(--cream-dim);
   font-size:0.83rem;
@@ -160,7 +183,7 @@ a{ color:inherit; }
   content:"";
   position:absolute;
   inset:8px;
-  border:1px solid rgba(201,162,92,0.12);
+  border:1px solid rgba(23,21,18,0.08);
   pointer-events:none;
 }
 
@@ -245,7 +268,7 @@ a{ color:inherit; }
   font-size:16px;
 }
 
-.field input::placeholder{ color:#6b6355; }
+.field input::placeholder{ color:var(--muted); }
 
 .field input:focus{
   outline:none;
@@ -267,9 +290,9 @@ a{ color:inherit; }
 }
 
 .success-message{
-  background:rgba(122,150,110,0.12);
-  border:1px solid rgba(122,150,110,0.4);
-  color:#9dbf8f;
+  background:rgba(77,122,65,0.10);
+  border:1px solid rgba(77,122,65,0.35);
+  color:#3f6636;
   font-size:0.83rem;
   text-align:left;
   padding:10px 12px;
@@ -290,7 +313,7 @@ a{ color:inherit; }
   transition:border-color 0.15s ease, background 0.15s ease;
 }
 
-.field textarea::placeholder{ color:#6b6355; }
+.field textarea::placeholder{ color:var(--muted); }
 
 .field textarea:focus{
   outline:none;
@@ -318,12 +341,12 @@ a{ color:inherit; }
 
 /* =====================================================================
    ===================== PRIMARY BUTTON (glowing pill) =================
-   Styled to match the "Generate Site" reference button from the video:
-   a fully-rounded pill with a violet gradient fill, a soft outer glow
-   that breathes gently while idle, and a brighter flare on hover/focus.
-   This is .btn-primary, so it covers every main call-to-action button
-   site-wide — the login "Unlock the shop" button, sign up, place order,
-   save profile, send message, etc.
+   Original violet gradient pill with a soft outer glow that breathes
+   gently while idle, and a brighter flare on hover/focus — unchanged
+   design, with clean transitions on every state change. This is
+   .btn-primary, so it covers every main call-to-action button site-wide
+   — the login "Unlock the shop" button, sign up, place order, save
+   profile, send message, etc.
    ===================================================================== */
 .btn-primary{
   width:100%;
@@ -380,12 +403,13 @@ a{ color:inherit; }
     0 0 0 1px rgba(224,187,255,0.75),
     0 0 28px 6px rgba(168,85,247,0.8),
     0 0 68px 14px rgba(147,51,234,0.45);
+  transform:translateY(-1px) scale(1.015);
 }
 
 .btn-primary:active{ transform:scale(0.98); }
 
 .btn-primary:focus-visible{
-  outline:2px solid var(--glow-purple-bright);
+  outline:2px solid #c084fc;
   outline-offset:3px;
 }
 
@@ -402,7 +426,7 @@ a{ color:inherit; }
 .hint{
   margin-top:22px;
   font-size:0.78rem;
-  color:#6b6355;
+  color:var(--muted);
 }
 
 .link-btn{
@@ -504,7 +528,7 @@ a{ color:inherit; }
 .payment-option:has(input:checked){
   border-color:var(--brass);
   color:var(--brass-bright);
-  background:rgba(201,162,92,0.08);
+  background:rgba(23,21,18,0.05);
 }
 
 #half-payment-row{
@@ -623,7 +647,7 @@ a{ color:inherit; }
 .modal-overlay{
   position:fixed;
   inset:0;
-  background:rgba(20,18,16,0.72);
+  background:rgba(23,21,18,0.45);
   display:flex;
   align-items:center;
   justify-content:center;
@@ -657,7 +681,8 @@ a{ color:inherit; }
   padding:8px;
 }
 
-.modal-close:hover{ color:var(--brass); }
+.modal-close:hover{ color:var(--brass); transform:scale(1.15); }
+.modal-close:active{ transform:scale(0.9); }
 
 .modal-item-name{
   font-family:var(--font-display);
@@ -795,7 +820,8 @@ a{ color:inherit; }
   font-size:0.78rem;
 }
 
-.avatar-remove-btn:hover{ color:var(--rust); }
+.avatar-remove-btn:hover{ color:var(--rust); transform:scale(1.04); }
+.avatar-remove-btn:active{ transform:scale(0.96); }
 
 .welcome-msg{
   font-size:0.88rem;
@@ -848,7 +874,7 @@ a{ color:inherit; }
 }
 
 .account-menu-item:hover{
-  background:rgba(201,162,92,0.1);
+  background:rgba(23,21,18,0.04);
   color:var(--brass-bright);
 }
 
@@ -887,6 +913,13 @@ a{ color:inherit; }
 .btn-cart:hover{
   border-color:var(--brass);
   color:var(--brass);
+  transform:translateY(-1px) scale(1.03);
+  box-shadow:0 6px 16px rgba(23,21,18,0.10);
+}
+
+.btn-cart:active{
+  transform:scale(0.96);
+  box-shadow:0 2px 6px rgba(23,21,18,0.08);
 }
 
 .cart-count{
@@ -919,6 +952,13 @@ a{ color:inherit; }
 .btn-ghost:hover{
   border-color:var(--brass);
   color:var(--brass);
+  transform:translateY(-1px) scale(1.03);
+  box-shadow:0 6px 16px rgba(23,21,18,0.10);
+}
+
+.btn-ghost:active{
+  transform:scale(0.96);
+  box-shadow:0 2px 6px rgba(23,21,18,0.08);
 }
 
 .hero{
@@ -984,7 +1024,7 @@ a{ color:inherit; }
 }
 
 .filter-search-field input:focus{ outline:none; }
-.filter-search-field input::placeholder{ color:#6b6355; }
+.filter-search-field input::placeholder{ color:var(--muted); }
 
 .filter-bar select{
   flex:1 1 150px;
@@ -1071,7 +1111,7 @@ a{ color:inherit; }
 .product-number{
   font-size:11px;
   letter-spacing:0.12em;
-  color:#6b6355;
+  color:var(--muted);
 }
 
 .product-brand-tag{
@@ -1103,9 +1143,9 @@ a{ color:inherit; }
   gap:5px;
 }
 
-.product-rating span{ color:#6b6355; }
+.product-rating span{ color:var(--muted); }
 
-.product-rating.no-rating{ color:#6b6355; }
+.product-rating.no-rating{ color:var(--muted); }
 
 .product-footer{
   display:flex;
@@ -1124,7 +1164,7 @@ a{ color:inherit; }
 .product-price-strike{
   font-family:var(--font-display);
   font-style:italic;
-  color:#6b6355;
+  color:var(--muted);
   font-size:0.86rem;
   text-decoration:line-through;
   margin-right:6px;
@@ -1176,11 +1216,20 @@ a{ color:inherit; }
 .btn-secondary:hover{
   border-color:var(--brass);
   color:var(--brass);
+  transform:translateY(-1px) scale(1.03);
+  box-shadow:0 6px 16px rgba(23,21,18,0.10);
+}
+
+.btn-secondary:active{
+  transform:scale(0.96);
+  box-shadow:0 2px 6px rgba(23,21,18,0.08);
 }
 
 .btn-secondary:disabled{
   opacity:0.4;
   cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
 }
 
 .btn-add{
@@ -1199,12 +1248,21 @@ a{ color:inherit; }
 .btn-add:hover{
   background:var(--brass);
   color:var(--charcoal-950);
+  transform:translateY(-1px) scale(1.03);
+  box-shadow:0 6px 16px rgba(23,21,18,0.14);
+}
+
+.btn-add:active{
+  transform:scale(0.96);
+  box-shadow:0 2px 6px rgba(23,21,18,0.10);
 }
 
 .btn-add:disabled{
   opacity:0.4;
   cursor:not-allowed;
   background:transparent;
+  transform:none;
+  box-shadow:none;
 }
 
 /* ===================== Cart list (used in both cart + order modal) ===================== */
@@ -1257,7 +1315,8 @@ a{ color:inherit; }
   padding:4px;
 }
 
-.cart-remove:hover{ color:var(--rust); }
+.cart-remove:hover{ color:var(--rust); transform:scale(1.15); }
+.cart-remove:active{ transform:scale(0.9); }
 
 .cart-empty{
   color:var(--cream-dim);
@@ -1286,7 +1345,7 @@ a{ color:inherit; }
 .shop-footer{
   text-align:center;
   padding:28px 20px 40px;
-  color:#6b6355;
+  color:var(--muted);
   font-size:0.78rem;
 }
 
@@ -1331,7 +1390,7 @@ a{ color:inherit; }
 
 .order-date{
   font-size:0.76rem;
-  color:#6b6355;
+  color:var(--muted);
 }
 
 .order-items-summary{
@@ -1342,7 +1401,7 @@ a{ color:inherit; }
 
 .order-payment-line{
   font-size:0.76rem;
-  color:#8f8672;
+  color:var(--muted);
   margin-bottom:16px;
   text-transform:uppercase;
   letter-spacing:0.04em;
@@ -1396,13 +1455,13 @@ a{ color:inherit; }
 
 .tracker-step.active .tracker-dot{
   border-color:var(--brass);
-  box-shadow:0 0 0 3px rgba(201,162,92,0.22);
+  box-shadow:0 0 0 3px rgba(23,21,18,0.12);
 }
 
 .tracker-label{
   font-size:0.68rem;
   letter-spacing:0.03em;
-  color:#6b6355;
+  color:var(--muted);
   line-height:1.3;
 }
 
@@ -1447,6 +1506,13 @@ a{ color:inherit; }
 .btn-cancel-order:hover{
   background:var(--rust);
   color:var(--cream);
+  transform:translateY(-1px) scale(1.02);
+  box-shadow:0 6px 16px rgba(179,64,43,0.18);
+}
+
+.btn-cancel-order:active{
+  transform:scale(0.97);
+  box-shadow:0 2px 6px rgba(179,64,43,0.14);
 }
 
 .admin-card-compact{ padding:16px 20px; }
@@ -1474,7 +1540,7 @@ a{ color:inherit; }
 
 .star{
   font-size:1.1rem;
-  color:#4a443a;
+  color:#d8d5cc;
   cursor:pointer;
   transition:color 0.1s ease;
 }
@@ -1575,7 +1641,7 @@ a{ color:inherit; }
 
 .admin-card-meta{
   font-size:0.76rem;
-  color:#8f8672;
+  color:var(--muted);
 }
 
 .admin-card-body{
@@ -1633,6 +1699,13 @@ a{ color:inherit; }
 .admin-status-btn:hover{
   border-color:var(--brass);
   color:var(--brass);
+  transform:translateY(-1px) scale(1.04);
+  box-shadow:0 4px 12px rgba(23,21,18,0.10);
+}
+
+.admin-status-btn:active{
+  transform:scale(0.95);
+  box-shadow:0 2px 6px rgba(23,21,18,0.08);
 }
 
 .admin-status-btn.current{
@@ -1662,6 +1735,13 @@ a{ color:inherit; }
 .admin-btn-danger:hover{
   background:var(--rust);
   color:var(--cream);
+  transform:translateY(-1px) scale(1.03);
+  box-shadow:0 6px 16px rgba(179,64,43,0.18);
+}
+
+.admin-btn-danger:active{
+  transform:scale(0.96);
+  box-shadow:0 2px 6px rgba(179,64,43,0.14);
 }
 
 .admin-btn-edit{
@@ -1678,6 +1758,13 @@ a{ color:inherit; }
 .admin-btn-edit:hover{
   border-color:var(--brass);
   color:var(--brass);
+  transform:translateY(-1px) scale(1.03);
+  box-shadow:0 6px 16px rgba(23,21,18,0.10);
+}
+
+.admin-btn-edit:active{
+  transform:scale(0.96);
+  box-shadow:0 2px 6px rgba(23,21,18,0.08);
 }
 
 .admin-add-form{
@@ -1851,7 +1938,7 @@ input[type="radio"]:focus-visible{
 
 .size-option.selected{
   border-color:var(--brass);
-  background:rgba(201,162,92,0.08);
+  background:rgba(23,21,18,0.05);
 }
 
 .size-option.out-of-stock{
@@ -1960,7 +2047,7 @@ input[type="radio"]:focus-visible{
   font-size:0.68rem;
   letter-spacing:0.06em;
   text-transform:uppercase;
-  color:#6b6355;
+  color:var(--muted);
   display:block;
   margin-bottom:2px;
 }
@@ -2168,10 +2255,10 @@ input[type="radio"]:focus-visible{
 
 .online-dot{
   background:var(--green);
-  box-shadow:0 0 0 3px rgba(122,150,110,0.22);
+  box-shadow:0 0 0 3px rgba(77,122,65,0.18);
 }
 
-.offline-dot{ background:#6b6355; }
+.offline-dot{ background:var(--muted); }
 
 /* ===================== Live chat: customer modal ===================== */
 .chat-online-status{
@@ -2202,7 +2289,7 @@ input[type="radio"]:focus-visible{
 
 .chat-messages-list:empty::before{
   content:"No messages yet — say hello!";
-  color:#6b6355;
+  color:var(--muted);
   font-size:0.85rem;
 }
 
@@ -2272,7 +2359,7 @@ input[type="radio"]:focus-visible{
   font-size:16px;
 }
 
-.chat-input-row input::placeholder{ color:#6b6355; }
+.chat-input-row input::placeholder{ color:var(--muted); }
 
 .chat-input-row input:focus{
   outline:none;
@@ -2326,7 +2413,7 @@ input[type="radio"]:focus-visible{
 
 .admin-chat-thread-item.active{
   border-color:var(--brass);
-  background:rgba(201,162,92,0.08);
+  background:rgba(23,21,18,0.05);
   color:var(--cream);
 }
 
