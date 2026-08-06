@@ -11,6 +11,9 @@
   --rust:#b8492f;
   --green:#7a966e;
   --line: rgba(201,162,92,0.22);
+  --glow-purple:#9333ea;
+  --glow-purple-bright:#c084fc;
+  --glow-purple-deep:#6b21c7;
   --font-display:'Fraunces', Georgia, serif;
   --font-body:'Work Sans', -apple-system, sans-serif;
 }
@@ -313,30 +316,88 @@ a{ color:inherit; }
   40%,60%{ transform:translateX(4px); }
 }
 
+/* =====================================================================
+   ===================== PRIMARY BUTTON (glowing pill) =================
+   Styled to match the "Generate Site" reference button from the video:
+   a fully-rounded pill with a violet gradient fill, a soft outer glow
+   that breathes gently while idle, and a brighter flare on hover/focus.
+   This is .btn-primary, so it covers every main call-to-action button
+   site-wide — the login "Unlock the shop" button, sign up, place order,
+   save profile, send message, etc.
+   ===================================================================== */
 .btn-primary{
   width:100%;
-  background:var(--brass);
-  color:var(--charcoal-950);
+  position:relative;
+  background:linear-gradient(135deg, #7c2ff2 0%, #9333ea 50%, #b45cf7 100%);
+  color:#fdf8ff;
   border:none;
-  border-radius:1px;
-  padding:13px;
+  border-radius:999px;
+  padding:14px 20px;
   font-family:var(--font-body);
   font-weight:600;
   font-size:0.9rem;
   letter-spacing:0.03em;
   cursor:pointer;
   margin-top:8px;
-  transition:background 0.15s ease, transform 0.1s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  box-shadow:
+    0 0 0 1px rgba(196,132,252,0.35),
+    0 0 16px 2px rgba(147,51,234,0.45),
+    0 0 36px 6px rgba(147,51,234,0.22);
+  transition:box-shadow 0.25s ease, transform 0.1s ease, background 0.25s ease;
+  animation:btn-glow-pulse 2.8s ease-in-out infinite;
 }
 
-.btn-primary:hover{ background:var(--brass-bright); }
-.btn-primary:active{ transform:scale(0.99); }
+.btn-primary::before{
+  content:"\2726";
+  font-size:0.85em;
+  line-height:1;
+  color:#f4e8ff;
+  filter:drop-shadow(0 0 4px rgba(196,132,252,0.9));
+}
+
+@keyframes btn-glow-pulse{
+  0%, 100%{
+    box-shadow:
+      0 0 0 1px rgba(196,132,252,0.3),
+      0 0 14px 2px rgba(147,51,234,0.4),
+      0 0 32px 6px rgba(147,51,234,0.18);
+  }
+  50%{
+    box-shadow:
+      0 0 0 1px rgba(196,132,252,0.55),
+      0 0 24px 4px rgba(168,85,247,0.65),
+      0 0 58px 12px rgba(147,51,234,0.35);
+  }
+}
+
+.btn-primary:hover{
+  background:linear-gradient(135deg, #8b3ffb 0%, #a855f7 50%, #c084fc 100%);
+  box-shadow:
+    0 0 0 1px rgba(224,187,255,0.75),
+    0 0 28px 6px rgba(168,85,247,0.8),
+    0 0 68px 14px rgba(147,51,234,0.45);
+}
+
+.btn-primary:active{ transform:scale(0.98); }
+
+.btn-primary:focus-visible{
+  outline:2px solid var(--glow-purple-bright);
+  outline-offset:3px;
+}
 
 .btn-primary:disabled{
   opacity:0.5;
   cursor:not-allowed;
+  animation:none;
+  background:#3a3145;
+  box-shadow:none;
 }
-.btn-primary:disabled:hover{ background:var(--brass); }
+.btn-primary:disabled::before{ opacity:0.6; }
+.btn-primary:disabled:hover{ background:#3a3145; box-shadow:none; }
 
 .hint{
   margin-top:22px;
@@ -1718,7 +1779,6 @@ a{ color:inherit; }
 button:focus-visible,
 a:focus-visible,
 .link-btn:focus-visible,
-.btn-primary:focus-visible,
 .btn-secondary:focus-visible,
 .btn-add:focus-visible,
 .btn-cart:focus-visible,
