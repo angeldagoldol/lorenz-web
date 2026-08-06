@@ -288,7 +288,7 @@
   <section class="hero">
     <p class="eyebrow">Autumn Collection · No. 04</p>
     <h2>Objects worth keeping<br>for a long while.</h2>
-    <p class="hero-sub">Dagoldol sells fine everyday goods by the foot — cut to the length you actually need, made from materials meant to outlast a season. No account required to look around; [...]</p>
+    <p class="hero-sub">Dagoldol sells fine everyday goods by the foot — cut to the length you actually need, made from materials meant to outlast a season. No account required to look around; browse the full catalogue, and we'll only ask you to log in when you're ready to check out.</p>
     <a href="#catalogue" class="btn-primary hero-cta">Shop Now</a>
   </section>
 
@@ -320,7 +320,7 @@
   <section class="filter-bar" id="filter-bar">
     <div class="filter-bar-inner">
       <label class="filter-search-field">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <input type="search" id="catalogue-search" placeholder="Search products…" aria-label="Search products">
       </label>
       <select id="catalogue-brand-filter" aria-label="Filter by brand">
@@ -405,4 +405,340 @@
   </main>
 </section>
 
-<!-- truncated for brevity -->
+<!-- ===================== SIZE SELECT MODAL ===================== -->
+<div id="size-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="size-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Choose Your Size</p>
+    <h2 class="modal-item-name" id="size-modal-product-name">Item</h2>
+
+    <div class="size-modal-photo" id="size-modal-photo"></div>
+
+    <div class="size-options" id="size-options">
+      <!-- feet options injected by script.js -->
+    </div>
+
+    <div class="fbt-section hidden" id="size-modal-fbt"></div>
+
+    <div class="qty-row" style="margin:16px 0 6px;">
+      <span>Qty</span>
+      <input type="number" class="qty-input" id="size-modal-qty" min="1" max="10000" value="1">
+      <span>(1–10,000)</span>
+    </div>
+
+    <p id="size-modal-error" class="error-message" role="alert" aria-live="polite"></p>
+
+    <button type="button" class="btn-primary" id="size-modal-confirm">Continue</button>
+  </div>
+</div>
+
+<!-- ===================== PROFILE MODAL ===================== -->
+<div id="profile-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="profile-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Members' Entrance</p>
+    <h2 class="modal-item-name">My Profile</h2>
+    <p class="modal-sub">This is stored on your account only — add whatever helps the owner know you.</p>
+
+    <form id="profile-form" novalidate>
+      <div class="avatar-field">
+        <div class="profile-avatar-preview" id="profile-avatar-preview"></div>
+        <div class="avatar-field-controls">
+          <label class="link-btn avatar-upload-label" for="profile-avatar-input">Choose photo</label>
+          <input type="file" id="profile-avatar-input" accept="image/*" class="hidden">
+          <button type="button" class="link-btn avatar-remove-btn" id="profile-avatar-remove">Remove photo</button>
+          <span class="avatar-upload-status hidden" id="profile-avatar-upload-status">Uploading…</span>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Display name / username</span>
+        <input type="text" id="profile-username-display" disabled>
+      </label>
+
+      <label class="field">
+        <span>Full name</span>
+        <input type="text" id="profile-name" placeholder="Full name">
+      </label>
+
+      <label class="field">
+        <span>Contact email</span>
+        <input type="email" id="profile-email" placeholder="you@example.com">
+      </label>
+
+      <label class="field">
+        <span>Phone number</span>
+        <input type="tel" id="profile-phone" placeholder="Phone number">
+      </label>
+
+      <label class="field">
+        <span>About you (optional)</span>
+        <textarea id="profile-bio" rows="3" placeholder="Anything you'd like the owner to know — favorite items, sizing notes, etc."></textarea>
+      </label>
+
+      <p id="profile-success" class="success-message hidden"></p>
+      <p id="profile-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Save profile</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== CART MODAL ===================== -->
+<div id="cart-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="cart-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Your Cart</p>
+    <h2 class="modal-item-name">What you've added</h2>
+
+    <div id="cart-items-list" class="cart-items-list">
+      <!-- cart line items injected by script.js -->
+    </div>
+
+    <div class="cart-total-row">
+      <span>Subtotal</span>
+      <span id="cart-total">₱0</span>
+    </div>
+
+    <button type="button" class="btn-primary" id="cart-checkout-btn">Checkout</button>
+  </div>
+</div>
+
+<!-- ===================== ORDER MODAL ===================== -->
+<div id="order-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Place Order</p>
+    <h2 class="modal-item-name">Order summary</h2>
+
+    <div id="modal-items-list" class="cart-items-list modal-items-list">
+      <!-- order line items injected by script.js -->
+    </div>
+
+    <form id="order-form" novalidate>
+      <label class="field">
+        <span>Full name</span>
+        <input type="text" id="order-name" placeholder="Full name" required>
+      </label>
+
+      <label class="field">
+        <span>Phone number</span>
+        <input type="tel" id="order-phone" placeholder="Phone number" required>
+      </label>
+
+      <label class="field">
+        <span>Street address</span>
+        <input type="text" id="order-address" placeholder="House no., street" required>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>City</span>
+          <input type="text" id="order-city" placeholder="City" required>
+        </label>
+        <label class="field">
+          <span>Postal code</span>
+          <input type="text" id="order-postal" placeholder="Postal code" required>
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Landmark / how to find your place</span>
+        <textarea id="order-landmark" rows="3" placeholder="e.g. Blue gate beside Mang Tomas store, 2nd house after the chapel, white house with a mango tree out front..." required></textarea>
+      </label>
+      <p class="field-hint">Maps can only get us to your street — this helps the rider actually find your door.</p>
+
+      <p id="delivery-distance-status" class="delivery-status">Enter your address to calculate the delivery fee.</p>
+
+      <label class="checkbox-field">
+        <input type="checkbox" id="order-save" checked>
+        <span>Remember this address for next time</span>
+      </label>
+
+      <div class="promo-section">
+        <span class="field-label-standalone">Voucher / coupon code</span>
+        <div class="promo-row">
+          <input type="text" id="order-promo-code" placeholder="Enter code (optional)">
+          <button type="button" class="btn-secondary promo-apply-btn" id="order-promo-apply">Apply</button>
+        </div>
+        <p id="promo-status" class="promo-status"></p>
+      </div>
+
+      <div class="payment-section">
+        <span class="field-label-standalone">Payment method</span>
+
+        <div class="payment-methods" id="payment-methods">
+          <label class="payment-option">
+            <input type="radio" name="payment-method" value="gcash" checked>
+            <span>GCash</span>
+          </label>
+          <label class="payment-option">
+            <input type="radio" name="payment-method" value="bank">
+            <span>Bank Transfer</span>
+          </label>
+        </div>
+
+        <label class="checkbox-field" id="half-payment-row">
+          <input type="checkbox" id="order-half-payment">
+          <span>Pay half now, balance on delivery (GCash / Bank Transfer only)</span>
+        </label>
+
+        <div class="payment-detail" id="payment-detail-gcash">
+          <div class="qr-box" id="gcash-qr-box" aria-hidden="true">
+            <img id="gcash-qr-img" src="" alt="Owner's GCash QR code" class="hidden" width="88" height="88" loading="lazy" decoding="async">
+            <svg id="gcash-qr-placeholder" viewBox="0 0 100 100" width="88" height="88">
+              <rect x="4" y="4" width="92" height="92" fill="none" stroke="currentColor" stroke-width="2"/>
+              <rect x="12" y="12" width="24" height="24" fill="currentColor"/>
+              <rect x="64" y="12" width="24" height="24" fill="currentColor"/>
+              <rect x="12" y="64" width="24" height="24" fill="currentColor"/>
+              <rect x="42" y="12" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="26" width="8" height="8" fill="currentColor"/>
+              <rect x="56" y="42" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="42" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="56" width="8" height="8" fill="currentColor"/>
+              <rect x="56" y="70" width="8" height="8" fill="currentColor"/>
+              <rect x="70" y="56" width="8" height="8" fill="currentColor"/>
+              <rect x="84" y="70" width="8" height="8" fill="currentColor"/>
+              <rect x="70" y="84" width="8" height="8" fill="currentColor"/>
+            </svg>
+          </div>
+          <p>Scan the QR code, or send payment via GCash to <strong id="gcash-number-text">0963 202 0564</strong> (Dagoldol Trading Co.). Bring your reference number for delivery.</p>
+        </div>
+
+        <div class="payment-detail hidden" id="payment-detail-bank">
+          <p>Send a bank transfer to:<br>
+          <strong>BDO Unibank</strong> — Dagoldol Trading Co.<br>
+          Account number: <strong>0012 3456 7890</strong></p>
+        </div>
+
+        <div class="payment-proof-block" id="payment-proof-block">
+          <label class="field" id="payment-reference-field">
+            <span>Payment reference number</span>
+            <input type="text" id="order-payment-ref" placeholder="Reference no. from your GCash / bank receipt" required>
+          </label>
+
+          <div class="avatar-field payment-proof-field">
+            <div class="size-thumb payment-proof-thumb" id="payment-proof-preview"></div>
+            <div class="avatar-field-controls">
+              <label class="link-btn avatar-upload-label" for="order-payment-proof-input">Upload payment screenshot</label>
+              <input type="file" id="order-payment-proof-input" accept="image/*" class="hidden">
+              <button type="button" class="link-btn avatar-remove-btn hidden" id="order-payment-proof-remove">Remove photo</button>
+              <span class="avatar-upload-status hidden" id="payment-proof-upload-status">Uploading…</span>
+            </div>
+          </div>
+
+          <p class="field-hint">Please send your payment first using the details above, then enter the reference number here (a screenshot helps too) — orders can't be confirmed without it.</p>
+        </div>
+      </div>
+
+      <div class="order-cost-breakdown" id="order-cost-breakdown">
+        <div class="cost-row"><span>Subtotal</span><span id="cost-subtotal">₱0</span></div>
+        <div class="cost-row hidden" id="cost-promo-row"><span id="cost-promo-label">Discount</span><span id="cost-promo">-₱0</span></div>
+        <div class="cost-row"><span>Delivery fee</span><span id="cost-delivery">₱0</span></div>
+        <div class="cost-row hidden" id="cost-bulk-row"><span id="cost-bulk-label">Bulk order fee</span><span id="cost-bulk">₱0</span></div>
+        <div class="cost-row cost-row-total"><span>Total</span><span id="cost-total">₱0</span></div>
+        <div class="cost-row cost-row-due-now hidden" id="cost-due-now-row"><span>Due now (half payment)</span><span id="cost-due-now">₱0</span></div>
+        <div class="cost-row cost-row-due-later hidden" id="cost-due-later-row"><span>Balance due on delivery</span><span id="cost-due-later">₱0</span></div>
+      </div>
+
+      <p id="order-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Confirm order</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== MY ORDERS / TRACKING MODAL ===================== -->
+<div id="orders-modal" class="modal-overlay hidden">
+  <div class="modal-panel modal-panel-wide">
+    <button type="button" class="modal-close" id="orders-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Order History</p>
+    <h2 class="modal-item-name">My Orders</h2>
+
+    <div id="orders-list" class="orders-list">
+      <!-- order cards injected by script.js -->
+    </div>
+
+    <!-- FIX #8: pagination for order history -->
+    <div class="load-more-row">
+      <button type="button" class="btn-secondary load-more-btn hidden" id="orders-load-more-btn">Load more orders</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CONTACT MODAL ===================== -->
+<div id="contact-modal" class="modal-overlay hidden">
+  <div class="modal-panel">
+    <button type="button" class="modal-close" id="contact-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Get in Touch</p>
+    <h2 class="modal-item-name">Contact the Owner</h2>
+    <p class="modal-sub">Questions about an order, a product, or anything else — send a note straight to the shop owner.</p>
+
+    <form id="contact-form" novalidate>
+      <label class="field">
+        <span>Your name</span>
+        <input type="text" id="contact-name" placeholder="Your name" required>
+      </label>
+
+      <label class="field">
+        <span>Email address</span>
+        <input type="email" id="contact-email" placeholder="you@example.com" required>
+      </label>
+
+      <label class="field">
+        <span>Message</span>
+        <textarea id="contact-message" rows="4" placeholder="How can we help?" required></textarea>
+      </label>
+
+      <div class="hp-field" aria-hidden="true">
+        <label for="contact-hp">Leave this field blank</label>
+        <input type="text" id="contact-hp" name="company_website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p id="contact-error" class="error-message" role="alert" aria-live="polite"></p>
+
+      <button type="submit" class="btn-primary">Send message</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== LIVE CHAT MODAL ===================== -->
+<div id="chat-modal" class="modal-overlay hidden">
+  <div class="modal-panel modal-panel-wide">
+    <button type="button" class="modal-close" id="chat-modal-close" aria-label="Close">&times;</button>
+
+    <p class="eyebrow">Live Chat</p>
+    <h2 class="modal-item-name">Chat with the Shop</h2>
+
+    <div class="chat-online-status" id="chat-online-status">
+      <span class="offline-dot"></span> Checking status…
+    </div>
+
+    <button type="button" class="link-btn chat-enable-notifs" id="chat-enable-notifs">Enable message notifications</button>
+
+    <div class="chat-messages-list" id="chat-messages-list"></div>
+    <p class="chat-typing-indicator hidden" id="chat-typing-indicator">The seller is typing…</p>
+
+    <form class="chat-input-row" id="chat-form">
+      <input type="text" id="chat-input" placeholder="Type a message…" autocomplete="off" maxlength="2000">
+      <button type="submit" class="btn-primary" style="width:auto;">Send</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== CONFIRMATION TOAST ===================== -->
+<div id="order-toast" class="toast hidden">
+  <p id="toast-message">Order placed.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
