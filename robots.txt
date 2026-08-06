@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dagoldol.example.com/sitemap.xml
+Sitemap:https://sales-dagoldol.netlify.app/#catalogue/sitemap.xml
