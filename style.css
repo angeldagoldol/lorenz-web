@@ -2936,12 +2936,71 @@ body{ font-size:16px; }
 .image-lightbox-close:hover{ background:rgba(255,255,255,0.24); transform:scale(1.08); }
 .image-lightbox-close:active{ transform:scale(0.92); }
 
+/* ===================== Password show/hide toggle ===================== */
+.password-input-wrap{
+  position:relative;
+}
+
+.password-input-wrap input{
+  padding-right:64px;
+}
+
+.password-toggle-btn{
+  position:absolute;
+  top:50%;
+  right:6px;
+  transform:translateY(-50%);
+  background:none;
+  border:none;
+  color:var(--brass);
+  font-size:0.68rem;
+  font-weight:600;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  cursor:pointer;
+  padding:6px 8px;
+  border-radius:1px;
+}
+
+.password-toggle-btn:hover{
+  color:var(--brass-bright);
+}
+
+.password-toggle-btn:active{
+  transform:translateY(-50%) scale(0.94);
+}
+
 /* ===================== Uploadable shop logo ===================== */
 .brand-logo-img{
-  width:30px;
-  height:30px;
   border-radius:50%;
   object-fit:cover;
   border:1.5px solid var(--line);
   display:block;
+}
+
+/* Login screen "seal" — the big, prominent version of the logo. */
+.seal .brand-logo-img,
+.seal .brand-logo-svg{
+  width:100px;
+  height:100px;
+}
+
+/* Header brand mark — clearly larger than a favicon-sized icon. */
+.brand-mark .brand-logo-img,
+.brand-mark .brand-logo-svg{
+  width:48px;
+  height:48px;
+}
+
+@media (max-width:720px){
+  .seal .brand-logo-img,
+  .seal .brand-logo-svg{
+    width:88px;
+    height:88px;
+  }
+  .brand-mark .brand-logo-img,
+  .brand-mark .brand-logo-svg{
+    width:42px;
+    height:42px;
+  }
 }
