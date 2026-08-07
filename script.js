@@ -20,7 +20,7 @@ const BULK_TIER_2_RATE = 0.02;
 const LOW_STOCK_THRESHOLD = 10;
 
 const DEFAULT_GCASH_NUMBER = "0963 202 0564";
-let currentSettings = { gcash_number: DEFAULT_GCASH_NUMBER, gcash_qr_image: null };
+let currentSettings = { gcash_number: DEFAULT_GCASH_NUMBER, gcash_qr_image: null, shop_logo_image: null };
 
 async function loadSettings(){
   try {
@@ -30,7 +30,8 @@ async function loadSettings(){
     (data || []).forEach(row => { map[row.key] = row.value; });
     currentSettings = {
       gcash_number: map.gcash_number || DEFAULT_GCASH_NUMBER,
-      gcash_qr_image: map.gcash_qr_image || null
+      gcash_qr_image: map.gcash_qr_image || null,
+      shop_logo_image: map.shop_logo_image || null
     };
   } catch (err) {
     console.error("[Dagoldol] loadSettings threw:", err);
@@ -54,12 +55,35 @@ function applySettingsToDom(){
     if (currentSettings.gcash_qr_image) {
       imgEl.src = currentSettings.gcash_qr_image;
       imgEl.classList.remove("hidden");
+      imgEl.classList.add("zoomable-img");
       placeholderEl.classList.add("hidden");
     } else {
       imgEl.classList.add("hidden");
+      imgEl.classList.remove("zoomable-img");
       placeholderEl.classList.remove("hidden");
     }
   }
+
+  applyBrandLogoToDom();
+}
+
+// ===================== Uploadable shop logo (header brand mark) =====================
+function applyBrandLogoToDom(){
+  const logoImgEls = document.querySelectorAll(".brand-logo-img");
+  const logoSvgEls = document.querySelectorAll(".brand-logo-svg");
+  const hasLogo = !!currentSettings.shop_logo_image;
+  logoImgEls.forEach(el => {
+    if (hasLogo) {
+      el.src = currentSettings.shop_logo_image;
+      el.classList.remove("hidden");
+    } else {
+      el.classList.add("hidden");
+      el.removeAttribute("src");
+    }
+  });
+  logoSvgEls.forEach(el => {
+    el.classList.toggle("hidden", hasLogo);
+  });
 }
 
 const SHOP_ORIGIN_ADDRESS = "Davao-Bukidnon Hwy, Sitio Pamuhatan, Marilog District, Davao City, Davao del Sur, 8000, Philippines";
@@ -171,6 +195,7 @@ let deliveryDebounceTimer = null;
 let appliedPromo = null;
 
 let pendingQrDataUrl = undefined;
+let pendingLogoDataUrl = undefined;
 
 let pendingPaymentProofDataUrl = null;
 
@@ -376,6 +401,54 @@ async function uploadImageToStorage(file, bucket, pathPrefix, maxSize){
   const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
   return data.publicUrl;
 }
+
+// ===================== Image lightbox (click-to-zoom) =====================
+// Generic "click any .zoomable-img to see it full-size, sharp, not blurry"
+// viewer. Used for the GCash QR code in the order modal (so customers can
+// actually read/scan a crisp version of it), and reused anywhere else an
+// <img class="zoomable-img"> shows up (admin QR preview, payment proof
+// thumbnails) since the same need — "let me see this clearly" — applies.
+function openImageLightbox(src, caption){
+  if (!src) return;
+  let overlay = document.getElementById("image-lightbox-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "image-lightbox-overlay";
+    overlay.className = "image-lightbox-overlay hidden";
+    overlay.innerHTML = `
+      <div class="image-lightbox-content">
+        <button type="button" class="image-lightbox-close" id="image-lightbox-close" aria-label="Close">&times;</button>
+        <img id="image-lightbox-img" src="" alt="Full size view">
+        <p class="image-lightbox-caption" id="image-lightbox-caption"></p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeImageLightbox();
+    });
+    document.getElementById("image-lightbox-close").addEventListener("click", closeImageLightbox);
+  }
+  document.getElementById("image-lightbox-img").src = src;
+  document.getElementById("image-lightbox-caption").textContent = caption || "";
+  overlay.classList.remove("hidden");
+  document.addEventListener("keydown", lightboxEscHandler);
+}
+function closeImageLightbox(){
+  const overlay = document.getElementById("image-lightbox-overlay");
+  if (overlay) overlay.classList.add("hidden");
+  document.removeEventListener("keydown", lightboxEscHandler);
+}
+function lightboxEscHandler(e){
+  if (e.key === "Escape") closeImageLightbox();
+}
+// Event delegation: any current or future .zoomable-img anywhere in the
+// document opens the lightbox on click/tap — no need to wire each one.
+document.addEventListener("click", (e) => {
+  const img = e.target.closest(".zoomable-img");
+  if (img && img.tagName === "IMG" && img.src) {
+    openImageLightbox(img.src, img.alt || "");
+  }
+});
 
 // ===================== Account menu (replaces the old 6-button header row) =====================
 const accountMenuToggle = document.getElementById("account-menu-toggle");
@@ -1311,7 +1384,7 @@ if (orderPaymentProofInput) {
     try {
       if (statusEl) statusEl.classList.remove("hidden");
       pendingPaymentProofDataUrl = await uploadImageToStorage(file, "payment-proofs", currentUserId || "guest", 700);
-      paymentProofPreview.innerHTML = `<img src="${escapeHtml(pendingPaymentProofDataUrl)}" alt="Payment screenshot" loading="lazy" decoding="async">`;
+      paymentProofPreview.innerHTML = `<img src="${escapeHtml(pendingPaymentProofDataUrl)}" alt="Payment screenshot" class="zoomable-img" loading="lazy" decoding="async">`;
       orderPaymentProofRemoveBtn.classList.remove("hidden");
       orderError.textContent = "";
     } catch (err) {
@@ -1375,7 +1448,7 @@ function getProductDisplayImage(product){
 function buildProductCardPhoto(product, index){
   const image = getProductDisplayImage(product);
   if (image) {
-    return `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" loading="lazy" decoding="async">`;
+    return `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" class="zoomable-img" loading="lazy" decoding="async">`;
   }
   return buildProductPhoto(product, index);
 }
@@ -1704,7 +1777,7 @@ function updateSizeModalQtyMax(product){
 function renderSizeModalPhoto(product){
   const entry = getSizeEntry(product, sizeModalState.selectedFeet);
   if (entry && entry.image) {
-    sizeModalPhoto.innerHTML = `<img src="${escapeHtml(entry.image)}" alt="${escapeHtml(product.name)}, ${escapeHtml(formatUnitValue(product.unitType, entry.feet))}" loading="lazy" decoding="async">`;
+    sizeModalPhoto.innerHTML = `<img src="${escapeHtml(entry.image)}" alt="${escapeHtml(product.name)}, ${escapeHtml(formatUnitValue(product.unitType, entry.feet))}" class="zoomable-img" loading="lazy" decoding="async">`;
   } else {
     sizeModalPhoto.innerHTML = buildProductPhoto(product, 0);
   }
@@ -3687,7 +3760,7 @@ function renderAdminOrdersTab(){
           ? `<br><strong>Payment reference:</strong> ${escapeHtml(order.paymentReference)}`
           : `<br><span style="color:var(--rust)">No payment reference on file</span>`;
         const proofThumb = order.paymentProof
-          ? `<br><span class="admin-payment-proof-thumb"><img src="${escapeHtml(order.paymentProof)}" alt="Payment proof for ${escapeHtml(order.id)}" loading="lazy" decoding="async"></span>`
+          ? `<br><span class="admin-payment-proof-thumb"><img src="${escapeHtml(order.paymentProof)}" alt="Payment proof for ${escapeHtml(order.id)}" class="zoomable-img" loading="lazy" decoding="async"></span>`
           : "";
         const statusSection = order.cancelled
           ? `<p class="order-cancelled-badge">Cancelled by customer</p>`
@@ -3766,7 +3839,7 @@ function createSizeBuilderRow(unitType, optionValue, existing){
         <input type="number" class="size-builder-stock" placeholder="Stock" min="0" step="1" value="${stock}" ${checked ? "" : "disabled"}>
       </div>
       <div class="size-builder-image">
-        <div class="size-thumb">${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(label)} photo" loading="lazy" decoding="async">` : ""}</div>
+        <div class="size-thumb">${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(label)} photo" class="zoomable-img" loading="lazy" decoding="async">` : ""}</div>
         <label class="link-btn size-builder-upload-label">Photo<input type="file" accept="image/*" class="hidden size-builder-upload"></label>
         <span class="avatar-upload-status hidden size-builder-upload-status">Uploading…</span>
       </div>
@@ -3807,7 +3880,7 @@ function renderSizeBuilder(containerEl, existingSizes, unitType){
         if (uploadStatus) uploadStatus.classList.remove("hidden");
         const url = await uploadImageToStorage(file, "product-images", "sizes", 500);
         row.dataset.image = url;
-        row.querySelector(".size-thumb").innerHTML = `<img src="${escapeHtml(url)}" alt="size photo" loading="lazy" decoding="async">`;
+        row.querySelector(".size-thumb").innerHTML = `<img src="${escapeHtml(url)}" alt="size photo" class="zoomable-img" loading="lazy" decoding="async">`;
         if (!checkbox.checked) {
           checkbox.checked = true;
           priceInput.disabled = false;
@@ -4138,7 +4211,7 @@ function renderAdminBrandsTab(){
           <div class="admin-card-header">
             <span class="admin-card-title">
               <span class="brand-chip">
-                <span class="brand-chip-logo">${b.logo ? `<img src="${escapeHtml(b.logo)}" alt="${escapeHtml(b.name)}" loading="lazy" decoding="async">` : ""}</span>
+                <span class="brand-chip-logo">${b.logo ? `<img src="${escapeHtml(b.logo)}" alt="${escapeHtml(b.name)}" class="zoomable-img" loading="lazy" decoding="async">` : ""}</span>
                 ${escapeHtml(b.name)}
               </span>
             </span>
@@ -4971,7 +5044,7 @@ function renderAdminAnalyticsTab(allOrders){
   `;
 }
 
-// ---------- Settings tab: GCash number + real QR code upload ----------
+// ---------- Settings tab: GCash number + real QR code upload + shop logo upload ----------
 async function renderAdminSettings(){
   await loadSettings();
   renderAdminSettingsTab();
@@ -4980,6 +5053,7 @@ async function renderAdminSettings(){
 function renderAdminSettingsTab(){
   const panel = adminTabPanels.settings;
   pendingQrDataUrl = undefined;
+  pendingLogoDataUrl = undefined;
 
   panel.innerHTML = `
     <h2 class="admin-section-title">Payment Settings</h2>
@@ -4991,10 +5065,10 @@ function renderAdminSettingsTab(){
       </label>
 
       <div class="admin-sizes-field">
-        <span class="field-label-standalone">Your real GCash QR code (upload a screenshot from your GCash app — this is exactly what customers will scan)</span>
+        <span class="field-label-standalone">Your real GCash QR code (upload a screenshot from your GCash app — this is exactly what customers will scan, and they can tap it to view it full-size)</span>
         <div class="avatar-field" style="align-items:flex-start;">
           <div class="size-thumb" id="admin-qr-preview" style="width:120px; height:120px;">
-            ${currentSettings.gcash_qr_image ? `<img src="${escapeHtml(currentSettings.gcash_qr_image)}" alt="GCash QR code" loading="lazy" decoding="async">` : ""}
+            ${currentSettings.gcash_qr_image ? `<img src="${escapeHtml(currentSettings.gcash_qr_image)}" alt="GCash QR code" class="zoomable-img" loading="lazy" decoding="async">` : ""}
           </div>
           <div class="avatar-field-controls">
             <label class="link-btn avatar-upload-label" for="admin-qr-input">Choose QR photo</label>
@@ -5008,6 +5082,25 @@ function renderAdminSettingsTab(){
       <p id="admin-settings-error" class="error-message"></p>
       <p id="admin-settings-success" class="success-message hidden"></p>
       <button type="button" class="btn-primary" id="admin-settings-save" style="width:auto; padding:10px 22px;">Save payment settings</button>
+    </div>
+
+    <div class="admin-card" style="margin-top:20px;">
+      <p class="admin-form-title">Shop Logo</p>
+      <p class="field-hint" style="margin:0 0 14px;">Replace the default seal icon in the header with your own logo photo. Leave it empty to keep the default seal.</p>
+      <div class="avatar-field" style="align-items:flex-start;">
+        <div class="size-thumb" id="admin-logo-preview" style="width:80px; height:80px; border-radius:50%;">
+          ${currentSettings.shop_logo_image ? `<img src="${escapeHtml(currentSettings.shop_logo_image)}" alt="Shop logo" class="zoomable-img" loading="lazy" decoding="async">` : ""}
+        </div>
+        <div class="avatar-field-controls">
+          <label class="link-btn avatar-upload-label" for="admin-logo-input">Choose logo photo</label>
+          <input type="file" id="admin-logo-input" accept="image/*" class="hidden">
+          <button type="button" class="link-btn avatar-remove-btn" id="admin-logo-remove">Remove logo photo</button>
+          <span class="avatar-upload-status hidden" id="admin-logo-upload-status">Uploading…</span>
+        </div>
+      </div>
+      <p id="admin-logo-error" class="error-message"></p>
+      <p id="admin-logo-success" class="success-message hidden"></p>
+      <button type="button" class="btn-primary" id="admin-logo-save" style="width:auto; padding:10px 22px;">Save shop logo</button>
     </div>
   `;
 
@@ -5025,7 +5118,7 @@ function renderAdminSettingsTab(){
     try {
       if (qrUploadStatus) qrUploadStatus.classList.remove("hidden");
       pendingQrDataUrl = await uploadImageToStorage(file, "payment-settings", "qr", 600);
-      qrPreview.innerHTML = `<img src="${escapeHtml(pendingQrDataUrl)}" alt="GCash QR code" loading="lazy" decoding="async">`;
+      qrPreview.innerHTML = `<img src="${escapeHtml(pendingQrDataUrl)}" alt="GCash QR code" class="zoomable-img" loading="lazy" decoding="async">`;
     } catch (err) {
       errEl.textContent = "Could not upload that image. Try a different photo.";
     } finally {
@@ -5061,10 +5154,59 @@ function renderAdminSettingsTab(){
       return;
     }
 
-    currentSettings = { gcash_number: number, gcash_qr_image: qrImage || null };
+    currentSettings = { ...currentSettings, gcash_number: number, gcash_qr_image: qrImage || null };
     applySettingsToDom();
     successEl.textContent = "Payment settings saved. Customers will see this immediately.";
     successEl.classList.remove("hidden");
+  });
+
+  // ---- Shop logo upload/save ----
+  const logoInput = document.getElementById("admin-logo-input");
+  const logoPreview = document.getElementById("admin-logo-preview");
+  const logoRemoveBtn = document.getElementById("admin-logo-remove");
+  const logoUploadStatus = document.getElementById("admin-logo-upload-status");
+  const logoSaveBtn = document.getElementById("admin-logo-save");
+  const logoErrEl = document.getElementById("admin-logo-error");
+  const logoSuccessEl = document.getElementById("admin-logo-success");
+
+  logoInput.addEventListener("change", async () => {
+    const file = logoInput.files[0];
+    if (!file) return;
+    try {
+      if (logoUploadStatus) logoUploadStatus.classList.remove("hidden");
+      pendingLogoDataUrl = await uploadImageToStorage(file, "shop-settings", "logo", 240);
+      logoPreview.innerHTML = `<img src="${escapeHtml(pendingLogoDataUrl)}" alt="Shop logo" class="zoomable-img" loading="lazy" decoding="async">`;
+    } catch (err) {
+      logoErrEl.textContent = "Could not upload that image. Try a different photo.";
+    } finally {
+      if (logoUploadStatus) logoUploadStatus.classList.add("hidden");
+    }
+  });
+
+  logoRemoveBtn.addEventListener("click", () => {
+    pendingLogoDataUrl = null;
+    logoPreview.innerHTML = "";
+  });
+
+  logoSaveBtn.addEventListener("click", async () => {
+    logoSaveBtn.disabled = true;
+    logoErrEl.textContent = "";
+    logoSuccessEl.classList.add("hidden");
+
+    const logoImage = pendingLogoDataUrl === undefined ? currentSettings.shop_logo_image : pendingLogoDataUrl;
+    const logoError = await saveSetting("shop_logo_image", logoImage || "");
+
+    logoSaveBtn.disabled = false;
+
+    if (logoError) {
+      logoErrEl.textContent = "Could not save the logo. Make sure your Supabase \"settings\" table exists.";
+      return;
+    }
+
+    currentSettings = { ...currentSettings, shop_logo_image: logoImage || null };
+    applySettingsToDom();
+    logoSuccessEl.textContent = "Shop logo saved. It now appears in the header for everyone.";
+    logoSuccessEl.classList.remove("hidden");
   });
 }
 
