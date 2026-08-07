@@ -379,6 +379,22 @@ function wirePasswordStrengthMeter(inputEl, fillEl, labelEl){
 wirePasswordStrengthMeter(document.getElementById("signup-password"), document.getElementById("signup-pw-strength-fill"), document.getElementById("signup-pw-strength-label"));
 wirePasswordStrengthMeter(document.getElementById("reset-password"), document.getElementById("reset-pw-strength-fill"), document.getElementById("reset-pw-strength-label"));
 
+// ===================== Show/hide password toggle =====================
+// Applies to every field wrapped in .password-input-wrap (login, signup,
+// signup-confirm, reset-password, reset-confirm) — each button's
+// data-target points at the input it controls, so one handler covers all
+// of them without wiring each field by hand.
+document.querySelectorAll(".password-toggle-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const input = document.getElementById(btn.dataset.target);
+    if (!input) return;
+    const isHidden = input.type === "password";
+    input.type = isHidden ? "text" : "password";
+    btn.textContent = isHidden ? "Hide" : "Show";
+    btn.setAttribute("aria-label", isHidden ? "Hide password" : "Show password");
+  });
+});
+
 // ===================== FIX #7: Supabase Storage image upload helper =====================
 // Replaces the old pattern of resizing an image to a base64 data URL and
 // stuffing that string directly into a database row/column. Base64 in
@@ -5174,7 +5190,13 @@ function renderAdminSettingsTab(){
     if (!file) return;
     try {
       if (logoUploadStatus) logoUploadStatus.classList.remove("hidden");
-      pendingLogoDataUrl = await uploadImageToStorage(file, "shop-settings", "logo", 240);
+      // Reuses the existing "payment-settings" bucket (same one the GCash
+      // QR upload uses) instead of a separate "shop-settings" bucket —
+      // that bucket doesn't exist by default in Supabase Storage, and
+      // creating a brand-new bucket requires a manual step in the
+      // Supabase dashboard. Reusing an already-existing bucket means the
+      // logo upload works immediately with no extra setup.
+      pendingLogoDataUrl = await uploadImageToStorage(file, "payment-settings", "logo", 240);
       logoPreview.innerHTML = `<img src="${escapeHtml(pendingLogoDataUrl)}" alt="Shop logo" class="zoomable-img" loading="lazy" decoding="async">`;
     } catch (err) {
       logoErrEl.textContent = "Could not upload that image. Try a different photo.";
