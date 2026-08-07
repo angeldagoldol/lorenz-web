@@ -300,6 +300,35 @@
     </div>
 
     <div class="header-actions" id="header-actions">
+
+      <!-- FIX #10: search + brand + price filter + sort, moved here so
+           they sit in the header beside the cart button instead of their
+           own full-width bar under the hero. Same element IDs as before,
+           so script.js needs no changes. -->
+      <div class="header-filters" id="header-filters">
+        <label class="filter-search-field">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input type="search" id="catalogue-search" placeholder="Search products…" aria-label="Search products">
+        </label>
+        <select id="catalogue-brand-filter" aria-label="Filter by brand">
+          <option value="">All brands</option>
+        </select>
+        <select id="catalogue-price-filter" aria-label="Filter by price">
+          <option value="">Any price</option>
+          <option value="0-500">Under ₱500</option>
+          <option value="500-1500">₱500 – ₱1,500</option>
+          <option value="1500-5000">₱1,500 – ₱5,000</option>
+          <option value="5000-999999">₱5,000+</option>
+        </select>
+        <select id="catalogue-sort" aria-label="Sort by">
+          <option value="default">Sort: Featured</option>
+          <option value="price-asc">Price: Low to High</option>
+          <option value="price-desc">Price: High to Low</option>
+          <option value="rating-desc">Rating: Highest</option>
+        </select>
+        <button type="button" class="link-btn" id="catalogue-filter-clear">Clear</button>
+      </div>
+
       <button id="cart-btn" class="btn-cart" type="button" aria-label="View cart">
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
           <path d="M3 4h2l2.4 12.4a2 2 0 0 0 2 1.6h7.2a2 2 0 0 0 2-1.6L20.5 8H6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -366,33 +395,10 @@
     <div class="bundles-list" id="bundles-list"></div>
   </section>
 
-  <!-- FIX #10: search + category (brand) + price filter bar -->
-  <section class="filter-bar" id="filter-bar">
-    <div class="filter-bar-inner">
-      <label class="filter-search-field">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input type="search" id="catalogue-search" placeholder="Search products…" aria-label="Search products">
-      </label>
-      <select id="catalogue-brand-filter" aria-label="Filter by brand">
-        <option value="">All brands</option>
-      </select>
-      <select id="catalogue-price-filter" aria-label="Filter by price">
-        <option value="">Any price</option>
-        <option value="0-500">Under ₱500</option>
-        <option value="500-1500">₱500 – ₱1,500</option>
-        <option value="1500-5000">₱1,500 – ₱5,000</option>
-        <option value="5000-999999">₱5,000+</option>
-      </select>
-      <select id="catalogue-sort" aria-label="Sort by">
-        <option value="default">Sort: Featured</option>
-        <option value="price-asc">Price: Low to High</option>
-        <option value="price-desc">Price: High to Low</option>
-        <option value="rating-desc">Rating: Highest</option>
-      </select>
-      <button type="button" class="link-btn" id="catalogue-filter-clear">Clear</button>
-    </div>
-    <p id="catalogue-result-count" class="filter-result-count"></p>
-  </section>
+  <!-- Result count for the search/filter controls now living in the
+       header — kept as its own line above the catalogue grid so people
+       still see "N products found" without a full filter bar section. -->
+  <p id="catalogue-result-count" class="filter-result-count" style="padding:0 6vw;"></p>
 
   <main class="catalogue" id="catalogue">
     <!-- products injected by script.js -->
