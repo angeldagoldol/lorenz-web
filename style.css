@@ -1058,10 +1058,8 @@ a{ color:inherit; }
 .catalogue{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));
-  gap:1px;
-  background:var(--line);
-  border-top:1px solid var(--line);
-  border-bottom:1px solid var(--line);
+  gap:18px;
+  background:transparent;
   margin:0 0 24px;
 }
 
@@ -1069,18 +1067,35 @@ a{ color:inherit; }
   background:var(--charcoal-950);
   display:flex;
   flex-direction:column;
-  transition:background 0.2s ease;
+  border:1px solid var(--line);
+  border-radius:10px;
   overflow:hidden;
+  transition:transform 0.22s cubic-bezier(.2,.8,.3,1), box-shadow 0.22s ease, border-color 0.22s ease, background 0.2s ease;
 }
 
-.product-card:hover{ background:var(--charcoal-900); }
+.product-card:hover{
+  background:var(--charcoal-900);
+  border-color:var(--brass);
+  transform:translateY(-5px);
+  box-shadow:0 14px 30px rgba(23,21,18,0.14);
+}
+
+/* Touch devices don't fire :hover reliably, but :active fires on tap —
+   this gives phones/tablets the same "the card responded" feedback that
+   the mouse hover gives desktop, via a quick press-down + settle. */
+.product-card:active{
+  transform:translateY(-1px) scale(0.98);
+  box-shadow:0 6px 16px rgba(23,21,18,0.12);
+  border-color:var(--brass);
+  transition:transform 0.08s ease, box-shadow 0.08s ease, border-color 0.08s ease;
+}
 
 .product-photo{
   width:100%;
   aspect-ratio:16/10;
   overflow:hidden;
   display:block;
-  border-bottom:1px solid var(--line);
+  border-bottom:2px solid var(--line);
   position:relative;
   background:var(--charcoal-800);
 }
@@ -1097,6 +1112,7 @@ a{ color:inherit; }
   object-fit:cover;
 }
 
+.product-card:hover .product-photo{ border-bottom-color:var(--brass); }
 .product-card:hover .product-photo svg,
 .product-card:hover .product-photo img{ transform:scale(1.04); }
 
@@ -1232,35 +1248,74 @@ a{ color:inherit; }
   box-shadow:none;
 }
 
+/* =====================================================================
+   ===================== "PLACE ORDER" BUTTON (blue glowing pill) =======
+   .btn-add is the "Place Order" button on every product card and bundle
+   card. It now shares the same glowing-pill treatment as .btn-primary
+   (the "Confirm order" button), but in blue rather than violet, so the
+   two calls-to-action read as clearly related without being identical.
+   ===================================================================== */
 .btn-add{
   flex:1;
-  background:transparent;
-  border:1px solid var(--brass);
-  color:var(--brass);
-  padding:8px 10px;
-  border-radius:1px;
+  position:relative;
+  background:linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%);
+  color:#eef4ff;
+  border:none;
+  border-radius:8px;
+  padding:9px 10px;
+  font-family:var(--font-body);
+  font-weight:600;
   font-size:0.76rem;
   letter-spacing:0.02em;
   cursor:pointer;
-  transition:all 0.15s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  box-shadow:
+    0 0 0 1px rgba(147,197,253,0.35),
+    0 0 12px 1px rgba(37,99,235,0.4),
+    0 0 26px 4px rgba(37,99,235,0.2);
+  transition:box-shadow 0.25s ease, transform 0.1s ease, background 0.25s ease;
+  animation:btn-glow-pulse-blue 2.8s ease-in-out infinite;
+}
+
+@keyframes btn-glow-pulse-blue{
+  0%, 100%{
+    box-shadow:
+      0 0 0 1px rgba(147,197,253,0.3),
+      0 0 10px 1px rgba(37,99,235,0.35),
+      0 0 22px 4px rgba(37,99,235,0.16);
+  }
+  50%{
+    box-shadow:
+      0 0 0 1px rgba(191,219,254,0.55),
+      0 0 18px 3px rgba(59,130,246,0.6),
+      0 0 40px 8px rgba(37,99,235,0.32);
+  }
 }
 
 .btn-add:hover{
-  background:var(--brass);
-  color:var(--charcoal-950);
+  background:linear-gradient(135deg, #2547e0 0%, #3b74f2 50%, #60a5fa 100%);
+  box-shadow:
+    0 0 0 1px rgba(219,234,254,0.75),
+    0 0 20px 4px rgba(59,130,246,0.75),
+    0 0 46px 10px rgba(37,99,235,0.4);
   transform:translateY(-1px) scale(1.03);
-  box-shadow:0 6px 16px rgba(23,21,18,0.14);
 }
 
 .btn-add:active{
   transform:scale(0.96);
-  box-shadow:0 2px 6px rgba(23,21,18,0.10);
+  box-shadow:
+    0 0 0 1px rgba(147,197,253,0.4),
+    0 0 10px 2px rgba(37,99,235,0.4);
 }
 
 .btn-add:disabled{
   opacity:0.4;
   cursor:not-allowed;
-  background:transparent;
+  background:#33415e;
+  animation:none;
   transform:none;
   box-shadow:none;
 }
@@ -2735,4 +2790,158 @@ input[type="radio"]:focus-visible{
   .payment-detail{ flex-direction:column; align-items:flex-start; }
   .size-options{ grid-template-columns:repeat(2, 1fr); }
   .analytics-grid{ grid-template-columns:1fr; }
+}
+
+/* =====================================================================
+   ===================== BACKGROUND DECOR (stickers + texture) =========
+   Adds a soft, non-flat backdrop instead of plain white: a faint dotted
+   texture across the whole page, plus a handful of decorative "sticker"
+   badges scattered around the shop screen. All are pointer-events:none
+   and aria-hidden so they never interfere with clicking/tapping.
+   ===================================================================== */
+body{
+  background-color:var(--charcoal-950);
+  background-image:
+    radial-gradient(rgba(23,21,18,0.05) 1.2px, transparent 1.2px),
+    radial-gradient(rgba(23,21,18,0.035) 1px, transparent 1px);
+  background-size:26px 26px, 14px 14px;
+  background-position:0 0, 7px 7px;
+}
+
+#shop-screen{
+  position:relative;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(179,64,43,0.05), transparent 32%),
+    radial-gradient(circle at 92% 8%, rgba(77,122,65,0.06), transparent 30%),
+    radial-gradient(circle at 85% 60%, rgba(23,21,18,0.045), transparent 34%);
+}
+
+.page-sticker{
+  position:absolute;
+  pointer-events:none;
+  z-index:1;
+  opacity:0.9;
+  filter:drop-shadow(0 4px 10px rgba(23,21,18,0.10));
+}
+
+.page-sticker svg{ display:block; }
+
+.sticker-stamp{ top:78px; right:4vw; width:64px; height:64px; transform:rotate(8deg); color:var(--brass); }
+.sticker-thread{ top:420px; left:2.5vw; width:46px; height:46px; transform:rotate(-10deg); color:var(--rust); opacity:0.7; }
+.sticker-leaf{ top:180px; left:50%; width:40px; height:40px; transform:translateX(420px) rotate(14deg); color:var(--green); opacity:0.55; }
+.sticker-spark{ bottom:60px; right:6vw; width:36px; height:36px; transform:rotate(-6deg); color:var(--brass-bright); opacity:0.5; }
+
+@media (max-width:900px){
+  .sticker-leaf{ display:none; }
+}
+@media (max-width:600px){
+  .page-sticker{ display:none; }
+}
+
+/* ===================== Clearer text ===================== */
+body{ font-size:16px; }
+.product-desc,
+.bundle-desc,
+.admin-card-body,
+.cart-line-meta,
+.order-items-summary,
+.filter-result-count{
+  color:#4d4a43;
+}
+.cream-dim-fix, .hero-sub{ color:#4d4a43; }
+.eyebrow{ color:var(--brass); }
+.product-name, .modal-item-name, .cart-line-name, .order-id, .admin-card-title{
+  color:#0d0c0a;
+}
+
+/* ===================== Bordered product photography ===================== */
+.product-photo,
+.size-modal-photo,
+.size-thumb,
+.admin-payment-proof-thumb,
+.payment-proof-thumb,
+.profile-avatar-preview,
+.header-avatar,
+.brand-chip-logo{
+  border:1.5px solid var(--line);
+}
+.qr-box{ border:1.5px solid var(--line); }
+
+/* ===================== Clickable / zoomable images ===================== */
+.zoomable-img{
+  cursor:zoom-in;
+}
+.zoomable-img:hover{
+  filter:brightness(1.03);
+}
+.zoomable-img:active{
+  transform:scale(0.97);
+}
+
+.image-lightbox-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(10,9,8,0.86);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  z-index:400;
+}
+
+.image-lightbox-content{
+  position:relative;
+  max-width:min(92vw, 620px);
+  max-height:90vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+}
+
+.image-lightbox-content img{
+  max-width:100%;
+  max-height:78vh;
+  width:auto;
+  height:auto;
+  object-fit:contain;
+  background:#fff;
+  border:2px solid rgba(255,255,255,0.9);
+  border-radius:6px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  image-rendering:auto;
+}
+
+.image-lightbox-caption{
+  color:#f3ede1;
+  font-size:0.82rem;
+  text-align:center;
+}
+
+.image-lightbox-close{
+  position:absolute;
+  top:-46px;
+  right:0;
+  background:rgba(255,255,255,0.12);
+  border:1px solid rgba(255,255,255,0.3);
+  color:#fff;
+  font-size:1.4rem;
+  line-height:1;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  cursor:pointer;
+  transition:background 0.15s ease, transform 0.15s ease;
+}
+.image-lightbox-close:hover{ background:rgba(255,255,255,0.24); transform:scale(1.08); }
+.image-lightbox-close:active{ transform:scale(0.92); }
+
+/* ===================== Uploadable shop logo ===================== */
+.brand-logo-img{
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  object-fit:cover;
+  border:1.5px solid var(--line);
+  display:block;
 }
