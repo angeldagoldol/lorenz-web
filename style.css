@@ -837,6 +837,9 @@ a{ color:inherit; }
   display:flex;
   align-items:center;
   gap:10px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  flex:1 1 auto;
 }
 
 /* ===================== Account menu ===================== */
@@ -1041,6 +1044,43 @@ a{ color:inherit; }
   margin-top:10px;
   font-size:0.78rem;
   color:var(--cream-dim);
+}
+
+/* =====================================================================
+   ===================== Header filter bar (moved beside cart) =========
+   The search / brand / price / sort / clear controls now live inside
+   the shop header, to the left of the cart button, instead of their own
+   full-width section under the hero. They reuse the same element IDs
+   (#catalogue-search, #catalogue-brand-filter, etc.) so script.js needs
+   no changes — only their markup location and sizing here changed.
+   ===================================================================== */
+.header-filters{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:2 1 460px;
+  min-width:260px;
+}
+
+.header-filters .filter-search-field{
+  flex:2 1 150px;
+  padding:8px 12px;
+}
+
+.header-filters .filter-search-field input{
+  font-size:0.82rem;
+}
+
+.header-filters select{
+  flex:1 1 100px;
+  padding:8px 10px;
+  font-size:0.78rem;
+}
+
+.header-filters .link-btn{
+  white-space:nowrap;
+  font-size:0.78rem;
+  flex-shrink:0;
 }
 
 /* ===================== Load more / pagination (FIX #8) ===================== */
@@ -2617,6 +2657,16 @@ input[type="radio"]:focus-visible{
 
   #admin-screen .shop-header{
     flex-wrap:wrap;
+  }
+
+  .header-filters{
+    order:3;
+    flex:1 1 100%;
+    margin-top:10px;
+  }
+
+  .header-filters .filter-search-field{
+    flex:1 1 auto;
   }
 
   .hero{
