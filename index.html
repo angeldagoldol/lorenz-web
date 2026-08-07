@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DAGOLDOL — Fine Everyday Goods</title>
 <meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
-<link rel="canonical" href="https://sales-dagoldol.netlify.app/">
+<link rel="canonical" href="https://dagoldol.example.com/">
 
 <!-- =====================================================================
      SECURITY FIX #2: Content-Security-Policy
@@ -36,7 +36,7 @@
 <meta property="og:site_name" content="Dagoldol">
 <meta property="og:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta property="og:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
-<meta property="og:url" content="https://sales-dagoldol.netlify.app/">
+<meta property="og:url" content="https://dagoldol.example.com/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta name="twitter:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
@@ -89,7 +89,10 @@
 
       <label class="field">
         <span>Password</span>
-        <input type="password" id="password" autocomplete="current-password" placeholder="Enter your password" required>
+        <div class="password-input-wrap">
+          <input type="password" id="password" autocomplete="current-password" placeholder="Enter your password" required>
+          <button type="button" class="password-toggle-btn" data-target="password" aria-label="Show password">Show</button>
+        </div>
       </label>
 
       <!-- SECURITY FIX #5: honeypot field. Real users never see or fill
@@ -141,7 +144,10 @@
 
       <label class="field">
         <span>Choose a password</span>
-        <input type="password" id="signup-password" autocomplete="new-password" placeholder="At least 8 characters" required minlength="8">
+        <div class="password-input-wrap">
+          <input type="password" id="signup-password" autocomplete="new-password" placeholder="At least 8 characters" required minlength="8">
+          <button type="button" class="password-toggle-btn" data-target="signup-password" aria-label="Show password">Show</button>
+        </div>
       </label>
       <!-- FIX #4: live strength meter, purely client-side UX feedback —
            the real minimum-length enforcement happens in script.js. -->
@@ -152,7 +158,10 @@
 
       <label class="field">
         <span>Confirm password</span>
-        <input type="password" id="signup-confirm" autocomplete="new-password" placeholder="Type it again" required>
+        <div class="password-input-wrap">
+          <input type="password" id="signup-confirm" autocomplete="new-password" placeholder="Type it again" required>
+          <button type="button" class="password-toggle-btn" data-target="signup-confirm" aria-label="Show password">Show</button>
+        </div>
       </label>
 
       <div class="hp-field" aria-hidden="true">
@@ -225,7 +234,10 @@
     <form id="reset-form" novalidate>
       <label class="field">
         <span>New password</span>
-        <input type="password" id="reset-password" autocomplete="new-password" placeholder="At least 8 characters" required minlength="8">
+        <div class="password-input-wrap">
+          <input type="password" id="reset-password" autocomplete="new-password" placeholder="At least 8 characters" required minlength="8">
+          <button type="button" class="password-toggle-btn" data-target="reset-password" aria-label="Show password">Show</button>
+        </div>
       </label>
       <div class="pw-strength-row" id="reset-pw-strength-row">
         <div class="pw-strength-bar"><div class="pw-strength-fill" id="reset-pw-strength-fill"></div></div>
@@ -233,7 +245,10 @@
       </div>
       <label class="field">
         <span>Confirm new password</span>
-        <input type="password" id="reset-confirm" autocomplete="new-password" placeholder="Type it again" required>
+        <div class="password-input-wrap">
+          <input type="password" id="reset-confirm" autocomplete="new-password" placeholder="Type it again" required>
+          <button type="button" class="password-toggle-btn" data-target="reset-confirm" aria-label="Show password">Show</button>
+        </div>
       </label>
       <p id="reset-error" class="error-message" role="alert" aria-live="polite"></p>
       <button type="submit" class="btn-primary">Save new password</button>
