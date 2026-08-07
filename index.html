@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DAGOLDOL — Fine Everyday Goods</title>
 <meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
-<link rel="canonical" href="https://sales-dagoldol.netlify.app/">
+<link rel="canonical" href="https://dagoldol.example.com/">
 
 <!-- =====================================================================
      SECURITY FIX #2: Content-Security-Policy
@@ -36,7 +36,7 @@
 <meta property="og:site_name" content="Dagoldol">
 <meta property="og:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta property="og:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
-<meta property="og:url" content="https://sales-dagoldol.netlify.app/">
+<meta property="og:url" content="https://dagoldol.example.com/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta name="twitter:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
@@ -64,7 +64,8 @@
     <button type="button" class="login-screen-back" id="login-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
 
     <div class="seal">
-      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+      <img class="brand-logo-img hidden" alt="Shop logo" width="52" height="52">
+      <svg class="brand-logo-svg" viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
         <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
         <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -114,7 +115,8 @@
     <button type="button" class="login-screen-back" id="signup-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
 
     <div class="seal">
-      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+      <img class="brand-logo-img hidden" alt="Shop logo" width="52" height="52">
+      <svg class="brand-logo-svg" viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
         <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
         <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -171,7 +173,8 @@
     <button type="button" class="login-screen-back" id="forgot-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
 
     <div class="seal">
-      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+      <img class="brand-logo-img hidden" alt="Shop logo" width="52" height="52">
+      <svg class="brand-logo-svg" viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
         <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
         <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -207,7 +210,8 @@
        reset-password email link (Supabase appends a recovery session). -->
   <div class="login-card hidden" id="reset-card">
     <div class="seal">
-      <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+      <img class="brand-logo-img hidden" alt="Shop logo" width="52" height="52">
+      <svg class="brand-logo-svg" viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2"/>
         <circle cx="50" cy="50" r="38" fill="none" stroke="currentColor" stroke-width="1"/>
         <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -240,9 +244,40 @@
 
 <!-- ===================== SHOP SCREEN ===================== -->
 <section id="shop-screen" class="screen hidden">
+
+  <!-- Decorative background stickers (FIX: not-just-white background).
+       Purely visual, never interactive: pointer-events are disabled in
+       CSS and they're hidden from assistive tech. -->
+  <div class="page-sticker sticker-stamp" aria-hidden="true">
+    <svg viewBox="0 0 64 64" width="64" height="64">
+      <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 4"/>
+      <circle cx="32" cy="32" r="21" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M22 34 L29 41 L44 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div class="page-sticker sticker-thread" aria-hidden="true">
+    <svg viewBox="0 0 48 48" width="46" height="46">
+      <path d="M6 40 C 14 30, 8 20, 18 16 C 28 12, 24 24, 34 20 C 40 17, 40 10, 40 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="6" cy="40" r="3" fill="currentColor"/>
+      <circle cx="40" cy="8" r="2.4" fill="currentColor"/>
+    </svg>
+  </div>
+  <div class="page-sticker sticker-leaf" aria-hidden="true">
+    <svg viewBox="0 0 40 40" width="40" height="40">
+      <path d="M8 32 C 8 14, 22 6, 34 6 C 34 20, 24 32, 8 32 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+      <path d="M10 30 L30 8" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    </svg>
+  </div>
+  <div class="page-sticker sticker-spark" aria-hidden="true">
+    <svg viewBox="0 0 36 36" width="36" height="36">
+      <path d="M18 2 L21 15 L34 18 L21 21 L18 34 L15 21 L2 18 L15 15 Z" fill="currentColor" opacity="0.85"/>
+    </svg>
+  </div>
+
   <header class="shop-header">
     <div class="brand-mark">
-      <svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
+      <img class="brand-logo-img hidden" alt="Shop logo">
+      <svg class="brand-logo-svg" viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
         <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -362,7 +397,8 @@
 <section id="admin-screen" class="screen hidden">
   <header class="shop-header">
     <div class="brand-mark">
-      <svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
+      <img class="brand-logo-img hidden" alt="Shop logo">
+      <svg class="brand-logo-svg" viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
         <path d="M50 30 L50 58 M50 58 L40 48 M50 58 L60 48" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
@@ -589,7 +625,7 @@
 
         <div class="payment-detail" id="payment-detail-gcash">
           <div class="qr-box" id="gcash-qr-box" aria-hidden="true">
-            <img id="gcash-qr-img" src="" alt="Owner's GCash QR code" class="hidden" width="88" height="88" loading="lazy" decoding="async">
+            <img id="gcash-qr-img" src="" alt="Owner's GCash QR code — tap to view it full size" class="hidden" width="88" height="88" loading="lazy" decoding="async">
             <svg id="gcash-qr-placeholder" viewBox="0 0 100 100" width="88" height="88">
               <rect x="4" y="4" width="92" height="92" fill="none" stroke="currentColor" stroke-width="2"/>
               <rect x="12" y="12" width="24" height="24" fill="currentColor"/>
@@ -606,7 +642,7 @@
               <rect x="70" y="84" width="8" height="8" fill="currentColor"/>
             </svg>
           </div>
-          <p>Scan the QR code, or send payment via GCash to <strong id="gcash-number-text">0963 202 0564</strong> (Dagoldol Trading Co.). Bring your reference number for delivery.</p>
+          <p>Scan the QR code, or send payment via GCash to <strong id="gcash-number-text">0963 202 0564</strong> (Dagoldol Trading Co.). Tap the QR code to view it full-size and crisp. Bring your reference number for delivery.</p>
         </div>
 
         <div class="payment-detail hidden" id="payment-detail-bank">
