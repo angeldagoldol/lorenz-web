@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>DAGOLDOL — Fine Everyday Goods</title>
 <meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
-<link rel="canonical" href="https://lorenz-web-six.vercel.app/">
+<link rel="canonical" href="https://dagoldol.example.com/">
 
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
@@ -25,7 +25,7 @@
 <meta property="og:site_name" content="Dagoldol">
 <meta property="og:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta property="og:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
-<meta property="og:url" content="https://lorenz-web-six.vercel.app/">
+<meta property="og:url" content="https://dagoldol.example.com/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta name="twitter:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
@@ -330,19 +330,10 @@
                Opens a read-only page with developer/site info that the
                admin edits from the Payment Settings tab.
 
-               FIX: this link previously pointed to "myinfo/index.html",
-               but the file on disk actually lives at "Myinfo/index1.html"
-               (capital M, and "index1.html" not "index.html"). That
-               mismatch works locally on Windows (case-insensitive
-               filesystem) but 404s on Vercel (case-sensitive, Linux).
-               Updated the href below to match the real path exactly.
-
-               Recommended cleanup: rename the folder "Myinfo" -> "myinfo"
-               and the file "index1.html" -> "index.html" (and likewise
-               "style1.css" -> "style.css", "script1.js" -> "script.js")
-               so the URL looks tidy, then change this href back to
-               "myinfo/index.html". -->
-          <a href="Myinfo/index1.html" target="_blank" rel="noopener noreferrer" class="account-menu-item" id="dev-info-btn" role="menuitem">My Info</a>
+               FIX: index1.html, style1.css, script1.js, and info.jpg all
+               live at the REPO ROOT (no "Myinfo" subfolder exists in the
+               repo), so the link below points straight at "index1.html". -->
+          <a href="index1.html" target="_blank" rel="noopener noreferrer" class="account-menu-item" id="dev-info-btn" role="menuitem">My Info</a>
 
           <div class="account-menu-divider hidden" id="account-menu-divider-logout"></div>
           <button type="button" class="account-menu-item account-menu-item-danger hidden" id="logout-btn" role="menuitem">Log out</button>
