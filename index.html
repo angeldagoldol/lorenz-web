@@ -327,9 +327,22 @@
           <button type="button" class="account-menu-item" id="contact-btn" role="menuitem">Contact</button>
           <!-- ===================== "My Info" menu item =====================
                Visible to everyone (guest or logged in), same as Contact.
-               Opens a read-only modal with developer/site info that the
-               admin edits from the Payment Settings tab. -->
-          <a href="myinfo/index1.html" target="_blank" rel="noopener noreferrer" class="account-menu-item" id="dev-info-btn" role="menuitem">My Info</a>
+               Opens a read-only page with developer/site info that the
+               admin edits from the Payment Settings tab.
+
+               FIX: this link previously pointed to "myinfo/index.html",
+               but the file on disk actually lives at "Myinfo/index1.html"
+               (capital M, and "index1.html" not "index.html"). That
+               mismatch works locally on Windows (case-insensitive
+               filesystem) but 404s on Vercel (case-sensitive, Linux).
+               Updated the href below to match the real path exactly.
+
+               Recommended cleanup: rename the folder "Myinfo" -> "myinfo"
+               and the file "index1.html" -> "index.html" (and likewise
+               "style1.css" -> "style.css", "script1.js" -> "script.js")
+               so the URL looks tidy, then change this href back to
+               "myinfo/index.html". -->
+          <a href="Myinfo/index1.html" target="_blank" rel="noopener noreferrer" class="account-menu-item" id="dev-info-btn" role="menuitem">My Info</a>
 
           <div class="account-menu-divider hidden" id="account-menu-divider-logout"></div>
           <button type="button" class="account-menu-item account-menu-item-danger hidden" id="logout-btn" role="menuitem">Log out</button>
