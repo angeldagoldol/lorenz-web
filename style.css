@@ -10,12 +10,12 @@
   --brass-bright:#000000;
   /* Text */
   --cream:#171512;
-  --cream-dim:#767268;
+  --cream-dim:#6b6860;
   /* Status */
   --rust:#b3402b;
   --green:#4d7a41;
   --line: rgba(23,21,18,0.10);
-  --muted:#9a968c;
+  --muted:#6b6860;
   --font-display:'Fraunces', Georgia, serif;
   --font-body:'Work Sans', -apple-system, sans-serif;
 }
@@ -33,10 +33,6 @@ body{
   overflow-x:hidden;
 }
 
-/* ===================== Baseline transitions (minimalist, consistent) =====
-   Every interactive element gets a short, clean transition by default so
-   hovers/focus states never feel abrupt. More specific rules further down
-   can still override individual properties/durations where needed. */
 button,
 a,
 input,
@@ -57,7 +53,28 @@ button:disabled{ cursor:not-allowed; }
 
 a{ color:inherit; }
 
-/* ===================== Global error banner (FIX #12) ===================== */
+.skip-link{
+  position:fixed;
+  top:-60px;
+  left:12px;
+  z-index:500;
+  background:var(--brass);
+  color:#fbf9f5;
+  padding:12px 20px;
+  border-radius:2px;
+  font-family:var(--font-body);
+  font-weight:600;
+  font-size:0.85rem;
+  text-decoration:none;
+  transition:top 0.15s ease;
+}
+
+.skip-link:focus{
+  top:12px;
+  outline:2px solid var(--brass-bright);
+  outline-offset:2px;
+}
+
 .global-error-banner{
   position:fixed;
   top:0;
@@ -85,12 +102,6 @@ a{ color:inherit; }
   flex-shrink:0;
 }
 
-/* ===================== Honeypot field (FIX #5) =====================
-   Visually hidden but still present/focusable in the DOM (off-screen, not
-   display:none) — that's deliberate: naive bots that only check for
-   display:none/visibility:hidden before filling every field still get
-   caught, while real users (and screen readers, via aria-hidden on the
-   wrapper) never encounter it. */
 .hp-field{
   position:absolute;
   left:-9999px;
@@ -99,7 +110,6 @@ a{ color:inherit; }
   overflow:hidden;
 }
 
-/* ===================== Password strength meter (FIX #4) ===================== */
 .pw-strength-row{
   display:flex;
   align-items:center;
@@ -128,7 +138,6 @@ a{ color:inherit; }
   white-space:nowrap;
 }
 
-/* ===================== Login Screen ===================== */
 #login-screen{
   min-height:100vh;
   display:flex;
@@ -339,22 +348,13 @@ a{ color:inherit; }
   40%,60%{ transform:translateX(4px); }
 }
 
-/* =====================================================================
-   ===================== PRIMARY BUTTON (glowing pill) =================
-   Original violet gradient pill with a soft outer glow that breathes
-   gently while idle, and a brighter flare on hover/focus — unchanged
-   design, with clean transitions on every state change. This is
-   .btn-primary, so it covers every main call-to-action button site-wide
-   — the login "Unlock the shop" button, sign up, place order, save
-   profile, send message, etc.
-   ===================================================================== */
 .btn-primary{
   width:100%;
   position:relative;
-  background:linear-gradient(135deg, #7c2ff2 0%, #9333ea 50%, #b45cf7 100%);
-  color:#fdf8ff;
-  border:none;
-  border-radius:999px;
+  background:var(--brass);
+  color:#fbf9f5;
+  border:1px solid var(--brass);
+  border-radius:2px;
   padding:14px 20px;
   font-family:var(--font-body);
   font-weight:600;
@@ -366,62 +366,33 @@ a{ color:inherit; }
   align-items:center;
   justify-content:center;
   gap:9px;
-  box-shadow:
-    0 0 0 1px rgba(196,132,252,0.35),
-    0 0 16px 2px rgba(147,51,234,0.45),
-    0 0 36px 6px rgba(147,51,234,0.22);
-  transition:box-shadow 0.25s ease, transform 0.1s ease, background 0.25s ease;
-  animation:btn-glow-pulse 2.8s ease-in-out infinite;
-}
-
-.btn-primary::before{
-  content:"\2726";
-  font-size:0.85em;
-  line-height:1;
-  color:#f4e8ff;
-  filter:drop-shadow(0 0 4px rgba(196,132,252,0.9));
-}
-
-@keyframes btn-glow-pulse{
-  0%, 100%{
-    box-shadow:
-      0 0 0 1px rgba(196,132,252,0.3),
-      0 0 14px 2px rgba(147,51,234,0.4),
-      0 0 32px 6px rgba(147,51,234,0.18);
-  }
-  50%{
-    box-shadow:
-      0 0 0 1px rgba(196,132,252,0.55),
-      0 0 24px 4px rgba(168,85,247,0.65),
-      0 0 58px 12px rgba(147,51,234,0.35);
-  }
+  box-shadow:0 1px 2px rgba(23,21,18,0.06);
+  transition:background 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease, border-color 0.15s ease;
 }
 
 .btn-primary:hover{
-  background:linear-gradient(135deg, #8b3ffb 0%, #a855f7 50%, #c084fc 100%);
-  box-shadow:
-    0 0 0 1px rgba(224,187,255,0.75),
-    0 0 28px 6px rgba(168,85,247,0.8),
-    0 0 68px 14px rgba(147,51,234,0.45);
-  transform:translateY(-1px) scale(1.015);
+  background:var(--brass-bright);
+  border-color:var(--brass-bright);
+  box-shadow:0 10px 24px rgba(23,21,18,0.20);
+  transform:translateY(-1px);
 }
 
-.btn-primary:active{ transform:scale(0.98); }
+.btn-primary:active{ transform:translateY(0) scale(0.98); box-shadow:0 2px 8px rgba(23,21,18,0.16); }
 
 .btn-primary:focus-visible{
-  outline:2px solid #c084fc;
+  outline:2px solid var(--brass-bright);
   outline-offset:3px;
 }
 
 .btn-primary:disabled{
-  opacity:0.5;
+  opacity:0.45;
   cursor:not-allowed;
-  animation:none;
-  background:#3a3145;
+  background:var(--muted);
+  border-color:var(--muted);
   box-shadow:none;
+  transform:none;
 }
-.btn-primary:disabled::before{ opacity:0.6; }
-.btn-primary:disabled:hover{ background:#3a3145; box-shadow:none; }
+.btn-primary:disabled:hover{ background:var(--muted); box-shadow:none; transform:none; }
 
 .hint{
   margin-top:22px;
@@ -475,7 +446,6 @@ a{ color:inherit; }
   line-height:1.4;
 }
 
-/* ===================== Delivery distance status ===================== */
 .delivery-status{
   font-size:0.78rem;
   color:var(--cream-dim);
@@ -488,7 +458,6 @@ a{ color:inherit; }
   color:var(--rust);
 }
 
-/* ===================== Payment section ===================== */
 .payment-section{
   margin:6px 0 16px;
   padding:16px;
@@ -568,7 +537,6 @@ a{ color:inherit; }
   display:block;
 }
 
-/* ===================== Payment proof block ===================== */
 .payment-proof-block{
   margin-top:16px;
   padding-top:16px;
@@ -643,7 +611,6 @@ a{ color:inherit; }
   color:var(--brass-bright);
 }
 
-/* ===================== Modal ===================== */
 .modal-overlay{
   position:fixed;
   inset:0;
@@ -692,28 +659,45 @@ a{ color:inherit; }
   margin:6px 0 4px;
 }
 
-/* ===================== Toast ===================== */
-.toast{
+.toast-container{
   position:fixed;
   bottom:28px;
   left:50%;
   transform:translateX(-50%);
+  z-index:200;
+  display:flex;
+  flex-direction:column-reverse;
+  align-items:center;
+  gap:10px;
+  max-width:calc(100vw - 40px);
+  pointer-events:none;
+}
+
+.toast{
   background:var(--brass);
-  color:var(--charcoal-950);
+  color:#fbf9f5;
   padding:14px 24px;
   border-radius:2px;
   font-size:0.88rem;
   font-weight:600;
-  z-index:200;
   box-shadow:0 8px 24px rgba(0,0,0,0.35);
   animation:toast-in 0.25s ease;
-  max-width:calc(100vw - 40px);
   text-align:center;
+  pointer-events:auto;
+}
+
+.toast.toast-leaving{
+  animation:toast-out 0.2s ease forwards;
 }
 
 @keyframes toast-in{
-  from{ opacity:0; transform:translate(-50%, 10px); }
-  to{ opacity:1; transform:translate(-50%, 0); }
+  from{ opacity:0; transform:translateY(10px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+
+@keyframes toast-out{
+  from{ opacity:1; transform:translateY(0); }
+  to{ opacity:0; transform:translateY(6px); }
 }
 
 @media (max-width:480px){
@@ -723,7 +707,6 @@ a{ color:inherit; }
   .payment-detail{ flex-direction:column; align-items:flex-start; }
 }
 
-/* ===================== Shop Screen ===================== */
 #shop-screen{ min-height:100vh; }
 
 .shop-header{
@@ -842,7 +825,6 @@ a{ color:inherit; }
   flex:1 1 auto;
 }
 
-/* ===================== Account menu ===================== */
 .account-menu-wrap{ position:relative; }
 
 .account-menu{
@@ -965,9 +947,14 @@ a{ color:inherit; }
 }
 
 .hero{
-  padding:64px 6vw 40px;
-  max-width:720px;
+  padding:64px 6vw 44px;
+  display:grid;
+  grid-template-columns:minmax(0, 640px) minmax(200px, 360px);
+  align-items:center;
+  gap:36px;
 }
+
+.hero-content{ min-width:0; }
 
 .hero h2{
   font-family:var(--font-display);
@@ -993,7 +980,21 @@ a{ color:inherit; }
   padding:13px 30px;
 }
 
-/* ===================== Filter bar (FIX #10) ===================== */
+.hero-visual{
+  justify-self:end;
+  width:100%;
+  max-width:360px;
+  color:var(--brass);
+  opacity:0.92;
+}
+
+.hero-visual svg{ width:100%; height:auto; display:block; }
+
+@media (max-width:960px){
+  .hero{ grid-template-columns:1fr; gap:0; }
+  .hero-visual{ display:none; }
+}
+
 .filter-bar{
   padding:0 6vw 18px;
 }
@@ -1046,14 +1047,6 @@ a{ color:inherit; }
   color:var(--cream-dim);
 }
 
-/* =====================================================================
-   ===================== Header filter bar (moved beside cart) =========
-   The search / brand / price / sort / clear controls now live inside
-   the shop header, to the left of the cart button, instead of their own
-   full-width section under the hero. They reuse the same element IDs
-   (#catalogue-search, #catalogue-brand-filter, etc.) so script.js needs
-   no changes — only their markup location and sizing here changed.
-   ===================================================================== */
 .header-filters{
   display:flex;
   align-items:center;
@@ -1083,7 +1076,6 @@ a{ color:inherit; }
   flex-shrink:0;
 }
 
-/* ===================== Load more / pagination (FIX #8) ===================== */
 .load-more-row{
   display:flex;
   justify-content:center;
@@ -1094,6 +1086,55 @@ a{ color:inherit; }
   width:auto;
   padding:12px 32px;
 }
+
+.skeleton{
+  background:linear-gradient(100deg, var(--charcoal-800) 30%, var(--charcoal-700) 50%, var(--charcoal-800) 70%);
+  background-size:200% 100%;
+  animation:skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius:3px;
+}
+
+@keyframes skeleton-shimmer{
+  0%{ background-position:120% 0; }
+  100%{ background-position:-20% 0; }
+}
+
+.skeleton-card{
+  background:var(--charcoal-950);
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.skeleton-photo{
+  width:100%;
+  aspect-ratio:16/10;
+  border-radius:0;
+}
+
+.skeleton-card-body{
+  padding:22px 26px 26px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.skeleton-line{
+  height:11px;
+  width:70%;
+}
+
+.skeleton-row{
+  border:1px solid var(--line);
+  border-radius:2px;
+  padding:20px 22px;
+  background:var(--charcoal-900);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-bottom:16px;
+}
+.skeleton-row:last-child{ margin-bottom:0; }
 
 .catalogue{
   display:grid;
@@ -1120,9 +1161,6 @@ a{ color:inherit; }
   box-shadow:0 14px 30px rgba(23,21,18,0.14);
 }
 
-/* Touch devices don't fire :hover reliably, but :active fires on tap —
-   this gives phones/tablets the same "the card responded" feedback that
-   the mouse hover gives desktop, via a quick press-down + settle. */
 .product-card:active{
   transform:translateY(-1px) scale(0.98);
   box-shadow:0 6px 16px rgba(23,21,18,0.12);
@@ -1288,20 +1326,13 @@ a{ color:inherit; }
   box-shadow:none;
 }
 
-/* =====================================================================
-   ===================== "PLACE ORDER" BUTTON (blue glowing pill) =======
-   .btn-add is the "Place Order" button on every product card and bundle
-   card. It now shares the same glowing-pill treatment as .btn-primary
-   (the "Confirm order" button), but in blue rather than violet, so the
-   two calls-to-action read as clearly related without being identical.
-   ===================================================================== */
 .btn-add{
   flex:1;
   position:relative;
-  background:linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #3b82f6 100%);
-  color:#eef4ff;
-  border:none;
-  border-radius:8px;
+  background:var(--brass);
+  color:#fbf9f5;
+  border:1px solid var(--brass);
+  border-radius:2px;
   padding:9px 10px;
   font-family:var(--font-body);
   font-weight:600;
@@ -1312,55 +1343,31 @@ a{ color:inherit; }
   align-items:center;
   justify-content:center;
   gap:6px;
-  box-shadow:
-    0 0 0 1px rgba(147,197,253,0.35),
-    0 0 12px 1px rgba(37,99,235,0.4),
-    0 0 26px 4px rgba(37,99,235,0.2);
-  transition:box-shadow 0.25s ease, transform 0.1s ease, background 0.25s ease;
-  animation:btn-glow-pulse-blue 2.8s ease-in-out infinite;
-}
-
-@keyframes btn-glow-pulse-blue{
-  0%, 100%{
-    box-shadow:
-      0 0 0 1px rgba(147,197,253,0.3),
-      0 0 10px 1px rgba(37,99,235,0.35),
-      0 0 22px 4px rgba(37,99,235,0.16);
-  }
-  50%{
-    box-shadow:
-      0 0 0 1px rgba(191,219,254,0.55),
-      0 0 18px 3px rgba(59,130,246,0.6),
-      0 0 40px 8px rgba(37,99,235,0.32);
-  }
+  box-shadow:0 1px 2px rgba(23,21,18,0.06);
+  transition:background 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease, border-color 0.15s ease;
 }
 
 .btn-add:hover{
-  background:linear-gradient(135deg, #2547e0 0%, #3b74f2 50%, #60a5fa 100%);
-  box-shadow:
-    0 0 0 1px rgba(219,234,254,0.75),
-    0 0 20px 4px rgba(59,130,246,0.75),
-    0 0 46px 10px rgba(37,99,235,0.4);
-  transform:translateY(-1px) scale(1.03);
+  background:var(--brass-bright);
+  border-color:var(--brass-bright);
+  box-shadow:0 8px 18px rgba(23,21,18,0.18);
+  transform:translateY(-1px);
 }
 
 .btn-add:active{
-  transform:scale(0.96);
-  box-shadow:
-    0 0 0 1px rgba(147,197,253,0.4),
-    0 0 10px 2px rgba(37,99,235,0.4);
+  transform:translateY(0) scale(0.97);
+  box-shadow:0 2px 6px rgba(23,21,18,0.14);
 }
 
 .btn-add:disabled{
   opacity:0.4;
   cursor:not-allowed;
-  background:#33415e;
-  animation:none;
+  background:var(--muted);
+  border-color:var(--muted);
   transform:none;
   box-shadow:none;
 }
 
-/* ===================== Cart list (used in both cart + order modal) ===================== */
 .cart-items-list{
   text-align:left;
   margin-bottom:18px;
@@ -1413,6 +1420,38 @@ a{ color:inherit; }
 .cart-remove:hover{ color:var(--rust); transform:scale(1.15); }
 .cart-remove:active{ transform:scale(0.9); }
 
+.empty-state{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  padding:36px 20px;
+  text-align:center;
+  color:var(--cream-dim);
+}
+
+.empty-state svg{
+  color:var(--muted);
+  opacity:0.8;
+}
+
+.empty-state p{
+  font-size:0.88rem;
+  max-width:280px;
+  line-height:1.5;
+}
+
+.empty-state p strong{
+  display:block;
+  font-family:var(--font-display);
+  font-style:italic;
+  font-size:1rem;
+  color:var(--cream);
+  margin-bottom:4px;
+  font-weight:400;
+}
+
 .cart-empty{
   color:var(--cream-dim);
   font-size:0.88rem;
@@ -1444,7 +1483,6 @@ a{ color:inherit; }
   font-size:0.78rem;
 }
 
-/* ===================== Orders / Tracking ===================== */
 .modal-panel-wide{ max-width:600px; }
 
 .orders-list{
@@ -1502,7 +1540,6 @@ a{ color:inherit; }
   letter-spacing:0.04em;
 }
 
-/* Tracker */
 .tracker{
   display:flex;
   align-items:flex-start;
@@ -1612,7 +1649,6 @@ a{ color:inherit; }
 
 .admin-card-compact{ padding:16px 20px; }
 
-/* Ratings */
 .rate-item{
   display:flex;
   align-items:center;
@@ -1647,7 +1683,6 @@ a{ color:inherit; }
   color:var(--brass-bright);
 }
 
-/* ===================== Admin dashboard ===================== */
 .admin-tabs{
   display:flex;
   gap:2px;
@@ -1896,7 +1931,6 @@ a{ color:inherit; }
   cursor:pointer;
 }
 
-/* ===================== Analytics tab (FIX #11) ===================== */
 .analytics-grid{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));
@@ -1924,6 +1958,12 @@ a{ color:inherit; }
   font-size:1.7rem;
   color:var(--brass-bright);
   font-style:italic;
+}
+
+.analytics-table-wrap{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
 }
 
 .analytics-table{
@@ -1957,7 +1997,27 @@ a{ color:inherit; }
   margin:28px 0 12px;
 }
 
-/* ===================== Focus-visible states ===================== */
+.analytics-chart-card{
+  border:1px solid var(--line);
+  border-radius:2px;
+  padding:20px 22px 12px;
+  background:var(--charcoal-900);
+  margin-bottom:8px;
+}
+
+.analytics-chart-card svg{ display:block; width:100%; height:auto; overflow:visible; }
+
+.chart-bar{ fill:var(--brass); transition:fill 0.15s ease; }
+.chart-bar:hover{ fill:var(--brass-bright); }
+.chart-bar-label{ font-family:var(--font-body); font-size:9px; fill:var(--cream-dim); }
+.chart-bar-value{ font-family:var(--font-body); font-size:9px; font-weight:600; fill:var(--cream); }
+.chart-axis-line{ stroke:var(--line); stroke-width:1; }
+.chart-area-fill{ fill:rgba(23,21,18,0.07); }
+.chart-line-path{ fill:none; stroke:var(--brass); stroke-width:1.75; stroke-linejoin:round; stroke-linecap:round; }
+.chart-line-dot{ fill:var(--charcoal-900); stroke:var(--brass); stroke-width:1.75; }
+.chart-empty-note{ font-family:var(--font-body); font-size:11px; fill:var(--muted); }
+
+.focus-visible-outline,
 button:focus-visible,
 a:focus-visible,
 .link-btn:focus-visible,
@@ -1984,7 +2044,6 @@ input[type="radio"]:focus-visible{
   html{ scroll-behavior:auto; }
 }
 
-/* ===================== Size select modal ===================== */
 .size-modal-photo{
   width:100%;
   aspect-ratio:16/10;
@@ -2059,7 +2118,6 @@ input[type="radio"]:focus-visible{
 
 .size-option-stock.stock-low{ color:var(--rust); }
 
-/* ===================== Admin: per-size builder ===================== */
 .admin-sizes-field{
   margin-bottom:18px;
 }
@@ -2147,7 +2205,6 @@ input[type="radio"]:focus-visible{
   margin-bottom:2px;
 }
 
-/* ===================== Flash sale badge ===================== */
 .flash-sale-badge{
   position:absolute;
   top:10px;
@@ -2163,7 +2220,6 @@ input[type="radio"]:focus-visible{
   z-index:2;
 }
 
-/* ===================== Brand tag chip (admin) ===================== */
 .brand-chip{
   display:inline-flex;
   align-items:center;
@@ -2186,7 +2242,6 @@ input[type="radio"]:focus-visible{
 
 .brand-chip-logo img{ width:100%; height:100%; object-fit:cover; display:block; }
 
-/* ===================== Low stock banner ===================== */
 .low-stock-banner{
   border:1px solid rgba(184,73,47,0.4);
   background:rgba(184,73,47,0.08);
@@ -2211,7 +2266,6 @@ input[type="radio"]:focus-visible{
 
 .low-stock-line strong{ color:var(--cream); }
 
-/* ===================== Bundles ===================== */
 .bundles-section{
   padding:0 6vw 12px;
 }
@@ -2303,7 +2357,6 @@ input[type="radio"]:focus-visible{
   font-size:0.85rem;
 }
 
-/* ===================== Promo code (order modal) ===================== */
 .promo-section{
   margin:6px 0 16px;
 }
@@ -2339,7 +2392,6 @@ input[type="radio"]:focus-visible{
 .promo-status.promo-status-ok{ color:var(--green); }
 .promo-status.promo-status-error{ color:var(--rust); }
 
-/* ===================== Live chat: presence dots ===================== */
 .online-dot, .offline-dot{
   display:inline-block;
   width:9px;
@@ -2355,7 +2407,6 @@ input[type="radio"]:focus-visible{
 
 .offline-dot{ background:var(--muted); }
 
-/* ===================== Live chat: customer modal ===================== */
 .chat-online-status{
   display:flex;
   align-items:center;
@@ -2468,7 +2519,6 @@ input[type="radio"]:focus-visible{
   padding:0 22px;
 }
 
-/* ===================== Live chat: admin (Seller chat) layout ===================== */
 .admin-chat-layout{
   display:flex;
   gap:20px;
@@ -2570,7 +2620,6 @@ input[type="radio"]:focus-visible{
   padding:6px 0 4px;
 }
 
-/* ===================== Recommendation engine: homepage sections ===================== */
 .reco-section{
   padding:0 6vw 12px;
 }
@@ -2579,7 +2628,6 @@ input[type="radio"]:focus-visible{
   margin:0 0 20px;
 }
 
-/* ===================== Frequently Bought Together (size modal) ===================== */
 .fbt-section{
   margin:-6px 0 16px;
   padding:14px 16px;
@@ -2630,9 +2678,6 @@ input[type="radio"]:focus-visible{
   .bundle-builder-row{ grid-template-columns:1fr; }
 }
 
-/* =====================================================================
-   ===================== MOBILE / PHONE LAYOUT =========================
-   ===================================================================== */
 @media (max-width: 720px){
 
   .shop-header{
@@ -2842,13 +2887,38 @@ input[type="radio"]:focus-visible{
   .analytics-grid{ grid-template-columns:1fr; }
 }
 
-/* =====================================================================
-   ===================== BACKGROUND DECOR (stickers + texture) =========
-   Adds a soft, non-flat backdrop instead of plain white: a faint dotted
-   texture across the whole page, plus a handful of decorative "sticker"
-   badges scattered around the shop screen. All are pointer-events:none
-   and aria-hidden so they never interfere with clicking/tapping.
-   ===================================================================== */
+@media (max-width:420px){
+  .header-filters{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .header-filters .filter-search-field,
+  .header-filters select{
+    flex:1 1 auto;
+    width:100%;
+  }
+  .header-filters .link-btn{
+    align-self:flex-start;
+    padding:4px 0;
+  }
+  .admin-tab-btn{
+    padding:12px 10px;
+    font-size:0.76rem;
+  }
+  .admin-status-btn{
+    flex:1 1 100%;
+  }
+  .product-body{
+    padding:16px 14px 18px;
+  }
+  .size-options{
+    grid-template-columns:1fr 1fr;
+  }
+  .analytics-chart-card{
+    padding:14px 10px 8px;
+  }
+}
+
 body{
   background-color:var(--charcoal-950);
   background-image:
@@ -2888,7 +2958,6 @@ body{
   .page-sticker{ display:none; }
 }
 
-/* ===================== Clearer text ===================== */
 body{ font-size:16px; }
 .product-desc,
 .bundle-desc,
@@ -2904,7 +2973,6 @@ body{ font-size:16px; }
   color:#0d0c0a;
 }
 
-/* ===================== Bordered product photography ===================== */
 .product-photo,
 .size-modal-photo,
 .size-thumb,
@@ -2917,7 +2985,6 @@ body{ font-size:16px; }
 }
 .qr-box{ border:1.5px solid var(--line); }
 
-/* ===================== Clickable / zoomable images ===================== */
 .zoomable-img{
   cursor:zoom-in;
 }
@@ -2986,7 +3053,6 @@ body{ font-size:16px; }
 .image-lightbox-close:hover{ background:rgba(255,255,255,0.24); transform:scale(1.08); }
 .image-lightbox-close:active{ transform:scale(0.92); }
 
-/* ===================== Password show/hide toggle ===================== */
 .password-input-wrap{
   position:relative;
 }
@@ -3020,7 +3086,6 @@ body{ font-size:16px; }
   transform:translateY(-50%) scale(0.94);
 }
 
-/* ===================== Uploadable shop logo ===================== */
 .brand-logo-img{
   border-radius:50%;
   object-fit:cover;
@@ -3028,14 +3093,12 @@ body{ font-size:16px; }
   display:block;
 }
 
-/* Login screen "seal" — the big, prominent version of the logo. */
 .seal .brand-logo-img,
 .seal .brand-logo-svg{
   width:100px;
   height:100px;
 }
 
-/* Header brand mark — clearly larger than a favicon-sized icon. */
 .brand-mark .brand-logo-img,
 .brand-mark .brand-logo-svg{
   width:48px;
@@ -3053,4 +3116,42 @@ body{ font-size:16px; }
     width:42px;
     height:42px;
   }
+}
+
+/* =====================================================================
+   ===================== MOBILE FIT FIX (phone screens) =================
+   Root cause of the shop screen looking like a "shrunk desktop site" on
+   phones: several pieces sized for desktop density never scaled down —
+   the hero/eyebrow/heading kept desktop-ish proportions, filter/search
+   controls stayed cramped in one row down to very narrow widths, product
+   cards kept generous desktop padding, and nothing prevented iOS Safari
+   from auto-zooming into text inputs under 16px. This block tightens all
+   of that specifically for phone-width viewports without touching the
+   desktop layout at all. ===================================================================== */
+@media (max-width:600px){
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+
+  .shop-header{ padding:12px 14px; }
+  .brand-mark span{ font-size:1.05rem; }
+
+  .eyebrow{ font-size:10px; }
+  .hero{ padding:26px 14px 20px; }
+  .hero h2{ font-size:1.55rem; line-height:1.18; margin:8px 0 10px; }
+  .hero-sub{ font-size:0.85rem; margin-bottom:18px; }
+  .hero-cta{ width:100%; padding:12px 20px; text-align:center; }
+
+  #catalogue-result-count{ padding:0 14px !important; }
+
+  .bundles-heading h3{ font-size:1.25rem; }
+
+  .catalogue{ gap:14px; }
+  .product-name{ font-size:1.02rem; }
+  .product-desc{ font-size:0.8rem; }
+  .product-price{ font-size:0.95rem; }
+
+  .modal-panel{ padding:20px 14px 20px; }
+  .brand{ font-size:1.9rem; }
+
+  .admin-panel{ padding:18px 10px 50px; }
+  .admin-section-title{ font-size:1.1rem; }
 }
