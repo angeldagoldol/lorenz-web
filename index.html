@@ -2,22 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>DAGOLDOL — Fine Everyday Goods</title>
 <meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
-<link rel="canonical" href="https://lorenz-web-six.vercel.app/">
+<link rel="canonical" href="https://dagoldol.example.com/">
 
-<!-- =====================================================================
-     SECURITY FIX #2: Content-Security-Policy
-     Restricts script/style/connect sources to only what this app actually
-     needs: self (this origin), the Supabase project (config.js defines
-     SUPABASE_URL — update the connect-src host below to match it),
-     Google Fonts, jsdelivr (for the supabase-js CDN bundle), and the
-     OSM/Nominatim + OSRM routing hosts used for delivery-fee calculation.
-     object-src/base-uri/frame-ancestors are locked down to block classic
-     injection/clickjacking vectors. If you self-host supabase-js or move
-     SUPABASE_URL to a different project, update this policy to match.
-     ===================================================================== -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' https://cdn.jsdelivr.net;
@@ -36,7 +25,7 @@
 <meta property="og:site_name" content="Dagoldol">
 <meta property="og:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta property="og:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
-<meta property="og:url" content="https://lorenz-web-six.vercel.app/">
+<meta property="og:url" content="https://dagoldol.example.com/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta name="twitter:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
@@ -47,10 +36,8 @@
 </head>
 <body>
 
-<!-- ===================== GLOBAL ERROR BANNER =====================
-     FIX #12: a single, shared, visible place for any load function to
-     surface a Supabase error to the user instead of only console.error.
-     showErrorBanner(message) in script.js populates and reveals this. -->
+<a href="#catalogue" class="skip-link" id="skip-to-content">Skip to content</a>
+
 <div id="global-error-banner" class="global-error-banner hidden" role="alert" aria-live="assertive">
   <span id="global-error-banner-text"></span>
   <button type="button" id="global-error-banner-close" aria-label="Dismiss">&times;</button>
@@ -59,7 +46,6 @@
 <!-- ===================== LOGIN SCREEN ===================== -->
 <section id="login-screen" class="screen">
 
-  <!-- Login card -->
   <div class="login-card" id="login-card">
     <button type="button" class="login-screen-back" id="login-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
 
@@ -95,10 +81,6 @@
         </div>
       </label>
 
-      <!-- SECURITY FIX #5: honeypot field. Real users never see or fill
-           this (it's visually hidden, not display:none, so basic bots
-           that skip hidden fields still fall for it). If it has any
-           value on submit, script.js silently drops the request. -->
       <div class="hp-field" aria-hidden="true">
         <label for="login-hp">Leave this field blank</label>
         <input type="text" id="login-hp" name="company_website" tabindex="-1" autocomplete="off">
@@ -113,7 +95,6 @@
     <p class="hint">New here? <button type="button" class="link-btn" id="show-signup">Create an account</button></p>
   </div>
 
-  <!-- Sign-up card -->
   <div class="login-card hidden" id="signup-card">
     <button type="button" class="login-screen-back" id="signup-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
 
@@ -149,8 +130,6 @@
           <button type="button" class="password-toggle-btn" data-target="signup-password" aria-label="Show password">Show</button>
         </div>
       </label>
-      <!-- FIX #4: live strength meter, purely client-side UX feedback —
-           the real minimum-length enforcement happens in script.js. -->
       <div class="pw-strength-row" id="signup-pw-strength-row">
         <div class="pw-strength-bar"><div class="pw-strength-fill" id="signup-pw-strength-fill"></div></div>
         <span class="pw-strength-label" id="signup-pw-strength-label">Enter a password</span>
@@ -177,7 +156,6 @@
     <p class="hint">Already registered? <button type="button" class="link-btn" id="show-login">Log in instead</button></p>
   </div>
 
-  <!-- Forgot-password card (FIX #9) -->
   <div class="login-card hidden" id="forgot-card">
     <button type="button" class="login-screen-back" id="forgot-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
 
@@ -215,8 +193,6 @@
     <p class="hint"><button type="button" class="link-btn" id="forgot-show-login">Back to log in</button></p>
   </div>
 
-  <!-- Set-new-password card — shown when the person arrives via the
-       reset-password email link (Supabase appends a recovery session). -->
   <div class="login-card hidden" id="reset-card">
     <div class="seal">
       <img class="brand-logo-img hidden" alt="Shop logo" width="52" height="52">
@@ -260,9 +236,6 @@
 <!-- ===================== SHOP SCREEN ===================== -->
 <section id="shop-screen" class="screen hidden">
 
-  <!-- Decorative background stickers (FIX: not-just-white background).
-       Purely visual, never interactive: pointer-events are disabled in
-       CSS and they're hidden from assistive tech. -->
   <div class="page-sticker sticker-stamp" aria-hidden="true">
     <svg viewBox="0 0 64 64" width="64" height="64">
       <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 4"/>
@@ -301,10 +274,6 @@
 
     <div class="header-actions" id="header-actions">
 
-      <!-- FIX #10: search + brand + price filter + sort, moved here so
-           they sit in the header beside the cart button instead of their
-           own full-width bar under the hero. Same element IDs as before,
-           so script.js needs no changes. -->
       <div class="header-filters" id="header-filters">
         <label class="filter-search-field">
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20 L16.5 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -356,6 +325,11 @@
           <button type="button" class="account-menu-item hidden" id="chat-btn" role="menuitem">Chat with the seller</button>
 
           <button type="button" class="account-menu-item" id="contact-btn" role="menuitem">Contact</button>
+          <!-- ===================== "My Info" menu item =====================
+               Visible to everyone (guest or logged in), same as Contact.
+               Opens a read-only modal with developer/site info that the
+               admin edits from the Payment Settings tab. -->
+          <a href="myinfo/index.html" target="_blank" rel="noopener noreferrer" class="account-menu-item" id="dev-info-btn" role="menuitem">My Info</a>
 
           <div class="account-menu-divider hidden" id="account-menu-divider-logout"></div>
           <button type="button" class="account-menu-item account-menu-item-danger hidden" id="logout-btn" role="menuitem">Log out</button>
@@ -365,10 +339,43 @@
   </header>
 
   <section class="hero">
-    <p class="eyebrow">Autumn Collection · No. 04</p>
-    <h2>Objects worth keeping<br>for a long while.</h2>
-    <p class="hero-sub">Dagoldol sells fine everyday goods by the foot — cut to the length you actually need, made from materials meant to outlast a season. No account required to look around; browse the full catalogue, and we'll only ask you to log in when you're ready to check out.</p>
-    <a href="#catalogue" class="btn-primary hero-cta">Shop Now</a>
+    <div class="hero-content">
+      <p class="eyebrow">Autumn Collection · No. 04</p>
+      <h2>Objects worth keeping<br>for a long while.</h2>
+      <p class="hero-sub">Dagoldol sells fine everyday goods by the foot — cut to the length you actually need, made from materials meant to outlast a season. No account required to look around; browse the full catalogue, and we'll only ask you to log in when you're ready to check out.</p>
+      <a href="#catalogue" class="btn-primary hero-cta">Shop Now</a>
+    </div>
+    <div class="hero-visual" aria-hidden="true">
+      <svg viewBox="0 0 360 400" xmlns="http://www.w3.org/2000/svg">
+        <path d="M60 60 C 20 100, 20 160, 70 180 C 120 200, 150 150, 120 120 C 100 100, 80 115, 90 135 C 98 150, 118 148, 122 132"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="40" y1="360" x2="320" y2="80"/>
+        </g>
+        <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <line x1="66"  y1="334" x2="86"  y2="314"/>
+          <line x1="98"  y1="302" x2="118" y2="282"/>
+          <line x1="130" y1="270" x2="150" y2="250"/>
+          <line x1="162" y1="238" x2="182" y2="218"/>
+          <line x1="194" y1="206" x2="214" y2="186"/>
+          <line x1="226" y1="174" x2="246" y2="154"/>
+          <line x1="258" y1="142" x2="278" y2="122"/>
+        </g>
+        <g font-family="'Work Sans', sans-serif" font-size="11" fill="currentColor" opacity="0.85">
+          <text x="60" y="332">2</text>
+          <text x="92" y="300">4</text>
+          <text x="124" y="268">6</text>
+          <text x="156" y="236">8</text>
+          <text x="185" y="205">10</text>
+          <text x="217" y="173">12</text>
+          <text x="249" y="141">14</text>
+        </g>
+        <circle cx="300" cy="300" r="30" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 5" opacity="0.6"/>
+        <path d="M270 60 C 280 40, 305 38, 312 55" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+        <circle cx="270" cy="60" r="2.4" fill="currentColor" opacity="0.7"/>
+        <circle cx="312" cy="55" r="2.4" fill="currentColor" opacity="0.7"/>
+      </svg>
+    </div>
   </section>
 
   <section class="reco-section hidden" id="recommended-section">
@@ -395,16 +402,12 @@
     <div class="bundles-list" id="bundles-list"></div>
   </section>
 
-  <!-- Result count for the search/filter controls now living in the
-       header — kept as its own line above the catalogue grid so people
-       still see "N products found" without a full filter bar section. -->
   <p id="catalogue-result-count" class="filter-result-count" style="padding:0 6vw;"></p>
 
   <main class="catalogue" id="catalogue">
     <!-- products injected by script.js -->
   </main>
 
-  <!-- FIX #8: pagination for the main catalogue -->
   <div class="load-more-row" id="catalogue-load-more-row">
     <button type="button" class="btn-secondary load-more-btn hidden" id="catalogue-load-more-btn">Load more products</button>
   </div>
@@ -721,7 +724,6 @@
       <!-- order cards injected by script.js -->
     </div>
 
-    <!-- FIX #8: pagination for order history -->
     <div class="load-more-row">
       <button type="button" class="btn-secondary load-more-btn hidden" id="orders-load-more-btn">Load more orders</button>
     </div>
@@ -765,34 +767,7 @@
   </div>
 </div>
 
-<!-- ===================== LIVE CHAT MODAL ===================== -->
-<div id="chat-modal" class="modal-overlay hidden">
-  <div class="modal-panel modal-panel-wide">
-    <button type="button" class="modal-close" id="chat-modal-close" aria-label="Close">&times;</button>
-
-    <p class="eyebrow">Live Chat</p>
-    <h2 class="modal-item-name">Chat with the Shop</h2>
-
-    <div class="chat-online-status" id="chat-online-status">
-      <span class="offline-dot"></span> Checking status…
-    </div>
-
-    <button type="button" class="link-btn chat-enable-notifs" id="chat-enable-notifs">Enable message notifications</button>
-
-    <div class="chat-messages-list" id="chat-messages-list"></div>
-    <p class="chat-typing-indicator hidden" id="chat-typing-indicator">The seller is typing…</p>
-
-    <form class="chat-input-row" id="chat-form">
-      <input type="text" id="chat-input" placeholder="Type a message…" autocomplete="off" maxlength="2000">
-      <button type="submit" class="btn-primary" style="width:auto;">Send</button>
-    </form>
-  </div>
-</div>
-
-<!-- ===================== CONFIRMATION TOAST ===================== -->
-<div id="order-toast" class="toast hidden">
-  <p id="toast-message">Order placed.</p>
-</div>
+<div id="toast-container" class="toast-container" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
