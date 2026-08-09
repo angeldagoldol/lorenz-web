@@ -22,15 +22,59 @@
 
 *{ box-sizing:border-box; margin:0; padding:0; }
 
-html{ scroll-behavior:smooth; }
+html{
+  scroll-behavior:smooth;
+  width:100%;
+  max-width:100vw;
+  overflow-x:hidden;
+}
 
 body{
   background:var(--charcoal-950);
   color:var(--cream);
   font-family:var(--font-body);
   min-height:100vh;
+  width:100%;
+  max-width:100vw;
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
+}
+
+/* ===================== Mobile width hardening =====================
+   Belt-and-suspenders fix: grid/flex children default to min-width:auto,
+   which means if ANY child's natural content is wider than the column
+   assigned to it, that child (and everything sitting in the same track)
+   refuses to shrink — the whole section then renders at its natural
+   desktop-ish width and gets clipped by overflow-x:hidden, which looks
+   exactly like "part of the page is full width, part of it stops early
+   with blank space after it." Forcing min-width:0 on every grid/flex
+   container and img/svg to always scale down removes that failure mode
+   everywhere at once, on any screen size. */
+img, svg, video, canvas, iframe{
+  max-width:100%;
+  height:auto;
+}
+.shop-header,
+.header-actions,
+.header-filters,
+.hero,
+.hero-content,
+.catalogue,
+.product-card,
+.product-body,
+.bundles-list,
+.bundle-card,
+.reco-list,
+.admin-chat-layout,
+.admin-chat-conversation,
+.field-row,
+.payment-methods,
+.size-options,
+.bundle-builder-row,
+.analytics-grid,
+.cart-line,
+.cart-line-info{
+  min-width:0;
 }
 
 button,
@@ -707,7 +751,7 @@ a{ color:inherit; }
   .payment-detail{ flex-direction:column; align-items:flex-start; }
 }
 
-#shop-screen{ min-height:100vh; }
+#shop-screen{ min-height:100vh; width:100%; max-width:100vw; overflow-x:hidden; }
 
 .shop-header{
   display:flex;
@@ -721,6 +765,8 @@ a{ color:inherit; }
   top:0;
   z-index:40;
   background:var(--charcoal-950);
+  width:100%;
+  max-width:100vw;
 }
 
 .brand-mark{
@@ -949,9 +995,11 @@ a{ color:inherit; }
 .hero{
   padding:64px 6vw 44px;
   display:grid;
-  grid-template-columns:minmax(0, 640px) minmax(200px, 360px);
+  grid-template-columns:minmax(0, min(640px, 100%)) minmax(0, min(360px, 30vw));
   align-items:center;
   gap:36px;
+  width:100%;
+  max-width:100%;
 }
 
 .hero-content{ min-width:0; }
@@ -1052,7 +1100,8 @@ a{ color:inherit; }
   align-items:center;
   gap:8px;
   flex:2 1 460px;
-  min-width:260px;
+  min-width:0;
+  max-width:100%;
 }
 
 .header-filters .filter-search-field{
@@ -1142,6 +1191,8 @@ a{ color:inherit; }
   gap:18px;
   background:transparent;
   margin:0 0 24px;
+  width:100%;
+  max-width:100%;
 }
 
 .product-card{
@@ -2287,6 +2338,8 @@ input[type="radio"]:focus-visible{
   grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
   gap:16px;
   margin-bottom:20px;
+  width:100%;
+  max-width:100%;
 }
 
 .bundle-card{
