@@ -20,6 +20,7 @@ const BULK_TIER_2_RATE = 0.02;
 const LOW_STOCK_THRESHOLD = 10;
 
 const DEFAULT_GCASH_NUMBER = "0963 202 0564";
+
 let currentSettings = { gcash_number: DEFAULT_GCASH_NUMBER, gcash_qr_image: null, shop_logo_image: null };
 
 async function loadSettings(){
@@ -107,10 +108,6 @@ const DELIVERY_RATE_PER_KM = 60;
 const DELIVERY_FALLBACK_FEE = 600;
 
 let shopOriginCoords = null;
-
-// NOTE: geocodeAddress() and getRoadDistanceKm() are defined once, later
-// in this file (search "FIX #6"), with caching + Nominatim usage-policy
-// compliance added. They are intentionally not duplicated here.
 
 async function getShopOriginCoords(){
   if (shopOriginCoords) return shopOriginCoords;
@@ -380,10 +377,6 @@ wirePasswordStrengthMeter(document.getElementById("signup-password"), document.g
 wirePasswordStrengthMeter(document.getElementById("reset-password"), document.getElementById("reset-pw-strength-fill"), document.getElementById("reset-pw-strength-label"));
 
 // ===================== Show/hide password toggle =====================
-// Applies to every field wrapped in .password-input-wrap (login, signup,
-// signup-confirm, reset-password, reset-confirm) — each button's
-// data-target points at the input it controls, so one handler covers all
-// of them without wiring each field by hand.
 document.querySelectorAll(".password-toggle-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     const input = document.getElementById(btn.dataset.target);
@@ -396,13 +389,6 @@ document.querySelectorAll(".password-toggle-btn").forEach(btn => {
 });
 
 // ===================== FIX #7: Supabase Storage image upload helper =====================
-// Replaces the old pattern of resizing an image to a base64 data URL and
-// stuffing that string directly into a database row/column. Base64 in
-// Postgres bloats table size ~33% per image, is slow to transfer on every
-// row read (even when the image isn't shown), and has no CDN/caching
-// benefit. This resizes client-side exactly as before, then uploads the
-// resulting blob to a Supabase Storage bucket and returns just the public
-// URL — that's what gets stored in the row instead.
 async function uploadImageToStorage(file, bucket, pathPrefix, maxSize){
   const blob = await resizeImageToBlob(file, maxSize || 800);
   const fileName = `${pathPrefix}/${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}.jpg`;
@@ -419,11 +405,6 @@ async function uploadImageToStorage(file, bucket, pathPrefix, maxSize){
 }
 
 // ===================== Image lightbox (click-to-zoom) =====================
-// Generic "click any .zoomable-img to see it full-size, sharp, not blurry"
-// viewer. Used for the GCash QR code in the order modal (so customers can
-// actually read/scan a crisp version of it), and reused anywhere else an
-// <img class="zoomable-img"> shows up (admin QR preview, payment proof
-// thumbnails) since the same need — "let me see this clearly" — applies.
 function openImageLightbox(src, caption){
   if (!src) return;
   let overlay = document.getElementById("image-lightbox-overlay");
@@ -457,8 +438,6 @@ function closeImageLightbox(){
 function lightboxEscHandler(e){
   if (e.key === "Escape") closeImageLightbox();
 }
-// Event delegation: any current or future .zoomable-img anywhere in the
-// document opens the lightbox on click/tap — no need to wire each one.
 document.addEventListener("click", (e) => {
   const img = e.target.closest(".zoomable-img");
   if (img && img.tagName === "IMG" && img.src) {
@@ -466,7 +445,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// ===================== Account menu (replaces the old 6-button header row) =====================
+// ===================== Account menu =====================
 const accountMenuToggle = document.getElementById("account-menu-toggle");
 const accountMenuEl = document.getElementById("account-menu");
 const accountMenuLabel = document.getElementById("account-menu-label");
@@ -500,7 +479,7 @@ if (accountMenuToggle && accountMenuEl) {
   });
 
   accountMenuEl.addEventListener("click", (e) => {
-    if (e.target.closest("button")) closeAccountMenu();
+    if (e.target.closest("button, a")) closeAccountMenu();
   });
 
   document.addEventListener("click", (e) => {
@@ -544,7 +523,7 @@ function setHeaderCustomerState(displayName, avatarUrl){
   renderAvatar(headerAvatar, avatarUrl || null, displayName);
 }
 
-// ===================== Login gate (guests hit this when an action needs an account) =====================
+// ===================== Login gate =====================
 let pendingLoginIntent = null;
 
 function showLoginGate(message){
@@ -682,9 +661,6 @@ const orderPaymentProofInput = document.getElementById("order-payment-proof-inpu
 const paymentProofPreview = document.getElementById("payment-proof-preview");
 const orderPaymentProofRemoveBtn = document.getElementById("order-payment-proof-remove");
 
-const toast = document.getElementById("order-toast");
-const toastMessage = document.getElementById("toast-message");
-
 // ===================== Elements: cart =====================
 const cartBtn = document.getElementById("cart-btn");
 const cartCountBadge = document.getElementById("cart-count");
@@ -729,6 +705,37 @@ const contactNameInput = document.getElementById("contact-name");
 const contactEmailInput = document.getElementById("contact-email");
 const contactMessageInput = document.getElementById("contact-message");
 const contactError = document.getElementById("contact-error");
+
+// ===================== "My Info" menu button =====================
+// This is a plain <a href="myinfo/index.html" target="_blank"> in the
+// markup — it opens the real portfolio site (its own separate HTML/CSS/JS,
+// not a modal) in a new tab. No JS wiring needed; closing the account
+// menu on click is handled by the existing account-menu delegation.
+
+// =====================================================================
+// ===================== LIVE CHAT (customer <-> seller) ===============
+// =====================================================================
+const CHAT_PRESENCE_CHANNEL_NAME = "dagoldol-presence";
+let presenceChannel = null;
+let presenceState = {};
+let myPresenceRole = null;
+
+let chatMessagesChannel = null;
+let chatThreadsChannel = null;
+
+let myChatThreadId = null;
+let currentChatThreadRow = null;
+let chatMessagesCache = [];
+
+let unreadChatCount = 0;
+let adminChatThreadsCache = [];
+let adminActiveChatThreadUserId = null;
+
+let chatTypingDebounce = null;
+let adminChatTypingDebounce = null;
+
+const ADMIN_CHAT_THREADS_PAGE_SIZE = 20;
+let adminChatThreadsVisibleCount = ADMIN_CHAT_THREADS_PAGE_SIZE;
 
 // ===================== Elements: live chat (customer side) =====================
 const chatBtn = document.getElementById("chat-btn");
@@ -1325,16 +1332,6 @@ function resizeImageFile(file, maxSize){
   });
 }
 
-// FIX (regression): resizeImageFile() above returns a data: URL, and the
-// original version of uploadImageToStorage() converted that to a Blob via
-// fetch(dataUrl). That fetch() is subject to the page's Content-Security-
-// Policy connect-src directive, which didn't list the `data:` scheme —
-// so the browser silently blocked it, the upload threw, and no photo
-// ever got attached (this is what looked like "the Photo button doesn't
-// work"). This version resizes straight to a Blob via canvas.toBlob(),
-// so there's no fetch() of any kind involved — avoids the CSP issue
-// entirely rather than just widening the policy, and is a bit faster/
-// lighter than round-tripping through base64 anyway.
 function resizeImageToBlob(file, maxSize){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1508,7 +1505,6 @@ function renderRatingLine(productId){
 }
 
 // ===================== FIX #10: search + filter + sort =====================
-// ===================== FIX #8: catalogue pagination =====================
 const CATALOGUE_PAGE_SIZE = 12;
 let catalogueVisibleCount = CATALOGUE_PAGE_SIZE;
 let catalogueFilterState = { search: "", brandId: "", priceRange: "", sort: "default" };
@@ -1648,9 +1644,34 @@ function buildFullProductCardHTML(p, index){
   `;
 }
 
+function buildSkeletonCards(count){
+  return Array.from({ length: count }).map(() => `
+    <div class="skeleton-card" aria-hidden="true">
+      <div class="skeleton skeleton-photo"></div>
+      <div class="skeleton-card-body">
+        <div class="skeleton skeleton-line" style="width:40%;"></div>
+        <div class="skeleton skeleton-line" style="width:80%; height:16px;"></div>
+        <div class="skeleton skeleton-line" style="width:95%;"></div>
+        <div class="skeleton skeleton-line" style="width:60%;"></div>
+        <div class="skeleton skeleton-line" style="width:45%; height:26px; margin-top:6px;"></div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function buildSkeletonRows(count){
+  return Array.from({ length: count }).map(() => `
+    <div class="skeleton-row" aria-hidden="true">
+      <div class="skeleton skeleton-line" style="width:30%; height:16px;"></div>
+      <div class="skeleton skeleton-line" style="width:90%;"></div>
+      <div class="skeleton skeleton-line" style="width:70%;"></div>
+    </div>
+  `).join("");
+}
+
 function renderCatalogueList(){
   if (products.length === 0) {
-    catalogue.innerHTML = `<p class="admin-empty" style="padding:40px 6vw;">The catalogue is empty right now — check back soon.</p>`;
+    catalogue.innerHTML = buildEmptyState(EMPTY_ICON_CRATE, "Nothing here yet", "The catalogue is empty right now — check back soon.");
     if (catalogueLoadMoreBtn) catalogueLoadMoreBtn.classList.add("hidden");
     if (catalogueResultCountEl) catalogueResultCountEl.textContent = "";
     return;
@@ -1667,7 +1688,7 @@ function renderCatalogueList(){
   }
 
   if (visible.length === 0) {
-    catalogue.innerHTML = `<p class="admin-empty" style="padding:40px 6vw;">No products match your search or filters.</p>`;
+    catalogue.innerHTML = buildEmptyState(EMPTY_ICON_SEARCH, "No matches", "No products match your search or filters — try clearing a filter.");
     if (catalogueLoadMoreBtn) catalogueLoadMoreBtn.classList.add("hidden");
     return;
   }
@@ -1700,6 +1721,7 @@ function renderCatalogueList(){
 }
 
 async function renderCatalogue(){
+  catalogue.innerHTML = buildSkeletonCards(CATALOGUE_PAGE_SIZE);
   products = await loadProducts();
   await Promise.all([loadRatingsMap(), loadBrands(), loadFlashSales(), loadBundles()]);
   await renderBundlesSection();
@@ -1946,7 +1968,7 @@ function renderCartModal(){
   const cart = getCart();
 
   if (cart.length === 0) {
-    cartItemsList.innerHTML = `<p class="cart-empty">Your cart is empty. Go add something nice.</p>`;
+    cartItemsList.innerHTML = buildEmptyState(EMPTY_ICON_CART, "Your cart is empty", "Go add something nice from the catalogue.");
   } else {
     cartItemsList.innerHTML = cart.map(item => {
       const info = cartLineInfo(item);
@@ -2116,19 +2138,9 @@ if (orderPromoApplyBtn) {
 }
 
 // ===================== FIX #6: delivery distance recalculation w/ caching =====================
-// Nominatim's usage policy asks for a descriptive User-Agent header and
-// caching to avoid repeat lookups. Browsers refuse to let JS set the
-// real `User-Agent` header on a fetch() (it's a "forbidden header name"
-// enforced by the browser itself, not something this code can bypass) —
-// so instead we identify the app via a `Referer`-visible origin (the
-// browser sends this automatically) plus an explicit `email`/app-name
-// query parameter as Nominatim's own docs suggest as the practical
-// alternative for browser-based apps, and we lean hard on the caching
-// side, which is the part actually within our control and the part that
-// matters most for not hammering their free service.
 const NOMINATIM_APP_IDENTIFIER = "dagoldol-trading-co-shop";
 const GEOCODE_CACHE_KEY = "dagoldol_geocode_cache_v1";
-const GEOCODE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const GEOCODE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function loadGeocodeCache(){
   try {
@@ -2415,13 +2427,44 @@ orderForm.addEventListener("submit", async (e) => {
   }
 });
 
+let toastSeq = 0;
 function showToast(message){
-  toastMessage.textContent = message;
-  toast.classList.remove("hidden");
-  clearTimeout(showToast._timer);
-  showToast._timer = setTimeout(() => {
-    toast.classList.add("hidden");
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const id = `toast-${++toastSeq}`;
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.id = id;
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  const p = document.createElement("p");
+  p.textContent = message;
+  el.appendChild(p);
+  container.appendChild(el);
+
+  setTimeout(() => {
+    el.classList.add("toast-leaving");
+    el.addEventListener("animationend", () => el.remove(), { once: true });
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 300);
   }, 4600);
+}
+
+const EMPTY_ICON_CART = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 10h4l3.6 19.2a3 3 0 0 0 3 2.4h13.4a3 3 0 0 0 3-2.4L38 15H12.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19" cy="38" r="2.2" fill="currentColor"/><circle cx="31" cy="38" r="2.2" fill="currentColor"/></svg>`;
+const EMPTY_ICON_ORDERS = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="10" y="7" width="28" height="34" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M16 16h16M16 23h16M16 30h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const EMPTY_ICON_CHAT = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 12a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H21l-8 7v-7h-2a3 3 0 0 1-3-3V12Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+const EMPTY_ICON_MESSAGE = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 13a2 2 0 0 1 2-2h28a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V13Z" stroke="currentColor" stroke-width="1.6"/><path d="M9 13l15 11L39 13" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+const EMPTY_ICON_CRATE = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6 15 24 7l18 8-18 8L6 15Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6 15v18l18 8V23M42 15v18l-18 8" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+const EMPTY_ICON_SEARCH = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="21" cy="21" r="12" stroke="currentColor" stroke-width="1.6"/><path d="M30 30l9 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const EMPTY_ICON_PEOPLE = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="18" cy="17" r="6" stroke="currentColor" stroke-width="1.6"/><path d="M6 39c1.2-8 6-12 12-12s10.8 4 12 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="33" cy="15" r="4.5" stroke="currentColor" stroke-width="1.6"/><path d="M31 24.2c5 .5 8.4 4.3 9.4 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const EMPTY_ICON_ACTIVITY = `<svg width="40" height="40" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6 26h8l4-12 8 20 4-12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+function buildEmptyState(icon, heading, body){
+  return `
+    <div class="empty-state">
+      ${icon}
+      <p><strong>${escapeHtml(heading)}</strong>${escapeHtml(body)}</p>
+    </div>
+  `;
 }
 
 // ===================== Orders / Tracking / Ratings =====================
@@ -2458,8 +2501,6 @@ function isOrderCancellable(order){
   return status.stepIndex < 2;
 }
 
-// FIX #8: fetchMyOrders now accepts limit/offset for pagination. Callers
-// that just want "all of them" (recommendation engine) pass a high limit.
 async function fetchMyOrders(limit, offset){
   let query = supabase
     .from("orders")
@@ -2579,10 +2620,11 @@ function renderOrderCard(order){
 }
 
 async function renderOrdersModal(){
+  ordersList.innerHTML = buildSkeletonRows(3);
   myOrdersCache = await fetchMyOrders(myOrdersVisibleCount, 0);
 
   if (myOrdersCache.length === 0) {
-    ordersList.innerHTML = `<p class="order-empty">You haven't placed any orders yet.</p>`;
+    ordersList.innerHTML = buildEmptyState(EMPTY_ICON_ORDERS, "No orders yet", "Everything you order will show up here with live tracking.");
     if (ordersLoadMoreBtn) ordersLoadMoreBtn.classList.add("hidden");
     return;
   }
@@ -2590,9 +2632,6 @@ async function renderOrdersModal(){
   ordersList.innerHTML = myOrdersCache.map(renderOrderCard).join("");
 
   if (ordersLoadMoreBtn) {
-    // We fetched exactly myOrdersVisibleCount rows; if we got a full page,
-    // assume more might exist and offer "load more" (a lightweight
-    // approach — avoids an extra COUNT query on every render).
     ordersLoadMoreBtn.classList.toggle("hidden", myOrdersCache.length < myOrdersVisibleCount);
   }
 
@@ -2749,7 +2788,6 @@ contactModal.addEventListener("click", (e) => {
 contactForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  // SECURITY FIX #5: honeypot check — silently no-op for bots.
   if (isHoneypotTripped("contact-hp")) {
     closeContactModal();
     return;
@@ -2778,32 +2816,6 @@ contactForm.addEventListener("submit", async (e) => {
   closeContactModal();
   showToast("Message sent! It's saved to the shop and your email app should open to send it to the owner.");
 });
-
-// =====================================================================
-// ===================== LIVE CHAT (customer <-> seller) ===============
-// =====================================================================
-const CHAT_PRESENCE_CHANNEL_NAME = "dagoldol-presence";
-let presenceChannel = null;
-let presenceState = {};
-let myPresenceRole = null;
-
-let chatMessagesChannel = null;
-let chatThreadsChannel = null;
-
-let myChatThreadId = null;
-let currentChatThreadRow = null;
-let chatMessagesCache = [];
-
-let unreadChatCount = 0;
-let adminChatThreadsCache = [];
-let adminActiveChatThreadUserId = null;
-
-let chatTypingDebounce = null;
-let adminChatTypingDebounce = null;
-
-// FIX #8: admin thread list pagination
-const ADMIN_CHAT_THREADS_PAGE_SIZE = 20;
-let adminChatThreadsVisibleCount = ADMIN_CHAT_THREADS_PAGE_SIZE;
 
 function initPresence(role, key, extra){
   myPresenceRole = role;
@@ -3054,7 +3066,7 @@ function renderAdminChatThreadList(){
 
   const emptyMessage = lastChatError
     ? `<p class="admin-empty" style="color:var(--rust);">${escapeHtml(chatSetupErrorMessage(lastChatError))}</p>`
-    : `<p class="admin-empty">No conversations yet — they'll appear here once a customer opens Chat.</p>`;
+    : buildEmptyState(EMPTY_ICON_CHAT, "No conversations yet", "They'll appear here once a customer opens Chat.");
 
   listEl.innerHTML = adminChatThreadsCache.map(t => {
     const unread = t.last_message_at && (!t.admin_last_read_at || t.last_message_at > t.admin_last_read_at);
@@ -3070,7 +3082,6 @@ function renderAdminChatThreadList(){
     `;
   }).join("") || emptyMessage;
 
-  // FIX #8: load-more affordance under the thread list
   if (adminChatThreadsCache.length >= adminChatThreadsVisibleCount) {
     listEl.insertAdjacentHTML("beforeend", `<div class="admin-chat-load-more"><button type="button" class="link-btn" id="admin-chat-load-more-btn">Load more conversations</button></div>`);
     const moreBtn = document.getElementById("admin-chat-load-more-btn");
@@ -3145,6 +3156,8 @@ function renderAdminChatConversation(){
 
 async function renderAdminChat(){
   adminChatThreadsVisibleCount = ADMIN_CHAT_THREADS_PAGE_SIZE;
+  const panel = adminTabPanels.chat;
+  if (panel) panel.innerHTML = `<h2 class="admin-section-title">Live Chat (Seller Chat)</h2>${buildSkeletonRows(3)}`;
   await refreshAdminChatThreadsList();
   renderAdminChatTab();
 }
@@ -3301,6 +3314,27 @@ function closeTopModal(){
   else closeModalAccessible(activeModalEl);
 }
 
+// ===================== Skip-to-content link =====================
+(function wireSkipLink(){
+  const skipLink = document.getElementById("skip-to-content");
+  if (!skipLink) return;
+  skipLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    let target = null;
+    if (!shopScreen.classList.contains("hidden")) {
+      target = document.getElementById("catalogue");
+    } else if (!adminScreen.classList.contains("hidden")) {
+      target = document.querySelector(".admin-panel");
+    } else if (!loginScreen.classList.contains("hidden")) {
+      target = document.querySelector(".login-card:not(.hidden)");
+    }
+    if (!target) return;
+    if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+    target.focus();
+    target.scrollIntoView({ block: "start" });
+  });
+})();
+
 // ===================== Enter the shop (or the admin dashboard) =====================
 async function enterShop(){
   const account = currentUserProfile;
@@ -3398,7 +3432,6 @@ loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   console.log("[Dagoldol] Login form submitted.");
 
-  // SECURITY FIX #5: honeypot check.
   if (isHoneypotTripped("login-hp")) return;
 
   const email = loginEmailInput.value.trim();
@@ -3480,7 +3513,6 @@ function showLoginCard(){
   loginEmailInput.focus();
 }
 
-// FIX #9: forgot-password card
 function showForgotCard(){
   loginCard.classList.add("hidden");
   signupCard.classList.add("hidden");
@@ -3504,7 +3536,6 @@ if (forgotShowLoginBtn) forgotShowLoginBtn.addEventListener("click", showLoginCa
 signupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  // SECURITY FIX #5: honeypot check.
   if (isHoneypotTripped("signup-hp")) return;
 
   const newEmail = signupEmailInput.value.trim();
@@ -3516,10 +3547,6 @@ signupForm.addEventListener("submit", async (e) => {
     signupError.textContent = "Please fill in every field.";
     return;
   }
-  // FIX #4: minimum length raised from 4 to 8, plus a nudge toward mixing
-  // character types (not hard-enforced, since arbitrary composition rules
-  // often just push people toward "Passw0rd!" patterns — length matters
-  // more; the strength meter above gives the additional feedback).
   if (newPassword.length < MIN_PASSWORD_LENGTH) {
     signupError.textContent = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
     return;
@@ -3547,10 +3574,6 @@ signupForm.addEventListener("submit", async (e) => {
     return;
   }
 
-  // SECURITY FIX #3: role is no longer trusted from a value the client
-  // could tamper with anywhere else in this flow — it's hardcoded here,
-  // AND (belt-and-suspenders) the RLS insert policy in supabase_rls.sql
-  // rejects the insert outright if role isn't exactly 'customer'.
   const { error: profileError } = await supabase.from("profiles").insert({
     id: data.user.id,
     username: newUsername,
@@ -3615,9 +3638,6 @@ if (forgotForm) {
 
     submitBtn.disabled = false;
 
-    // Deliberately show the same success message whether or not the email
-    // exists — confirming/denying account existence here would leak which
-    // emails are registered.
     if (error) console.error("[Dagoldol] resetPasswordForEmail error:", error);
     forgotSuccess.textContent = "If that email has an account, a reset link is on its way. Check your inbox (and spam folder).";
     forgotSuccess.classList.remove("hidden");
@@ -3664,9 +3684,6 @@ if (resetForm) {
   });
 }
 
-// Supabase appends a recovery session to the URL hash when the person
-// arrives via the "reset password" email link. Detect that and show the
-// reset-password card instead of the normal login card.
 supabase.auth.onAuthStateChange((event) => {
   if (event === "PASSWORD_RECOVERY") {
     loginScreen.classList.remove("hidden");
@@ -3750,6 +3767,7 @@ async function deleteOrder(orderId){
 }
 
 async function renderAdminOrders(){
+  if (adminTabPanels.orders) adminTabPanels.orders.innerHTML = `<h2 class="admin-section-title">Orders</h2>${buildSkeletonRows(4)}`;
   adminOrdersCache = await fetchAllOrders(adminOrdersVisibleCount);
   renderAdminOrdersTab();
 }
@@ -3759,7 +3777,7 @@ function renderAdminOrdersTab(){
   const flat = adminOrdersCache;
 
   if (flat.length === 0) {
-    panel.innerHTML = `<h2 class="admin-section-title">Orders</h2><p class="admin-empty">No orders have been placed yet.</p>`;
+    panel.innerHTML = `<h2 class="admin-section-title">Orders</h2>${buildEmptyState(EMPTY_ICON_ORDERS, "No orders yet", "Orders placed by customers will show up here.")}`;
     return;
   }
 
@@ -3881,14 +3899,6 @@ function renderSizeBuilder(containerEl, existingSizes, unitType){
       stockInput.disabled = !checkbox.checked;
     });
 
-    // FIX: the Photo input used to be `disabled` whenever the row's
-    // checkbox wasn't ticked yet, matching Price/Stock — but a disabled
-    // <input type="file"> can't be triggered by its wrapping <label> at
-    // all, so clicking "Photo" on an unchecked row silently did nothing
-    // (the click just fell through to normal text selection instead).
-    // Photo is never disabled now — it works regardless of checkbox
-    // state, and picking a photo auto-checks the box for you, since
-    // adding a photo for a size clearly means you want that size active.
     uploadInput.addEventListener("change", async () => {
       const file = uploadInput.files[0];
       if (!file) return;
@@ -3956,6 +3966,7 @@ async function deleteProduct(id){
 }
 
 async function renderAdminProducts(){
+  if (adminTabPanels.products) adminTabPanels.products.innerHTML = `<h2 class="admin-section-title">Products</h2>${buildSkeletonRows(3)}`;
   products = await loadProducts();
   await Promise.all([loadRatingsMap(), loadBrands(), loadFlashSales()]);
   renderAdminProductsTab();
@@ -4187,6 +4198,7 @@ async function deleteBrand(id){
 }
 
 async function renderAdminBrands(){
+  if (adminTabPanels.brands) adminTabPanels.brands.innerHTML = `<h2 class="admin-section-title">Brands</h2>${buildSkeletonRows(2)}`;
   await loadBrands();
   renderAdminBrandsTab();
 }
@@ -4237,7 +4249,7 @@ function renderAdminBrandsTab(){
             <button type="button" class="admin-btn-danger" data-id="${b.id}" data-action="delete-brand">Delete</button>
           </div>
         </div>
-      `).join("") || `<p class="admin-empty">No brands yet — add one above.</p>`}
+      `).join("") || buildEmptyState(EMPTY_ICON_CRATE, "No brands yet", "Add one above to start tagging products.")}
     </div>
   `;
 
@@ -4316,6 +4328,7 @@ async function toggleFlashSaleActive(id, active){
 }
 
 async function renderAdminFlashSales(){
+  if (adminTabPanels["flash-sales"]) adminTabPanels["flash-sales"].innerHTML = `<h2 class="admin-section-title">Flash Sales</h2>${buildSkeletonRows(2)}`;
   products = products.length ? products : await loadProducts();
   await loadFlashSales();
   renderAdminFlashSalesTab();
@@ -4390,7 +4403,7 @@ function renderAdminFlashSalesTab(){
             </div>
           </div>
         `;
-      }).join("") || `<p class="admin-empty">No flash sales yet — create one above.</p>`}
+      }).join("") || buildEmptyState(EMPTY_ICON_CRATE, "No flash sales yet", "Create one above to feature a limited-time discount.")}
     </div>
   `;
 
@@ -4476,6 +4489,7 @@ async function togglePromoActive(id, active){
 }
 
 async function renderAdminPromos(){
+  if (adminTabPanels.promos) adminTabPanels.promos.innerHTML = `<h2 class="admin-section-title">Vouchers &amp; Coupons</h2>${buildSkeletonRows(2)}`;
   await loadPromoCodes();
   renderAdminPromosTab();
 }
@@ -4554,7 +4568,7 @@ function renderAdminPromosTab(){
             </div>
           </div>
         `;
-      }).join("") || `<p class="admin-empty">No vouchers or coupons yet — create one above.</p>`}
+      }).join("") || buildEmptyState(EMPTY_ICON_CRATE, "No codes yet", "Create a voucher or coupon above.")}
     </div>
   `;
 
@@ -4639,6 +4653,7 @@ async function loadAllBundlesForAdmin(){
 }
 
 async function renderAdminBundles(){
+  if (adminTabPanels.bundles) adminTabPanels.bundles.innerHTML = `<h2 class="admin-section-title">Product Bundles</h2>${buildSkeletonRows(2)}`;
   products = products.length ? products : await loadProducts();
   const allBundles = await loadAllBundlesForAdmin();
   renderAdminBundlesTab(allBundles);
@@ -4726,7 +4741,7 @@ function renderAdminBundlesTab(allBundles){
             </div>
           </div>
         `;
-      }).join("") || `<p class="admin-empty">No bundles yet — create one above.</p>`}
+      }).join("") || buildEmptyState(EMPTY_ICON_CRATE, "No bundles yet", "Create one above to combine products at a special price.")}
     </div>
   `;
 
@@ -4797,6 +4812,7 @@ async function deleteMessage(id){
 }
 
 async function renderAdminMessages(){
+  if (adminTabPanels.messages) adminTabPanels.messages.innerHTML = `<h2 class="admin-section-title">Messages</h2>${buildSkeletonRows(2)}`;
   const { data, error } = await supabase.from("messages").select("*").order("sent_at", { ascending: false });
   if (error) reportLoadError("Messages", error);
   adminMessagesCache = error ? [] : (data || []);
@@ -4808,7 +4824,7 @@ function renderAdminMessagesTab(){
   const messages = adminMessagesCache;
 
   if (messages.length === 0) {
-    panel.innerHTML = `<h2 class="admin-section-title">Messages</h2><p class="admin-empty">No contact messages yet.</p>`;
+    panel.innerHTML = `<h2 class="admin-section-title">Messages</h2>${buildEmptyState(EMPTY_ICON_MESSAGE, "No messages yet", "Notes sent through the Contact form will land here.")}`;
     return;
   }
 
@@ -4873,6 +4889,7 @@ async function deleteAccount(username, profileId){
 }
 
 async function renderAdminAccounts(){
+  if (adminTabPanels.accounts) adminTabPanels.accounts.innerHTML = `<h2 class="admin-section-title">Accounts</h2>${buildSkeletonRows(3)}`;
   const { data, error } = await supabase.from("profiles").select("*").eq("role", "customer");
   if (error) reportLoadError("Accounts", error);
   adminAccountsCache = error ? [] : (data || []);
@@ -4884,7 +4901,7 @@ function renderAdminAccountsTab(){
   const customers = adminAccountsCache;
 
   if (customers.length === 0) {
-    panel.innerHTML = `<h2 class="admin-section-title">Accounts</h2><p class="admin-empty">No customer accounts yet.</p>`;
+    panel.innerHTML = `<h2 class="admin-section-title">Accounts</h2>${buildEmptyState(EMPTY_ICON_PEOPLE, "No accounts yet", "Customer accounts will appear here once people sign up.")}`;
     return;
   }
 
@@ -4936,6 +4953,7 @@ async function clearActivity(){
 }
 
 async function renderAdminActivity(){
+  if (adminTabPanels.activity) adminTabPanels.activity.innerHTML = `<h2 class="admin-section-title">Activity</h2>${buildSkeletonRows(3)}`;
   const { data, error } = await supabase.from("activity").select("*").order("at", { ascending: false }).limit(200);
   if (error) reportLoadError("Activity log", error);
   adminActivityCache = error ? [] : (data || []);
@@ -4947,7 +4965,7 @@ function renderAdminActivityTab(){
   const log = adminActivityCache;
 
   if (log.length === 0) {
-    panel.innerHTML = `<h2 class="admin-section-title">Activity</h2><p class="admin-empty">No sign-ups or logins recorded yet.</p>`;
+    panel.innerHTML = `<h2 class="admin-section-title">Activity</h2>${buildEmptyState(EMPTY_ICON_ACTIVITY, "Nothing logged yet", "Sign-ups and logins will be recorded here.")}`;
     return;
   }
 
@@ -4976,7 +4994,102 @@ function renderAdminActivityTab(){
 }
 
 // ---------- FIX #11: Analytics tab ----------
+function truncateLabel(str, max){
+  if (!str) return "";
+  return str.length > max ? str.slice(0, max - 1) + "…" : str;
+}
+
+function buildBarChartSVG(items){
+  const width = 640;
+  const barHeight = 22, gap = 12, padT = 6;
+  const labelW = 168;
+  const chartLeft = 8 + labelW;
+  const chartRight = width - 78;
+  const height = padT + items.length * (barHeight + gap);
+
+  if (!items.length) {
+    return `<svg viewBox="0 0 ${width} 70" role="img" aria-label="No sales data yet"><text x="${width / 2}" y="38" text-anchor="middle" class="chart-empty-note">No sales data yet</text></svg>`;
+  }
+
+  const maxVal = Math.max(1, ...items.map(i => i.value));
+  const bars = items.map((item, i) => {
+    const y = padT + i * (barHeight + gap);
+    const barW = Math.max(2, (item.value / maxVal) * (chartRight - chartLeft));
+    const titleText = `${item.label}: ${formatPrice(item.value)}${item.sub ? ` (${item.sub})` : ""}`;
+    return `
+      <text x="${chartLeft - 10}" y="${(y + barHeight * 0.68).toFixed(1)}" text-anchor="end" class="chart-bar-label">${escapeHtml(truncateLabel(item.label, 22))}</text>
+      <rect x="${chartLeft}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barHeight}" rx="2" class="chart-bar"><title>${escapeHtml(titleText)}</title></rect>
+      <text x="${(chartLeft + barW + 8).toFixed(1)}" y="${(y + barHeight * 0.68).toFixed(1)}" class="chart-bar-value">${escapeHtml(formatPrice(item.value))}</text>
+    `;
+  }).join("");
+
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Top products by revenue">${bars}</svg>`;
+}
+
+function buildAreaChartSVG(series){
+  const width = 640, height = 200, padL = 4, padR = 4, padT = 14, padB = 22;
+  const innerW = width - padL - padR;
+  const innerH = height - padT - padB;
+  const values = series.map(s => s.value);
+  const total = values.reduce((a, b) => a + b, 0);
+
+  if (!series.length || total <= 0) {
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="No revenue in this period yet">
+      <line x1="${padL}" y1="${padT + innerH}" x2="${width - padR}" y2="${padT + innerH}" class="chart-axis-line"/>
+      <text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="chart-empty-note">No revenue in this period yet</text>
+    </svg>`;
+  }
+
+  const maxVal = Math.max(1, ...values);
+  const stepX = series.length > 1 ? innerW / (series.length - 1) : 0;
+  const points = series.map((s, i) => ({
+    x: padL + stepX * i,
+    y: padT + innerH - (s.value / maxVal) * innerH
+  }));
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${points[points.length - 1].x.toFixed(1)},${(padT + innerH).toFixed(1)} L${points[0].x.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+
+  const firstLabel = new Date(series[0].date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const lastLabel = new Date(series[series.length - 1].date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const lastPoint = points[points.length - 1];
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Daily revenue over the last ${series.length} days">
+      <line x1="${padL}" y1="${(padT + innerH).toFixed(1)}" x2="${width - padR}" y2="${(padT + innerH).toFixed(1)}" class="chart-axis-line"/>
+      <path d="${areaPath}" class="chart-area-fill"/>
+      <path d="${linePath}" class="chart-line-path"/>
+      <circle cx="${lastPoint.x.toFixed(1)}" cy="${lastPoint.y.toFixed(1)}" r="3.5" class="chart-line-dot"><title>${escapeHtml(lastLabel)}: ${escapeHtml(formatPrice(series[series.length - 1].value))}</title></circle>
+      <text x="${padL}" y="${height - 4}" class="chart-bar-label">${escapeHtml(firstLabel)}</text>
+      <text x="${width - padR}" y="${height - 4}" text-anchor="end" class="chart-bar-label">${escapeHtml(lastLabel)}</text>
+    </svg>
+  `;
+}
+
+function buildDailyRevenueSeries(orders, days){
+  const dayMs = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  const buckets = {};
+  for (let i = days - 1; i >= 0; i--) {
+    buckets[todayMidnight - i * dayMs] = 0;
+  }
+
+  orders.forEach(o => {
+    if (o.cancelled) return;
+    const d = new Date(o.placedAt);
+    const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    if (key in buckets) buckets[key] += Number(o.total) || 0;
+  });
+
+  return Object.keys(buckets)
+    .sort((a, b) => Number(a) - Number(b))
+    .map(k => ({ date: Number(k), value: buckets[k] }));
+}
+
 async function renderAdminAnalytics(){
+  if (adminTabPanels.analytics) adminTabPanels.analytics.innerHTML = `<h2 class="admin-section-title">Sales Analytics</h2>${buildSkeletonRows(2)}`;
   const { data, error } = await supabase.from("orders").select("*").order("placed_at", { ascending: false });
   if (error) { reportLoadError("Analytics", error); renderAdminAnalyticsTab([]); return; }
   renderAdminAnalyticsTab((data || []).map(mapOrderRow));
@@ -5008,10 +5121,13 @@ function renderAdminAnalyticsTab(allOrders){
       productStats[line.productId].revenue += priceForLine * line.qty;
     });
   });
-  const topProducts = Object.values(productStats).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  const topProducts = Object.values(productStats).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
 
   const paymentStats = {};
   activeOrders.forEach(o => { paymentStats[o.paymentMethod] = (paymentStats[o.paymentMethod] || 0) + 1; });
+
+  const dailySeries = buildDailyRevenueSeries(activeOrders, 30);
+  const barChartItems = topProducts.map(p => ({ label: p.name, value: p.revenue, sub: `${p.qty} unit${p.qty === 1 ? "" : "s"} sold` }));
 
   panel.innerHTML = `
     <h2 class="admin-section-title">Sales Analytics</h2>
@@ -5038,25 +5154,27 @@ function renderAdminAnalyticsTab(allOrders){
       </div>
     </div>
 
+    <h3 class="analytics-section-title">Revenue — Last 30 Days</h3>
+    <div class="analytics-chart-card">
+      ${buildAreaChartSVG(dailySeries)}
+    </div>
+
     <h3 class="analytics-section-title">Top Products by Revenue</h3>
-    ${topProducts.length ? `
-      <table class="analytics-table">
-        <thead><tr><th>Product</th><th>Units Sold</th><th>Revenue</th></tr></thead>
-        <tbody>
-          ${topProducts.map(p => `<tr><td>${escapeHtml(p.name)}</td><td>${p.qty}</td><td>${formatPrice(p.revenue)}</td></tr>`).join("")}
-        </tbody>
-      </table>
-    ` : `<p class="admin-empty">No sales data yet.</p>`}
+    <div class="analytics-chart-card">
+      ${buildBarChartSVG(barChartItems)}
+    </div>
 
     <h3 class="analytics-section-title">Orders by Payment Method</h3>
     ${Object.keys(paymentStats).length ? `
-      <table class="analytics-table">
-        <thead><tr><th>Method</th><th>Orders</th></tr></thead>
-        <tbody>
-          ${Object.entries(paymentStats).map(([method, count]) => `<tr><td>${escapeHtml(paymentMethodLabel(method))}</td><td>${count}</td></tr>`).join("")}
-        </tbody>
-      </table>
-    ` : ""}
+      <div class="analytics-table-wrap">
+        <table class="analytics-table">
+          <thead><tr><th>Method</th><th>Orders</th></tr></thead>
+          <tbody>
+            ${Object.entries(paymentStats).map(([method, count]) => `<tr><td>${escapeHtml(paymentMethodLabel(method))}</td><td>${count}</td></tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    ` : `<p class="admin-empty">No sales data yet.</p>`}
   `;
 }
 
@@ -5118,6 +5236,7 @@ function renderAdminSettingsTab(){
       <p id="admin-logo-success" class="success-message hidden"></p>
       <button type="button" class="btn-primary" id="admin-logo-save" style="width:auto; padding:10px 22px;">Save shop logo</button>
     </div>
+
   `;
 
   const qrInput = document.getElementById("admin-qr-input");
@@ -5190,12 +5309,6 @@ function renderAdminSettingsTab(){
     if (!file) return;
     try {
       if (logoUploadStatus) logoUploadStatus.classList.remove("hidden");
-      // Reuses the existing "payment-settings" bucket (same one the GCash
-      // QR upload uses) instead of a separate "shop-settings" bucket —
-      // that bucket doesn't exist by default in Supabase Storage, and
-      // creating a brand-new bucket requires a manual step in the
-      // Supabase dashboard. Reusing an already-existing bucket means the
-      // logo upload works immediately with no extra setup.
       pendingLogoDataUrl = await uploadImageToStorage(file, "payment-settings", "logo", 240);
       logoPreview.innerHTML = `<img src="${escapeHtml(pendingLogoDataUrl)}" alt="Shop logo" class="zoomable-img" loading="lazy" decoding="async">`;
     } catch (err) {
@@ -5230,6 +5343,7 @@ function renderAdminSettingsTab(){
     logoSuccessEl.textContent = "Shop logo saved. It now appears in the header for everyone.";
     logoSuccessEl.classList.remove("hidden");
   });
+
 }
 
 // ===================== Restore session on page load =====================
