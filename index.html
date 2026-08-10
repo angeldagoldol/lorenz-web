@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>DAGOLDOL — Fine Everyday Goods</title>
 <meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
-<link rel="canonical" href="https://dagoldol.example.com/">
+<link rel="canonical" href="https://lorenz-web-six.vercel.app/">
 
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
@@ -25,7 +25,7 @@
 <meta property="og:site_name" content="Dagoldol">
 <meta property="og:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta property="og:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
-<meta property="og:url" content="https://dagoldol.example.com/">
+<meta property="og:url" content="https://lorenz-web-six.vercel.app/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="DAGOLDOL — Fine Everyday Goods">
 <meta name="twitter:description" content="A small, considered catalogue of fine everyday goods, kept behind the counter.">
@@ -322,17 +322,9 @@
 
           <button type="button" class="account-menu-item hidden" id="orders-btn" role="menuitem">My Orders</button>
           <button type="button" class="account-menu-item hidden" id="profile-btn" role="menuitem">Profile</button>
-          <button type="button" class="account-menu-item hidden" id="chat-btn" role="menuitem">Chat with the seller</button>
+          <button type="button" class="account-menu-item hidden" id="chat-btn" role="menuitem">Messages</button>
 
           <button type="button" class="account-menu-item" id="contact-btn" role="menuitem">Contact</button>
-          <!-- ===================== "My Info" menu item =====================
-               Visible to everyone (guest or logged in), same as Contact.
-               Opens a read-only page with developer/site info that the
-               admin edits from the Payment Settings tab.
-
-               FIX: index1.html, style1.css, script1.js, and info.jpg all
-               live at the REPO ROOT (no "Myinfo" subfolder exists in the
-               repo), so the link below points straight at "index1.html". -->
           <a href="index1.html" target="_blank" rel="noopener noreferrer" class="account-menu-item" id="dev-info-btn" role="menuitem">My Info</a>
 
           <div class="account-menu-divider hidden" id="account-menu-divider-logout"></div>
@@ -434,6 +426,13 @@
     </div>
     <p class="welcome-msg">Signed in as <span id="admin-welcome-name">Admin</span></p>
     <div class="header-actions">
+      <button id="admin-chat-btn" class="btn-cart" type="button" aria-label="Messages">
+        <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+          <path d="M8 12a3 3 0 0 1 3-3h26a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H21l-8 7v-7h-2a3 3 0 0 1-3-3V12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        </svg>
+        <span class="cart-label">Messages</span>
+        <span id="admin-chat-count" class="cart-count hidden">0</span>
+      </button>
       <button id="admin-logout-btn" class="btn-ghost">Log out</button>
     </div>
   </header>
@@ -445,7 +444,6 @@
     <button type="button" class="admin-tab-btn" data-tab="brands">Brands</button>
     <button type="button" class="admin-tab-btn" data-tab="flash-sales">Flash Sales</button>
     <button type="button" class="admin-tab-btn" data-tab="promos">Vouchers &amp; Coupons</button>
-    <button type="button" class="admin-tab-btn" data-tab="chat">Live Chat <span id="admin-chat-tab-badge" class="admin-tab-btn-dot hidden"></span></button>
     <button type="button" class="admin-tab-btn" data-tab="messages">Messages</button>
     <button type="button" class="admin-tab-btn" data-tab="accounts">Accounts</button>
     <button type="button" class="admin-tab-btn" data-tab="analytics">Analytics</button>
@@ -460,7 +458,6 @@
     <div class="admin-tab-panel hidden" id="admin-tab-brands"></div>
     <div class="admin-tab-panel hidden" id="admin-tab-flash-sales"></div>
     <div class="admin-tab-panel hidden" id="admin-tab-promos"></div>
-    <div class="admin-tab-panel hidden" id="admin-tab-chat"></div>
     <div class="admin-tab-panel hidden" id="admin-tab-messages"></div>
     <div class="admin-tab-panel hidden" id="admin-tab-accounts"></div>
     <div class="admin-tab-panel hidden" id="admin-tab-analytics"></div>
@@ -768,6 +765,31 @@
 
       <button type="submit" class="btn-primary">Send message</button>
     </form>
+  </div>
+</div>
+
+<!-- ===================== CHAT / MESSAGES MODAL ===================== -->
+<div id="chat-modal" class="modal-overlay hidden">
+  <div class="modal-panel modal-panel-wide">
+    <button type="button" class="modal-close" id="chat-modal-close" aria-label="Close">&times;</button>
+    <p class="eyebrow">Messages</p>
+    <h2 class="modal-item-name">Chat</h2>
+
+    <div class="chat-layout">
+      <div class="chat-thread-list" id="chat-thread-list">
+        <button type="button" class="link-btn" id="chat-message-seller-btn" style="margin-bottom:10px;">Message the Seller</button>
+        <div class="chat-new-row">
+          <input type="text" id="chat-new-username" placeholder="Start a chat with a username…">
+          <button type="button" class="btn-secondary" id="chat-new-start-btn">Start</button>
+        </div>
+        <p id="chat-new-error" class="error-message"></p>
+        <div id="chat-threads-inner"></div>
+      </div>
+
+      <div class="chat-conversation" id="chat-conversation-panel">
+        <p class="admin-empty">Select a conversation, or start a new one.</p>
+      </div>
+    </div>
   </div>
 </div>
 
