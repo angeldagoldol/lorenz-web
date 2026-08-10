@@ -278,10 +278,6 @@ function mapOrderRow(row){
   };
 }
 
-function mapChatMessageRow(row){
-  return { id: row.id, threadId: row.thread_id, sender: row.sender, senderName: row.sender_name, body: row.body, sentAt: Number(row.sent_at) };
-}
-
 // ===================== Elements: login / signup =====================
 const loginForm = document.getElementById("login-form");
 const loginEmailInput = document.getElementById("login-email");
@@ -705,49 +701,6 @@ const contactNameInput = document.getElementById("contact-name");
 const contactEmailInput = document.getElementById("contact-email");
 const contactMessageInput = document.getElementById("contact-message");
 const contactError = document.getElementById("contact-error");
-
-// ===================== "My Info" menu button =====================
-// This is a plain <a href="myinfo/index.html" target="_blank"> in the
-// markup — it opens the real portfolio site (its own separate HTML/CSS/JS,
-// not a modal) in a new tab. No JS wiring needed; closing the account
-// menu on click is handled by the existing account-menu delegation.
-
-// =====================================================================
-// ===================== LIVE CHAT (customer <-> seller) ===============
-// =====================================================================
-const CHAT_PRESENCE_CHANNEL_NAME = "dagoldol-presence";
-let presenceChannel = null;
-let presenceState = {};
-let myPresenceRole = null;
-
-let chatMessagesChannel = null;
-let chatThreadsChannel = null;
-
-let myChatThreadId = null;
-let currentChatThreadRow = null;
-let chatMessagesCache = [];
-
-let unreadChatCount = 0;
-let adminChatThreadsCache = [];
-let adminActiveChatThreadUserId = null;
-
-let chatTypingDebounce = null;
-let adminChatTypingDebounce = null;
-
-const ADMIN_CHAT_THREADS_PAGE_SIZE = 20;
-let adminChatThreadsVisibleCount = ADMIN_CHAT_THREADS_PAGE_SIZE;
-
-// ===================== Elements: live chat (customer side) =====================
-const chatBtn = document.getElementById("chat-btn");
-const chatCountBadge = document.getElementById("chat-count");
-const chatModal = document.getElementById("chat-modal");
-const chatModalClose = document.getElementById("chat-modal-close");
-const chatOnlineStatusEl = document.getElementById("chat-online-status");
-const chatEnableNotifsBtn = document.getElementById("chat-enable-notifs");
-const chatMessagesListEl = document.getElementById("chat-messages-list");
-const chatTypingIndicatorEl = document.getElementById("chat-typing-indicator");
-const chatForm = document.getElementById("chat-form");
-const chatInput = document.getElementById("chat-input");
 
 let orderItems = [];
 let orderItems_isCartCheckout = false;
@@ -2817,436 +2770,6 @@ contactForm.addEventListener("submit", async (e) => {
   showToast("Message sent! It's saved to the shop and your email app should open to send it to the owner.");
 });
 
-function initPresence(role, key, extra){
-  myPresenceRole = role;
-  if (presenceChannel) supabase.removeChannel(presenceChannel);
-  presenceChannel = supabase.channel(CHAT_PRESENCE_CHANNEL_NAME, { config: { presence: { key } } });
-
-  presenceChannel.on("presence", { event: "sync" }, () => {
-    presenceState = presenceChannel.presenceState();
-    refreshPresenceUI();
-  });
-
-  presenceChannel.subscribe(async (status) => {
-    if (status === "SUBSCRIBED") {
-      await presenceChannel.track({ role, typing: false, activeThread: null, ...extra });
-    }
-  });
-}
-
-function setTyping(threadId, typing){
-  if (!presenceChannel || !myPresenceRole) return;
-  presenceChannel.track({ role: myPresenceRole, typing, activeThread: threadId });
-}
-
-function isSellerOnline(){
-  return Object.values(presenceState).some(entries => entries.some(p => p.role === "admin"));
-}
-
-function isCustomerOnline(customerId){
-  const entries = presenceState[customerId] || [];
-  return entries.some(p => p.role === "customer");
-}
-
-function isSellerTypingInThread(threadId){
-  return Object.values(presenceState).some(entries => entries.some(p => p.role === "admin" && p.typing && p.activeThread === threadId));
-}
-
-function isCustomerTypingInThread(customerId){
-  const entries = presenceState[customerId] || [];
-  return entries.some(p => p.role === "customer" && p.typing && p.activeThread === customerId);
-}
-
-function refreshPresenceUI(){
-  if (chatOnlineStatusEl && myPresenceRole === "customer") {
-    const online = isSellerOnline();
-    chatOnlineStatusEl.innerHTML = `<span class="${online ? "online-dot" : "offline-dot"}"></span> ${online ? "The seller is online" : "The seller is offline"}`;
-  }
-  if (chatTypingIndicatorEl && myChatThreadId) {
-    chatTypingIndicatorEl.classList.toggle("hidden", !isSellerTypingInThread(myChatThreadId));
-  }
-
-  if (myPresenceRole === "admin") {
-    renderAdminChatThreadList();
-    if (adminActiveChatThreadUserId) {
-      const typingEl = document.getElementById("admin-chat-typing-indicator");
-      if (typingEl) typingEl.classList.toggle("hidden", !isCustomerTypingInThread(adminActiveChatThreadUserId));
-      const headerDot = document.getElementById("admin-chat-conversation-online-dot");
-      if (headerDot) {
-        const online = isCustomerOnline(adminActiveChatThreadUserId);
-        headerDot.className = online ? "online-dot" : "offline-dot";
-      }
-    }
-  }
-}
-
-function requestChatNotificationPermission(){
-  if (typeof Notification === "undefined") {
-    showToast("This browser doesn't support notifications.");
-    return;
-  }
-  Notification.requestPermission().then(() => {
-    if (Notification.permission === "granted") showToast("Notifications enabled for new messages.");
-  });
-}
-
-function showChatNotification(title, body){
-  if (typeof Notification === "undefined") return;
-  if (Notification.permission === "granted" && document.hidden) {
-    try { new Notification(title, { body }); } catch (err) { /* ignore */ }
-  }
-}
-
-function updateDocumentTitleUnread(count){
-  document.title = count > 0 ? `(${count}) ${DOCUMENT_TITLE_BASE}` : DOCUMENT_TITLE_BASE;
-}
-
-let lastChatError = null;
-
-function chatSetupErrorMessage(error){
-  if (!error) return "";
-  const msg = error.message || String(error);
-  if (/relation .* does not exist/i.test(msg) || /could not find the table/i.test(msg)) {
-    return `Chat tables aren't set up yet in Supabase (${msg}). Create the "chat_threads" and "chat_messages" tables — see the setup notes.`;
-  }
-  if (/row-level security|permission denied|rls/i.test(msg)) {
-    return `Supabase is blocking chat access with Row Level Security (${msg}). Run supabase_rls.sql, which includes working chat policies.`;
-  }
-  return `Chat error: ${msg}`;
-}
-
-async function ensureChatThread(userId, username){
-  const { data, error } = await supabase.from("chat_threads").select("*").eq("id", userId).maybeSingle();
-  if (error) { console.error("[Dagoldol] ensureChatThread error:", error); lastChatError = error; return null; }
-  if (data) { lastChatError = null; return data; }
-
-  const now = Date.now();
-  const newThread = {
-    id: userId, username, created_at: now, last_message_at: null, last_message_preview: "",
-    customer_last_read_at: now, admin_last_read_at: now
-  };
-  const { error: insertError } = await supabase.from("chat_threads").insert(newThread);
-  if (insertError) { console.error("[Dagoldol] Could not create chat thread:", insertError); lastChatError = insertError; return null; }
-  lastChatError = null;
-  return newThread;
-}
-
-async function fetchChatMessages(threadId){
-  const { data, error } = await supabase.from("chat_messages").select("*").eq("thread_id", threadId).order("sent_at", { ascending: true });
-  if (error) { console.error(error); lastChatError = error; return []; }
-  return (data || []).map(mapChatMessageRow);
-}
-
-async function sendChatMessage(threadId, sender, senderName, body){
-  const sentAt = Date.now();
-  const row = { id: "msg-" + Date.now().toString(36) + Math.floor(Math.random() * 1000), thread_id: threadId, sender, sender_name: senderName, body, sent_at: sentAt };
-  const { error } = await supabase.from("chat_messages").insert(row);
-  if (error) { console.error("[Dagoldol] sendChatMessage error:", error); return null; }
-  await supabase.from("chat_threads").update({ last_message_at: sentAt, last_message_preview: body.slice(0, 80) }).eq("id", threadId);
-  return row;
-}
-
-async function markThreadRead(threadId, role){
-  const field = role === "admin" ? "admin_last_read_at" : "customer_last_read_at";
-  const now = Date.now();
-  await supabase.from("chat_threads").update({ [field]: now }).eq("id", threadId);
-  if (currentChatThreadRow && currentChatThreadRow.id === threadId) currentChatThreadRow[field] = now;
-}
-
-async function computeCustomerUnreadCount(threadId, lastReadAt){
-  const { count, error } = await supabase
-    .from("chat_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("thread_id", threadId)
-    .eq("sender", "admin")
-    .gt("sent_at", lastReadAt || 0);
-  if (error) { console.error(error); return 0; }
-  return count || 0;
-}
-
-function renderChatMessages(containerEl, messages, viewerRole, threadRow){
-  if (!containerEl) return;
-  containerEl.innerHTML = messages.map(m => {
-    const mine = m.sender === viewerRole;
-    const readAt = viewerRole === "customer" ? (threadRow && threadRow.admin_last_read_at) : (threadRow && threadRow.customer_last_read_at);
-    const isRead = mine && readAt && m.sentAt <= readAt;
-    const ticks = mine ? `<span class="chat-read-ticks ${isRead ? "chat-read-ticks-read" : ""}">${isRead ? "✓✓" : "✓"}</span>` : "";
-    return `
-      <div class="chat-bubble ${mine ? "chat-bubble-mine" : "chat-bubble-theirs"}">
-        <p class="chat-bubble-text">${escapeHtml(m.body)}</p>
-        <p class="chat-bubble-meta">${formatChatTime(m.sentAt)} ${ticks}</p>
-      </div>
-    `;
-  }).join("");
-  containerEl.scrollTop = containerEl.scrollHeight;
-}
-
-function updateChatBadge(){
-  if (!chatCountBadge) return;
-  chatCountBadge.textContent = unreadChatCount;
-  chatCountBadge.classList.toggle("hidden", unreadChatCount === 0);
-}
-
-async function openChatModal(){
-  if (!currentUserId) return;
-  myChatThreadId = currentUserId;
-  currentChatThreadRow = await ensureChatThread(currentUserId, currentUser);
-  if (!currentChatThreadRow) {
-    openModalAccessible(chatModal, chatInput);
-    chatMessagesListEl.innerHTML = `<p class="admin-empty">${escapeHtml(chatSetupErrorMessage(lastChatError) || "Chat isn't available right now. Please try again later.")}</p>`;
-    return;
-  }
-  chatMessagesCache = await fetchChatMessages(myChatThreadId);
-  renderChatMessages(chatMessagesListEl, chatMessagesCache, "customer", currentChatThreadRow);
-  await markThreadRead(myChatThreadId, "customer");
-  unreadChatCount = 0;
-  updateChatBadge();
-  updateDocumentTitleUnread(0);
-  refreshPresenceUI();
-  openModalAccessible(chatModal, chatInput);
-}
-
-function closeChatModal(){
-  closeModalAccessible(chatModal);
-  if (myChatThreadId) setTyping(myChatThreadId, false);
-}
-
-if (chatBtn) chatBtn.addEventListener("click", () => requireLogin(openChatModal, "Log in to chat with the seller."));
-if (chatModalClose) chatModalClose.addEventListener("click", closeChatModal);
-if (chatModal) chatModal.addEventListener("click", (e) => { if (e.target === chatModal) closeChatModal(); });
-if (chatEnableNotifsBtn) chatEnableNotifsBtn.addEventListener("click", requestChatNotificationPermission);
-
-if (chatForm) {
-  chatForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = chatInput.value.trim();
-    if (!body || !myChatThreadId) return;
-    chatInput.value = "";
-    setTyping(myChatThreadId, false);
-    const row = await sendChatMessage(myChatThreadId, "customer", currentUser, body);
-    if (row) {
-      chatMessagesCache.push(mapChatMessageRow(row));
-      renderChatMessages(chatMessagesListEl, chatMessagesCache, "customer", currentChatThreadRow);
-    }
-  });
-}
-
-if (chatInput) {
-  chatInput.addEventListener("input", () => {
-    if (!myChatThreadId) return;
-    setTyping(myChatThreadId, true);
-    clearTimeout(chatTypingDebounce);
-    chatTypingDebounce = setTimeout(() => setTyping(myChatThreadId, false), 2000);
-  });
-}
-
-async function refreshAdminChatThreadsList(){
-  const { data, error } = await supabase
-    .from("chat_threads")
-    .select("*")
-    .order("last_message_at", { ascending: false })
-    .range(0, adminChatThreadsVisibleCount - 1);
-  if (error) reportLoadError("Chat threads", error);
-  lastChatError = error || null;
-  adminChatThreadsCache = error ? [] : (data || []);
-  updateAdminChatTabBadge();
-  renderAdminChatThreadList();
-}
-
-function updateAdminChatTabBadge(){
-  const badge = document.getElementById("admin-chat-tab-badge");
-  if (!badge) return;
-  const hasUnread = adminChatThreadsCache.some(t => t.last_message_at && (!t.admin_last_read_at || t.last_message_at > t.admin_last_read_at));
-  badge.classList.toggle("hidden", !hasUnread);
-}
-
-function renderAdminChatThreadList(){
-  const listEl = document.getElementById("admin-chat-thread-list");
-  if (!listEl) return;
-
-  const emptyMessage = lastChatError
-    ? `<p class="admin-empty" style="color:var(--rust);">${escapeHtml(chatSetupErrorMessage(lastChatError))}</p>`
-    : buildEmptyState(EMPTY_ICON_CHAT, "No conversations yet", "They'll appear here once a customer opens Chat.");
-
-  listEl.innerHTML = adminChatThreadsCache.map(t => {
-    const unread = t.last_message_at && (!t.admin_last_read_at || t.last_message_at > t.admin_last_read_at);
-    const online = isCustomerOnline(t.id);
-    const active = adminActiveChatThreadUserId === t.id;
-    return `
-      <button type="button" class="admin-chat-thread-item ${active ? "active" : ""}" data-thread="${t.id}">
-        <span class="${online ? "online-dot" : "offline-dot"}"></span>
-        <span class="admin-chat-thread-name">${escapeHtml(t.username)}</span>
-        ${unread ? `<span class="admin-chat-thread-badge">•</span>` : ""}
-        <span class="admin-chat-thread-preview">${escapeHtml((t.last_message_preview || "").slice(0, 40))}</span>
-      </button>
-    `;
-  }).join("") || emptyMessage;
-
-  if (adminChatThreadsCache.length >= adminChatThreadsVisibleCount) {
-    listEl.insertAdjacentHTML("beforeend", `<div class="admin-chat-load-more"><button type="button" class="link-btn" id="admin-chat-load-more-btn">Load more conversations</button></div>`);
-    const moreBtn = document.getElementById("admin-chat-load-more-btn");
-    if (moreBtn) moreBtn.addEventListener("click", () => {
-      adminChatThreadsVisibleCount += ADMIN_CHAT_THREADS_PAGE_SIZE;
-      refreshAdminChatThreadsList();
-    });
-  }
-
-  listEl.querySelectorAll("[data-thread]").forEach(btn => {
-    btn.addEventListener("click", () => openAdminChatThread(btn.dataset.thread));
-  });
-}
-
-async function openAdminChatThread(threadId){
-  adminActiveChatThreadUserId = threadId;
-  currentChatThreadRow = adminChatThreadsCache.find(t => t.id === threadId) || null;
-  chatMessagesCache = await fetchChatMessages(threadId);
-  renderAdminChatConversation();
-  renderChatMessages(document.getElementById("admin-chat-messages-list"), chatMessagesCache, "admin", currentChatThreadRow);
-  await markThreadRead(threadId, "admin");
-  await refreshAdminChatThreadsList();
-}
-
-function renderAdminChatConversation(){
-  const convoEl = document.getElementById("admin-chat-conversation");
-  if (!convoEl) return;
-
-  if (!adminActiveChatThreadUserId) {
-    convoEl.innerHTML = `<p class="admin-empty">Select a conversation from the left.</p>`;
-    return;
-  }
-
-  const thread = adminChatThreadsCache.find(t => t.id === adminActiveChatThreadUserId);
-  const online = isCustomerOnline(adminActiveChatThreadUserId);
-
-  convoEl.innerHTML = `
-    <div class="chat-conversation-header">
-      <span id="admin-chat-conversation-online-dot" class="${online ? "online-dot" : "offline-dot"}"></span>
-      <span>${thread ? escapeHtml(thread.username) : "Customer"}</span>
-    </div>
-    <div class="chat-messages-list" id="admin-chat-messages-list"></div>
-    <p class="chat-typing-indicator hidden" id="admin-chat-typing-indicator">Customer is typing…</p>
-    <form class="chat-input-row" id="admin-chat-form">
-      <input type="text" id="admin-chat-input" placeholder="Type a message…" autocomplete="off" maxlength="2000">
-      <button type="submit" class="btn-primary" style="width:auto;">Send</button>
-    </form>
-  `;
-
-  const adminChatForm = document.getElementById("admin-chat-form");
-  const adminChatInput = document.getElementById("admin-chat-input");
-
-  adminChatForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = adminChatInput.value.trim();
-    if (!body) return;
-    adminChatInput.value = "";
-    setTyping(adminActiveChatThreadUserId, false);
-    const row = await sendChatMessage(adminActiveChatThreadUserId, "admin", currentUser, body);
-    if (row) {
-      chatMessagesCache.push(mapChatMessageRow(row));
-      renderChatMessages(document.getElementById("admin-chat-messages-list"), chatMessagesCache, "admin", currentChatThreadRow);
-    }
-  });
-
-  adminChatInput.addEventListener("input", () => {
-    setTyping(adminActiveChatThreadUserId, true);
-    clearTimeout(adminChatTypingDebounce);
-    adminChatTypingDebounce = setTimeout(() => setTyping(adminActiveChatThreadUserId, false), 2000);
-  });
-}
-
-async function renderAdminChat(){
-  adminChatThreadsVisibleCount = ADMIN_CHAT_THREADS_PAGE_SIZE;
-  const panel = adminTabPanels.chat;
-  if (panel) panel.innerHTML = `<h2 class="admin-section-title">Live Chat (Seller Chat)</h2>${buildSkeletonRows(3)}`;
-  await refreshAdminChatThreadsList();
-  renderAdminChatTab();
-}
-
-function renderAdminChatTab(){
-  const panel = adminTabPanels.chat;
-  if (!panel) return;
-  panel.innerHTML = `
-    <h2 class="admin-section-title">Live Chat (Seller Chat)</h2>
-    <div class="admin-chat-layout">
-      <div class="admin-chat-thread-list" id="admin-chat-thread-list"></div>
-      <div class="admin-chat-conversation" id="admin-chat-conversation">
-        <p class="admin-empty">Select a conversation from the left.</p>
-      </div>
-    </div>
-  `;
-  renderAdminChatThreadList();
-  if (adminActiveChatThreadUserId) renderAdminChatConversation();
-}
-
-function subscribeChatRealtime(){
-  if (chatMessagesChannel) supabase.removeChannel(chatMessagesChannel);
-  chatMessagesChannel = supabase
-    .channel("chat-messages-changes")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, async (payload) => {
-      const msg = mapChatMessageRow(payload.new);
-      const alreadyHave = chatMessagesCache.some(m => m.id === msg.id);
-
-      if (currentUserProfile && currentUserProfile.role === "admin") {
-        await refreshAdminChatThreadsList();
-        if (adminActiveChatThreadUserId === msg.threadId) {
-          if (!alreadyHave) chatMessagesCache.push(msg);
-          renderChatMessages(document.getElementById("admin-chat-messages-list"), chatMessagesCache, "admin", currentChatThreadRow);
-          if (msg.sender === "customer") await markThreadRead(msg.threadId, "admin");
-        } else if (msg.sender === "customer") {
-          showChatNotification("New customer message", `${msg.senderName}: ${msg.body}`);
-          showToast(`New message from ${msg.senderName}: ${msg.body}`);
-        }
-      } else if (currentUserId && msg.threadId === myChatThreadId) {
-        if (!chatModal.classList.contains("hidden")) {
-          if (!alreadyHave) chatMessagesCache.push(msg);
-          renderChatMessages(chatMessagesListEl, chatMessagesCache, "customer", currentChatThreadRow);
-          if (msg.sender === "admin") await markThreadRead(msg.threadId, "customer");
-        } else if (msg.sender === "admin") {
-          unreadChatCount += 1;
-          updateChatBadge();
-          updateDocumentTitleUnread(unreadChatCount);
-          showChatNotification("Dagoldol", msg.body);
-          showToast(`New message from the shop: ${msg.body}`);
-        }
-      }
-    })
-    .subscribe();
-
-  if (chatThreadsChannel) supabase.removeChannel(chatThreadsChannel);
-  chatThreadsChannel = supabase
-    .channel("chat-threads-changes")
-    .on("postgres_changes", { event: "*", schema: "public", table: "chat_threads" }, (payload) => {
-      if (!payload.new) return;
-      if (currentUserProfile && currentUserProfile.role === "admin") {
-        refreshAdminChatThreadsList();
-        if (adminActiveChatThreadUserId === payload.new.id) {
-          currentChatThreadRow = payload.new;
-          renderChatMessages(document.getElementById("admin-chat-messages-list"), chatMessagesCache, "admin", currentChatThreadRow);
-        }
-      } else if (payload.new.id === currentUserId) {
-        currentChatThreadRow = payload.new;
-        if (!chatModal.classList.contains("hidden")) {
-          renderChatMessages(chatMessagesListEl, chatMessagesCache, "customer", currentChatThreadRow);
-        }
-      }
-    })
-    .subscribe();
-}
-
-function teardownChatRealtime(){
-  if (presenceChannel) { supabase.removeChannel(presenceChannel); presenceChannel = null; }
-  if (chatMessagesChannel) { supabase.removeChannel(chatMessagesChannel); chatMessagesChannel = null; }
-  if (chatThreadsChannel) { supabase.removeChannel(chatThreadsChannel); chatThreadsChannel = null; }
-  presenceState = {};
-  myPresenceRole = null;
-  myChatThreadId = null;
-  currentChatThreadRow = null;
-  chatMessagesCache = [];
-  adminActiveChatThreadUserId = null;
-  unreadChatCount = 0;
-  updateDocumentTitleUnread(0);
-}
-
 // ===================== Modal accessibility: focus trap + Escape =====================
 let lastFocusedBeforeModal = null;
 let activeModalEl = null;
@@ -3307,7 +2830,7 @@ function closeTopModal(){
     "order-modal": closeOrderModal,
     "orders-modal": closeOrdersModal,
     "contact-modal": closeContactModal,
-    "chat-modal": closeChatModal
+    "chat-modal": () => closeModalAccessible(chatModal)
   };
   const fn = map[activeModalEl.id];
   if (fn) fn();
@@ -3335,368 +2858,550 @@ function closeTopModal(){
   });
 })();
 
-// ===================== Enter the shop (or the admin dashboard) =====================
-async function enterShop(){
-  const account = currentUserProfile;
+// =====================================================================
+// ===================== DIRECT MESSAGES + REACTIONS ====================
+// =====================================================================
+const REACTION_EMOJIS = ["👍", "😆", "😮", "😢", "😡", "❤️"];
 
-  errorMessage.textContent = "";
-  loginScreen.classList.add("hidden");
-  loginGateMessageEl.classList.add("hidden");
-  loginForm.reset();
-  signupForm.reset();
+const CHAT_PRESENCE_CHANNEL_NAME = "dagoldol-presence";
+let presenceChannel = null;
+let presenceState = {};
 
-  if (account.role === "admin") {
-    shopScreen.classList.add("hidden");
-    adminWelcomeName.textContent = currentUser;
-    adminScreen.classList.remove("hidden");
-    await Promise.all([
-      renderAdminOrders(),
-      renderAdminProducts(),
-      renderAdminBundles(),
-      renderAdminBrands(),
-      renderAdminFlashSales(),
-      renderAdminPromos(),
-      renderAdminChat(),
-      renderAdminMessages(),
-      renderAdminActivity(),
-      renderAdminAnalytics(),
-      renderAdminSettings()
-    ]);
-    await renderAdminAccounts();
+let chatMessagesChannel = null;
+let chatThreadsChannel = null;
 
-    initPresence("admin", "admin", { username: currentUser });
-    subscribeChatRealtime();
-  } else {
-    adminScreen.classList.add("hidden");
-    const profile = account.profile || {};
-    await mergeGuestCartIntoProfile();
-    setHeaderCustomerState(profile.name || currentUser, profile.avatar || null);
-    shopScreen.classList.remove("hidden");
-    await renderCatalogue();
-    updateCartBadge();
+let unreadChatCount = 0;
+let dmTypingDebounce = null;
 
-    initPresence("customer", currentUserId, { username: currentUser });
-    subscribeChatRealtime();
+let currentDmThread = null;
+let currentDmMessages = [];
+let dmThreadsCache = [];
+let cachedSellerProfile = null;
 
-    recsLastRefreshAt = Date.now();
-    subscribeRecommendationsRealtime();
+// ---- Elements ----
+const chatBtn = document.getElementById("chat-btn");
+const chatCountBadge = document.getElementById("chat-count");
+const chatModal = document.getElementById("chat-modal");
+const chatModalClose = document.getElementById("chat-modal-close");
+const chatNewUsernameInput = document.getElementById("chat-new-username");
+const chatNewStartBtn = document.getElementById("chat-new-start-btn");
+const chatNewErrorEl = document.getElementById("chat-new-error");
+const chatMessageSellerBtn = document.getElementById("chat-message-seller-btn");
+const adminChatBtn = document.getElementById("admin-chat-btn");
+const adminChatCountBadge = document.getElementById("admin-chat-count");
 
-    myChatThreadId = currentUserId;
-    currentChatThreadRow = await ensureChatThread(currentUserId, currentUser);
-    unreadChatCount = await computeCustomerUnreadCount(currentUserId, currentChatThreadRow ? currentChatThreadRow.customer_last_read_at : 0);
-    updateChatBadge();
-    updateDocumentTitleUnread(unreadChatCount);
-  }
-
-  if (account.role !== "admin" && pendingLoginIntent) {
-    const intent = pendingLoginIntent;
-    pendingLoginIntent = null;
-    intent();
-  }
+// ---- Thread id + profile lookup ----
+function makeDmThreadId(idA, idB){
+  return [idA, idB].sort().join("::");
 }
 
-async function enterGuestShop(){
-  errorMessage.textContent = "";
-  loginScreen.classList.add("hidden");
-  loginGateMessageEl.classList.add("hidden");
-  adminScreen.classList.add("hidden");
-  shopScreen.classList.remove("hidden");
-  setHeaderGuestState();
-  await renderCatalogue();
-  updateCartBadge();
-}
-
-async function backToLogin(){
-  await supabase.auth.signOut();
-  teardownChatRealtime();
-  teardownRecommendationsRealtime();
-  currentUser = null;
-  currentUserId = null;
-  currentUserProfile = null;
-  closeAccountMenu();
-  adminScreen.classList.add("hidden");
-  await enterGuestShop();
-}
-
-// ===================== Login handling =====================
-async function fetchProfile(userId){
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
-  if (error) {
-    console.error("[Dagoldol] fetchProfile error:", error);
-    return null;
-  }
+async function findProfileByUsername(username){
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username")
+    .ilike("username", username.trim())
+    .maybeSingle();
+  if (error) { console.error("[Dagoldol] findProfileByUsername:", error); return null; }
+  if (!data) console.warn(`[Dagoldol] No profile row returned for username "${username}". If you're sure that account exists, this is almost always a Supabase Row Level Security policy blocking the lookup (RLS silently returns 0 rows instead of an error) — see the profiles SELECT policy.`);
   return data;
 }
 
-loginForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  console.log("[Dagoldol] Login form submitted.");
+// The seller/admin account's username. Update this if the seller's account
+// is ever renamed. Used as the primary lookup for "Message the Seller" so it
+// doesn't depend on the profiles.role value being set/cased exactly right.
+const SELLER_USERNAME = "lorenz";
 
-  if (isHoneypotTripped("login-hp")) return;
+async function getSellerProfile(){
+  if (cachedSellerProfile) return cachedSellerProfile;
 
-  const email = loginEmailInput.value.trim();
-  const password = passwordInput.value;
-  const submitBtn = loginForm.querySelector("button[type='submit']");
-  submitBtn.disabled = true;
+  // Try role="admin" first — this doesn't depend on matching the username
+  // string exactly (whitespace/casing typos in the DB won't break it).
+  const { data: byRole, error: roleError } = await supabase
+    .from("profiles")
+    .select("id, username, role")
+    .ilike("role", "admin")
+    .limit(1)
+    .maybeSingle();
+  if (roleError) console.error("[Dagoldol] getSellerProfile role lookup:", roleError);
 
-  let data, error;
-  try {
-    const result = await supabase.auth.signInWithPassword({ email, password });
-    data = result.data;
-    error = result.error;
-  } catch (err) {
-    console.error("[Dagoldol] signInWithPassword threw an exception:", err);
-    submitBtn.disabled = false;
-    errorMessage.textContent = "Could not reach the server. Check your connection and try again.";
-    return;
-  }
-
-  console.log("[Dagoldol] signInWithPassword result:", { data, error });
-
-  if (error || !data.user) {
-    submitBtn.disabled = false;
-    errorMessage.textContent = "Incorrect email or password. Try again.";
-    errorMessage.classList.remove("shake");
-    void errorMessage.offsetWidth;
-    errorMessage.classList.add("shake");
-    passwordInput.value = "";
-    passwordInput.focus();
-    return;
-  }
-
-  const profile = await fetchProfile(data.user.id);
-  submitBtn.disabled = false;
-
-  console.log("[Dagoldol] fetched profile:", profile);
+  let profile = byRole || null;
 
   if (!profile) {
-    errorMessage.textContent = "Your account isn't fully set up yet. Please contact the shop owner.";
-    await supabase.auth.signOut();
-    return;
+    profile = await findProfileByUsername(SELLER_USERNAME);
   }
 
-  currentUserId = data.user.id;
-  currentUser = profile.username;
-  currentUserProfile = profile;
+  if (!profile) {
+    console.error(`[Dagoldol] Could not find the seller's profile. Tried role="admin" and username "${SELLER_USERNAME}", found neither. Run this in the Supabase SQL editor to check what's actually stored: select id, username, role, length(username) from profiles;`);
+    return null;
+  }
 
-  await supabase.from("activity").insert({
-    id: "LOG-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000),
-    type: "login",
-    username: currentUser,
-    at: Date.now()
-  });
-
-  await enterShop();
-});
-
-logoutBtn.addEventListener("click", backToLogin);
-adminLogoutBtn.addEventListener("click", backToLogin);
-
-// ===================== Sign up handling =====================
-function showSignupCard(){
-  loginCard.classList.add("hidden");
-  signupCard.classList.add("hidden");
-  const forgotCard = document.getElementById("forgot-card");
-  if (forgotCard) forgotCard.classList.add("hidden");
-  signupCard.classList.remove("hidden");
-  loginSuccess.classList.add("hidden");
-  errorMessage.textContent = "";
-  signupEmailInput.focus();
+  cachedSellerProfile = profile;
+  return profile;
 }
 
-function showLoginCard(){
-  signupCard.classList.add("hidden");
-  const forgotCard = document.getElementById("forgot-card");
-  if (forgotCard) forgotCard.classList.add("hidden");
-  loginCard.classList.remove("hidden");
-  signupError.textContent = "";
-  loginEmailInput.focus();
+// ---- Thread + message data layer ----
+async function ensureDmThread(otherId, otherUsername){
+  const threadId = makeDmThreadId(currentUserId, otherId);
+  const { data, error } = await supabase.from("dm_threads").select("*").eq("id", threadId).maybeSingle();
+  if (error) { console.error("[Dagoldol] ensureDmThread:", error); return null; }
+  if (data) return data;
+
+  const now = Date.now();
+  const [aId, bId] = [currentUserId, otherId].sort();
+  const row = {
+    id: threadId,
+    user_a_id: aId,
+    user_a_username: aId === currentUserId ? currentUser : otherUsername,
+    user_b_id: bId,
+    user_b_username: bId === currentUserId ? currentUser : otherUsername,
+    created_at: now,
+    last_message_at: null,
+    last_message_preview: "",
+    user_a_last_read_at: now,
+    user_b_last_read_at: now
+  };
+  const { error: insertError } = await supabase.from("dm_threads").insert(row);
+  if (insertError) { console.error("[Dagoldol] ensureDmThread insert:", insertError); return null; }
+  return row;
 }
 
-function showForgotCard(){
-  loginCard.classList.add("hidden");
-  signupCard.classList.add("hidden");
-  const forgotCard = document.getElementById("forgot-card");
-  if (forgotCard) {
-    forgotCard.classList.remove("hidden");
-    const forgotEmail = document.getElementById("forgot-email");
-    if (forgotEmail) forgotEmail.focus();
-  }
+async function fetchMyDmThreads(){
+  const { data, error } = await supabase
+    .from("dm_threads")
+    .select("*")
+    .or(`user_a_id.eq.${currentUserId},user_b_id.eq.${currentUserId}`)
+    .order("last_message_at", { ascending: false, nullsFirst: false });
+  if (error) { console.error("[Dagoldol] fetchMyDmThreads:", error); return []; }
+  return data || [];
 }
 
-showSignupBtn.addEventListener("click", showSignupCard);
-showLoginBtn.addEventListener("click", showLoginCard);
-const showForgotBtn = document.getElementById("show-forgot");
-const forgotBackBtn = document.getElementById("forgot-back-btn");
-const forgotShowLoginBtn = document.getElementById("forgot-show-login");
-if (showForgotBtn) showForgotBtn.addEventListener("click", showForgotCard);
-if (forgotBackBtn) forgotBackBtn.addEventListener("click", exitLoginScreenToGuestShop);
-if (forgotShowLoginBtn) forgotShowLoginBtn.addEventListener("click", showLoginCard);
+function otherPartyOfThread(thread){
+  return thread.user_a_id === currentUserId
+    ? { id: thread.user_b_id, username: thread.user_b_username }
+    : { id: thread.user_a_id, username: thread.user_a_username };
+}
+function myDmReadField(thread){
+  return thread.user_a_id === currentUserId ? "user_a_last_read_at" : "user_b_last_read_at";
+}
 
-signupForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+function mapDmMessageRow(row){
+  return {
+    id: row.id, threadId: row.thread_id, senderId: row.sender_id,
+    senderUsername: row.sender_username, body: row.body,
+    sentAt: Number(row.sent_at), reactions: row.reactions || {}
+  };
+}
 
-  if (isHoneypotTripped("signup-hp")) return;
+async function fetchDmMessages(threadId){
+  const { data, error } = await supabase.from("dm_messages").select("*").eq("thread_id", threadId).order("sent_at", { ascending: true });
+  if (error) { console.error("[Dagoldol] fetchDmMessages:", error); return []; }
+  return (data || []).map(mapDmMessageRow);
+}
 
-  const newEmail = signupEmailInput.value.trim();
-  const newUsername = signupUsernameInput.value.trim();
-  const newPassword = signupPasswordInput.value;
-  const confirmPassword = signupConfirmInput.value;
+async function sendDmMessage(threadId, body){
+  const sentAt = Date.now();
+  const row = {
+    id: "dm-" + Date.now().toString(36) + Math.floor(Math.random() * 1000),
+    thread_id: threadId, sender_id: currentUserId, sender_username: currentUser,
+    body, sent_at: sentAt, reactions: {}
+  };
+  const { error } = await supabase.from("dm_messages").insert(row);
+  if (error) { console.error("[Dagoldol] sendDmMessage:", error); return null; }
+  await supabase.from("dm_threads").update({ last_message_at: sentAt, last_message_preview: body.slice(0, 80) }).eq("id", threadId);
+  return row;
+}
 
-  if (!newEmail || !newUsername || !newPassword) {
-    signupError.textContent = "Please fill in every field.";
-    return;
-  }
-  if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    signupError.textContent = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
-    return;
-  }
-  if (newPassword !== confirmPassword) {
-    signupError.textContent = "Passwords don't match. Try again.";
-    return;
-  }
+async function markDmThreadRead(threadId, thread){
+  const field = myDmReadField(thread);
+  const now = Date.now();
+  await supabase.from("dm_threads").update({ [field]: now }).eq("id", threadId);
+  thread[field] = now;
+}
 
-  const submitBtn = signupForm.querySelector("button[type='submit']");
-  submitBtn.disabled = true;
+async function computeMyDmUnreadCount(){
+  const threads = await fetchMyDmThreads();
+  return threads.filter(t => {
+    const field = myDmReadField(t);
+    return t.last_message_at && (!t[field] || t.last_message_at > t[field]);
+  }).length;
+}
 
-  const { data, error } = await supabase.auth.signUp({ email: newEmail, password: newPassword });
-  console.log("[Dagoldol] signUp result:", { data, error });
+// ---- Reactions ----
+async function toggleDmReaction(message, emoji){
+  const reactions = {};
+  Object.entries(message.reactions || {}).forEach(([key, uids]) => { reactions[key] = uids.slice(); });
 
-  if (error) {
-    submitBtn.disabled = false;
-    signupError.textContent = error.message || "Could not create that account.";
-    return;
-  }
-
-  if (!data.user) {
-    submitBtn.disabled = false;
-    signupError.textContent = "Check your email to confirm your account, then log in.";
-    return;
-  }
-
-  const { error: profileError } = await supabase.from("profiles").insert({
-    id: data.user.id,
-    username: newUsername,
-    role: "customer",
-    address: null,
-    profile: {},
-    cart: []
+  let hadThisEmoji = false;
+  Object.keys(reactions).forEach(key => {
+    const before = reactions[key].length;
+    reactions[key] = reactions[key].filter(uid => uid !== currentUserId);
+    if (key === emoji && reactions[key].length < before) hadThisEmoji = true;
+    if (!reactions[key].length) delete reactions[key];
   });
-
-  submitBtn.disabled = false;
-
-  if (profileError) {
-    console.error("[Dagoldol] profile insert error:", profileError);
-    signupError.textContent = profileError.message.includes("duplicate")
-      ? "That display name is already taken."
-      : "Account created, but the profile setup failed — please contact the shop owner.";
-    return;
+  if (!hadThisEmoji) {
+    reactions[emoji] = [...(reactions[emoji] || []), currentUserId];
   }
 
-  await supabase.from("activity").insert({
-    id: "LOG-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000),
-    type: "signup",
-    username: newUsername,
-    at: Date.now()
-  });
+  const { error } = await supabase.from("dm_messages").update({ reactions }).eq("id", message.id);
+  if (error) { console.error("[Dagoldol] toggleDmReaction:", error); return; }
+  message.reactions = reactions;
+}
 
-  signupError.textContent = "";
-  signupForm.reset();
-  document.getElementById("signup-pw-strength-fill").style.width = "0%";
-  document.getElementById("signup-pw-strength-label").textContent = "Enter a password";
+// ---- Rendering messages with reactions ----
+function renderDmMessages(containerEl, messages){
+  if (!containerEl) return;
+  containerEl.innerHTML = messages.map(m => {
+    const mine = m.senderId === currentUserId;
+    const chips = Object.entries(m.reactions || {})
+      .filter(([, uids]) => uids.length)
+      .map(([emoji, uids]) => `
+        <button type="button" class="reaction-chip ${uids.includes(currentUserId) ? "reaction-chip-mine" : ""}" data-msg="${m.id}" data-emoji="${emoji}">${emoji} ${uids.length}</button>
+      `).join("");
+    return `
+      <div class="chat-bubble-row ${mine ? "chat-bubble-row-mine" : ""}">
+        <div class="chat-bubble ${mine ? "chat-bubble-mine" : "chat-bubble-theirs"}">
+          <button type="button" class="chat-react-toggle" data-msg="${m.id}" aria-label="React">+</button>
+          <div class="reaction-picker" data-msg="${m.id}">
+            ${REACTION_EMOJIS.map(e => `<button type="button" class="reaction-picker-btn" data-msg="${m.id}" data-emoji="${e}">${e}</button>`).join("")}
+          </div>
+          <p class="chat-bubble-text">${escapeHtml(m.body)}</p>
+          <p class="chat-bubble-meta">${formatChatTime(m.sentAt)}</p>
+        </div>
+        ${chips ? `<div class="reaction-chips ${mine ? "reaction-chips-mine" : ""}">${chips}</div>` : ""}
+      </div>
+    `;
+  }).join("");
+  containerEl.scrollTop = containerEl.scrollHeight;
 
-  showLoginCard();
-  loginEmailInput.value = newEmail;
-  loginSuccess.textContent = "Account created! Log in below to enter the shop.";
-  loginSuccess.classList.remove("hidden");
-  passwordInput.focus();
-});
-
-// ===================== FIX #9: Password reset flow =====================
-const forgotForm = document.getElementById("forgot-form");
-const forgotEmailInput = document.getElementById("forgot-email");
-const forgotError = document.getElementById("forgot-error");
-const forgotSuccess = document.getElementById("forgot-success");
-
-if (forgotForm) {
-  forgotForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (isHoneypotTripped("forgot-hp")) return;
-
-    const email = forgotEmailInput.value.trim();
-    forgotError.textContent = "";
-    forgotSuccess.classList.add("hidden");
-
-    if (!email) { forgotError.textContent = "Please enter your email address."; return; }
-
-    const submitBtn = forgotForm.querySelector("button[type='submit']");
-    submitBtn.disabled = true;
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.location.pathname
+  containerEl.querySelectorAll(".chat-react-toggle").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const picker = containerEl.querySelector(`.reaction-picker[data-msg="${btn.dataset.msg}"]`);
+      containerEl.querySelectorAll(".reaction-picker.open").forEach(p => { if (p !== picker) p.classList.remove("open"); });
+      if (picker) picker.classList.toggle("open");
     });
-
-    submitBtn.disabled = false;
-
-    if (error) console.error("[Dagoldol] resetPasswordForEmail error:", error);
-    forgotSuccess.textContent = "If that email has an account, a reset link is on its way. Check your inbox (and spam folder).";
-    forgotSuccess.classList.remove("hidden");
-    forgotForm.reset();
+  });
+  containerEl.querySelectorAll(".reaction-picker-btn, .reaction-chip").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const msg = currentDmMessages.find(m => m.id === btn.dataset.msg);
+      if (!msg) return;
+      await toggleDmReaction(msg, btn.dataset.emoji);
+      renderDmMessages(containerEl, currentDmMessages);
+    });
   });
 }
-
-const resetCard = document.getElementById("reset-card");
-const resetForm = document.getElementById("reset-form");
-const resetPasswordInput = document.getElementById("reset-password");
-const resetConfirmInput = document.getElementById("reset-confirm");
-const resetError = document.getElementById("reset-error");
-
-if (resetForm) {
-  resetForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const pw = resetPasswordInput.value;
-    const confirm = resetConfirmInput.value;
-    resetError.textContent = "";
-
-    if (pw.length < MIN_PASSWORD_LENGTH) {
-      resetError.textContent = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
-      return;
-    }
-    if (pw !== confirm) {
-      resetError.textContent = "Passwords don't match. Try again.";
-      return;
-    }
-
-    const submitBtn = resetForm.querySelector("button[type='submit']");
-    submitBtn.disabled = true;
-    const { error } = await supabase.auth.updateUser({ password: pw });
-    submitBtn.disabled = false;
-
-    if (error) {
-      resetError.textContent = error.message || "Could not update your password. The reset link may have expired — request a new one.";
-      return;
-    }
-
-    resetCard.classList.add("hidden");
-    showLoginCard();
-    loginSuccess.textContent = "Password updated! Log in with your new password.";
-    loginSuccess.classList.remove("hidden");
-  });
-}
-
-supabase.auth.onAuthStateChange((event) => {
-  if (event === "PASSWORD_RECOVERY") {
-    loginScreen.classList.remove("hidden");
-    shopScreen.classList.add("hidden");
-    adminScreen.classList.add("hidden");
-    loginCard.classList.add("hidden");
-    signupCard.classList.add("hidden");
-    const forgotCardEl = document.getElementById("forgot-card");
-    if (forgotCardEl) forgotCardEl.classList.add("hidden");
-    if (resetCard) resetCard.classList.remove("hidden");
-    if (resetPasswordInput) resetPasswordInput.focus();
-  }
+document.addEventListener("click", () => {
+  document.querySelectorAll(".reaction-picker.open").forEach(p => p.classList.remove("open"));
 });
+
+// ---- Presence ----
+function isUserOnline(userId){
+  return !!(presenceState[userId] && presenceState[userId].length);
+}
+function isUserTypingInThread(userId, threadId){
+  const entries = presenceState[userId] || [];
+  return entries.some(p => p.typing && p.activeThread === threadId);
+}
+function setDmTyping(typing){
+  if (!presenceChannel || !currentDmThread) return;
+  presenceChannel.track({ username: currentUser, typing, activeThread: currentDmThread.id });
+}
+
+function initPresenceGeneric(){
+  if (presenceChannel) supabase.removeChannel(presenceChannel);
+  presenceChannel = supabase.channel(CHAT_PRESENCE_CHANNEL_NAME, { config: { presence: { key: currentUserId } } });
+  presenceChannel.on("presence", { event: "sync" }, () => {
+    presenceState = presenceChannel.presenceState();
+    renderDmThreadList();
+    if (currentDmThread) {
+      const other = otherPartyOfThread(currentDmThread);
+      const dot = document.getElementById("dm-online-dot");
+      if (dot) dot.className = isUserOnline(other.id) ? "online-dot" : "offline-dot";
+      const typingEl = document.getElementById("dm-typing-indicator");
+      if (typingEl) typingEl.classList.toggle("hidden", !isUserTypingInThread(other.id, currentDmThread.id));
+    }
+  });
+  presenceChannel.subscribe(async (status) => {
+    if (status === "SUBSCRIBED") await presenceChannel.track({ username: currentUser, typing: false, activeThread: null });
+  });
+}
+
+// ---- Thread list + conversation panel ----
+async function refreshDmThreadList(){
+  dmThreadsCache = await fetchMyDmThreads();
+  renderDmThreadList();
+}
+
+function renderDmThreadList(){
+  const listEl = document.getElementById("chat-threads-inner");
+  if (!listEl) return;
+  if (!dmThreadsCache.length) {
+    listEl.innerHTML = buildEmptyState(EMPTY_ICON_CHAT, "No conversations yet", "Start one above by entering a username.");
+    return;
+  }
+  listEl.innerHTML = dmThreadsCache.map(t => {
+    const other = otherPartyOfThread(t);
+    const field = myDmReadField(t);
+    const unread = t.last_message_at && (!t[field] || t.last_message_at > t[field]);
+    const active = currentDmThread && currentDmThread.id === t.id;
+    return `
+      <button type="button" class="admin-chat-thread-item ${active ? "active" : ""}" data-thread="${t.id}">
+        <span class="${isUserOnline(other.id) ? "online-dot" : "offline-dot"}"></span>
+        <span class="admin-chat-thread-name">${escapeHtml(other.username)}</span>
+        ${unread ? `<span class="admin-chat-thread-badge">•</span>` : ""}
+        <span class="admin-chat-thread-preview">${escapeHtml((t.last_message_preview || "").slice(0, 40))}</span>
+      </button>
+    `;
+  }).join("");
+  listEl.querySelectorAll("[data-thread]").forEach(btn => {
+    btn.addEventListener("click", () => openDmThreadById(btn.dataset.thread));
+  });
+}
+
+async function openDmThreadById(threadId){
+  const thread = dmThreadsCache.find(t => t.id === threadId);
+  if (!thread) return;
+  currentDmThread = thread;
+  currentDmMessages = await fetchDmMessages(threadId);
+  renderDmConversationPanel();
+  await markDmThreadRead(threadId, thread);
+  unreadChatCount = await computeMyDmUnreadCount();
+  updateChatBadge();
+  updateDocumentTitleUnread(unreadChatCount);
+  renderDmThreadList();
+}
+
+function renderDmConversationPanel(){
+  const panel = document.getElementById("chat-conversation-panel");
+  if (!panel) return;
+  if (!currentDmThread) { panel.innerHTML = `<p class="admin-empty">Select a conversation, or start a new one.</p>`; return; }
+  const other = otherPartyOfThread(currentDmThread);
+  panel.innerHTML = `
+    <div class="chat-conversation-header">
+      <span id="dm-online-dot" class="${isUserOnline(other.id) ? "online-dot" : "offline-dot"}"></span>
+      <span>${escapeHtml(other.username)}</span>
+    </div>
+    <div class="chat-messages-list" id="dm-messages-list"></div>
+    <p class="chat-typing-indicator hidden" id="dm-typing-indicator">${escapeHtml(other.username)} is typing…</p>
+    <form class="chat-input-row" id="dm-form">
+      <input type="text" id="dm-input" placeholder="Type a message…" maxlength="2000" autocomplete="off">
+      <button type="submit" class="btn-primary" style="width:auto;">Send</button>
+    </form>
+  `;
+  renderDmMessages(document.getElementById("dm-messages-list"), currentDmMessages);
+
+  document.getElementById("dm-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("dm-input");
+    const body = input.value.trim();
+    if (!body) return;
+    input.value = "";
+    setDmTyping(false);
+    const row = await sendDmMessage(currentDmThread.id, body);
+    if (row) {
+      currentDmMessages.push(mapDmMessageRow(row));
+      renderDmMessages(document.getElementById("dm-messages-list"), currentDmMessages);
+    }
+  });
+  document.getElementById("dm-input").addEventListener("input", () => {
+    setDmTyping(true);
+    clearTimeout(dmTypingDebounce);
+    dmTypingDebounce = setTimeout(() => setDmTyping(false), 2000);
+  });
+}
+
+function updateChatBadge(){
+  if (chatCountBadge) {
+    chatCountBadge.textContent = unreadChatCount;
+    chatCountBadge.classList.toggle("hidden", unreadChatCount === 0);
+  }
+  if (adminChatCountBadge) {
+    adminChatCountBadge.textContent = unreadChatCount;
+    adminChatCountBadge.classList.toggle("hidden", unreadChatCount === 0);
+  }
+}
+
+function updateDocumentTitleUnread(count){
+  document.title = count > 0 ? `(${count}) ${DOCUMENT_TITLE_BASE}` : DOCUMENT_TITLE_BASE;
+}
+
+function showChatNotification(title, body){
+  if (typeof Notification === "undefined") return;
+  if (Notification.permission === "granted" && document.hidden) {
+    try { new Notification(title, { body }); } catch (err) { /* ignore */ }
+  }
+}
+
+// ---- People you may know (random friend suggestions) ----
+const SUGGESTIONS_COUNT = 5;
+const SUGGESTIONS_POOL_SIZE = 60;
+let suggestedPeopleCache = [];
+
+function shuffleArray(arr){
+  const copy = arr.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+async function fetchSuggestedPeople(){
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username")
+    .neq("id", currentUserId)
+    .limit(SUGGESTIONS_POOL_SIZE);
+  if (error) { console.error("[Dagoldol] fetchSuggestedPeople:", error); return []; }
+
+  const alreadyContacted = new Set(dmThreadsCache.map(t => otherPartyOfThread(t).id));
+  const pool = (data || []).filter(p => p.id !== currentUserId && !alreadyContacted.has(p.id));
+  return shuffleArray(pool).slice(0, SUGGESTIONS_COUNT);
+}
+
+async function refreshSuggestedPeople(){
+  suggestedPeopleCache = await fetchSuggestedPeople();
+  renderSuggestedPeople();
+}
+
+function renderSuggestedPeople(){
+  const listEl = document.getElementById("chat-suggestions-inner");
+  if (!listEl) return;
+  if (!suggestedPeopleCache.length) {
+    listEl.innerHTML = `<p class="suggestions-empty">No new people to suggest right now.</p>`;
+    return;
+  }
+  listEl.innerHTML = suggestedPeopleCache.map(p => `
+    <div class="suggestion-item" data-user="${p.id}">
+      <span class="suggestion-avatar">${escapeHtml((p.username || "?").trim().charAt(0).toUpperCase() || "?")}</span>
+      <span class="suggestion-name">${escapeHtml(p.username)}</span>
+      <button type="button" class="btn-secondary suggestion-add-btn" data-id="${p.id}" data-username="${escapeHtml(p.username)}">Message</button>
+    </div>
+  `).join("");
+
+  listEl.querySelectorAll(".suggestion-add-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const thread = await ensureDmThread(btn.dataset.id, btn.dataset.username);
+      btn.disabled = false;
+      if (!thread) { showToast("Could not start that chat. Please try again."); return; }
+      suggestedPeopleCache = suggestedPeopleCache.filter(p => p.id !== btn.dataset.id);
+      renderSuggestedPeople();
+      await refreshDmThreadList();
+      await openDmThreadById(thread.id);
+    });
+  });
+}
+
+async function openChatModal2(){
+  if (!currentUserId) return;
+  if (chatNewUsernameInput) chatNewUsernameInput.value = "";
+  if (chatNewErrorEl) chatNewErrorEl.textContent = "";
+  currentDmThread = null;
+  renderDmConversationPanel();
+  await refreshDmThreadList();
+  await refreshSuggestedPeople();
+  openModalAccessible(chatModal, chatNewUsernameInput);
+}
+
+if (chatNewStartBtn) {
+  chatNewStartBtn.addEventListener("click", async () => {
+    const username = chatNewUsernameInput.value.trim();
+    chatNewErrorEl.textContent = "";
+    if (!username) { chatNewErrorEl.textContent = "Enter a username."; return; }
+    if (username.toLowerCase() === (currentUser || "").toLowerCase()) { chatNewErrorEl.textContent = "You can't chat with yourself."; return; }
+
+    const profile = await findProfileByUsername(username);
+    if (!profile) { chatNewErrorEl.textContent = `No user found with the username "${username}".`; return; }
+
+    const thread = await ensureDmThread(profile.id, profile.username);
+    if (!thread) { chatNewErrorEl.textContent = "Could not start that chat — check the browser console (F12). This usually means the dm_threads/dm_messages tables haven't been created in Supabase yet."; return; }
+
+    chatNewUsernameInput.value = "";
+    suggestedPeopleCache = suggestedPeopleCache.filter(p => p.id !== profile.id);
+    renderSuggestedPeople();
+    await refreshDmThreadList();
+    await openDmThreadById(thread.id);
+  });
+}
+
+if (chatMessageSellerBtn) {
+  chatMessageSellerBtn.addEventListener("click", async () => {
+    const seller = await getSellerProfile();
+    if (!seller) {
+      showToast("Could not find the seller's account — check the browser console (F12) for details, or that your Supabase profiles table allows this lookup.");
+      return;
+    }
+    if (seller.id === currentUserId) {
+      showToast("You're logged in as the seller — there's no one to message. Log in as a customer account to test this.");
+      return;
+    }
+    const thread = await ensureDmThread(seller.id, seller.username);
+    if (!thread) {
+      showToast("Could not start that chat — check the browser console (F12). This usually means the dm_threads/dm_messages tables haven't been created in Supabase yet.");
+      return;
+    }
+    suggestedPeopleCache = suggestedPeopleCache.filter(p => p.id !== seller.id);
+    renderSuggestedPeople();
+    await refreshDmThreadList();
+    await openDmThreadById(thread.id);
+  });
+}
+
+if (chatBtn) chatBtn.addEventListener("click", () => requireLogin(openChatModal2, "Log in to chat."));
+if (adminChatBtn) adminChatBtn.addEventListener("click", openChatModal2);
+if (chatModalClose) chatModalClose.addEventListener("click", () => closeModalAccessible(chatModal));
+if (chatModal) chatModal.addEventListener("click", (e) => { if (e.target === chatModal) closeModalAccessible(chatModal); });
+
+// ---- Realtime ----
+function subscribeDmRealtime(){
+  if (chatMessagesChannel) supabase.removeChannel(chatMessagesChannel);
+  chatMessagesChannel = supabase
+    .channel("dm-messages-changes")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "dm_messages" }, async (payload) => {
+      const msg = mapDmMessageRow(payload.new);
+      if (currentDmThread && msg.threadId === currentDmThread.id) {
+        if (!currentDmMessages.some(m => m.id === msg.id)) currentDmMessages.push(msg);
+        renderDmMessages(document.getElementById("dm-messages-list"), currentDmMessages);
+        if (msg.senderId !== currentUserId) await markDmThreadRead(currentDmThread.id, currentDmThread);
+      } else if (msg.senderId !== currentUserId) {
+        unreadChatCount += 1;
+        updateChatBadge();
+        updateDocumentTitleUnread(unreadChatCount);
+        showChatNotification(msg.senderUsername, msg.body);
+        showToast(`New message from ${msg.senderUsername}: ${msg.body}`);
+      }
+      await refreshDmThreadList();
+    })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "dm_messages" }, (payload) => {
+      const updated = mapDmMessageRow(payload.new);
+      const idx = currentDmMessages.findIndex(m => m.id === updated.id);
+      if (idx > -1) {
+        currentDmMessages[idx] = updated;
+        renderDmMessages(document.getElementById("dm-messages-list"), currentDmMessages);
+      }
+    })
+    .subscribe();
+
+  if (chatThreadsChannel) supabase.removeChannel(chatThreadsChannel);
+  chatThreadsChannel = supabase
+    .channel("dm-threads-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "dm_threads" }, () => refreshDmThreadList())
+    .subscribe();
+}
+
+function teardownChatRealtime(){
+  if (presenceChannel) { supabase.removeChannel(presenceChannel); presenceChannel = null; }
+  if (chatMessagesChannel) { supabase.removeChannel(chatMessagesChannel); chatMessagesChannel = null; }
+  if (chatThreadsChannel) { supabase.removeChannel(chatThreadsChannel); chatThreadsChannel = null; }
+  presenceState = {};
+  currentDmThread = null;
+  currentDmMessages = [];
+  dmThreadsCache = [];
+  unreadChatCount = 0;
+  updateDocumentTitleUnread(0);
+}
 
 // =====================================================================
 // ===================== ADMIN DASHBOARD ===============================
@@ -3710,7 +3415,6 @@ const adminTabPanels = {
   brands: document.getElementById("admin-tab-brands"),
   "flash-sales": document.getElementById("admin-tab-flash-sales"),
   promos: document.getElementById("admin-tab-promos"),
-  chat: document.getElementById("admin-tab-chat"),
   messages: document.getElementById("admin-tab-messages"),
   accounts: document.getElementById("admin-tab-accounts"),
   analytics: document.getElementById("admin-tab-analytics"),
@@ -3731,7 +3435,6 @@ adminTabButtons.forEach(btn => {
     else if (tab === "brands") await renderAdminBrands();
     else if (tab === "flash-sales") await renderAdminFlashSales();
     else if (tab === "promos") await renderAdminPromos();
-    else if (tab === "chat") await renderAdminChat();
     else if (tab === "messages") await renderAdminMessages();
     else if (tab === "accounts") await renderAdminAccounts();
     else if (tab === "analytics") await renderAdminAnalytics();
@@ -5370,6 +5073,369 @@ async function initSession(){
   currentUserProfile = profile;
   await enterShop();
 }
+
+// ===================== Enter the shop (or the admin dashboard) =====================
+async function enterShop(){
+  const account = currentUserProfile;
+
+  errorMessage.textContent = "";
+  loginScreen.classList.add("hidden");
+  loginGateMessageEl.classList.add("hidden");
+  loginForm.reset();
+  signupForm.reset();
+
+  if (account.role === "admin") {
+    shopScreen.classList.add("hidden");
+    adminWelcomeName.textContent = currentUser;
+    adminScreen.classList.remove("hidden");
+    await Promise.all([
+      renderAdminOrders(),
+      renderAdminProducts(),
+      renderAdminBundles(),
+      renderAdminBrands(),
+      renderAdminFlashSales(),
+      renderAdminPromos(),
+      renderAdminMessages(),
+      renderAdminActivity(),
+      renderAdminAnalytics(),
+      renderAdminSettings()
+    ]);
+    await renderAdminAccounts();
+
+    initPresenceGeneric();
+    subscribeDmRealtime();
+    unreadChatCount = await computeMyDmUnreadCount();
+    updateChatBadge();
+    updateDocumentTitleUnread(unreadChatCount);
+  } else {
+    adminScreen.classList.add("hidden");
+    const profile = account.profile || {};
+    await mergeGuestCartIntoProfile();
+    setHeaderCustomerState(profile.name || currentUser, profile.avatar || null);
+    shopScreen.classList.remove("hidden");
+    await renderCatalogue();
+    updateCartBadge();
+
+    initPresenceGeneric();
+    subscribeDmRealtime();
+
+    recsLastRefreshAt = Date.now();
+    subscribeRecommendationsRealtime();
+
+    unreadChatCount = await computeMyDmUnreadCount();
+    updateChatBadge();
+    updateDocumentTitleUnread(unreadChatCount);
+  }
+
+  if (account.role !== "admin" && pendingLoginIntent) {
+    const intent = pendingLoginIntent;
+    pendingLoginIntent = null;
+    intent();
+  }
+}
+
+async function enterGuestShop(){
+  errorMessage.textContent = "";
+  loginScreen.classList.add("hidden");
+  loginGateMessageEl.classList.add("hidden");
+  adminScreen.classList.add("hidden");
+  shopScreen.classList.remove("hidden");
+  setHeaderGuestState();
+  await renderCatalogue();
+  updateCartBadge();
+}
+
+async function backToLogin(){
+  await supabase.auth.signOut();
+  teardownChatRealtime();
+  teardownRecommendationsRealtime();
+  currentUser = null;
+  currentUserId = null;
+  currentUserProfile = null;
+  closeAccountMenu();
+  adminScreen.classList.add("hidden");
+  await enterGuestShop();
+}
+
+// ===================== Login handling =====================
+async function fetchProfile(userId){
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+  if (error) {
+    console.error("[Dagoldol] fetchProfile error:", error);
+    return null;
+  }
+  return data;
+}
+
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  console.log("[Dagoldol] Login form submitted.");
+
+  if (isHoneypotTripped("login-hp")) return;
+
+  const email = loginEmailInput.value.trim();
+  const password = passwordInput.value;
+  const submitBtn = loginForm.querySelector("button[type='submit']");
+  submitBtn.disabled = true;
+
+  let data, error;
+  try {
+    const result = await supabase.auth.signInWithPassword({ email, password });
+    data = result.data;
+    error = result.error;
+  } catch (err) {
+    console.error("[Dagoldol] signInWithPassword threw an exception:", err);
+    submitBtn.disabled = false;
+    errorMessage.textContent = "Could not reach the server. Check your connection and try again.";
+    return;
+  }
+
+  console.log("[Dagoldol] signInWithPassword result:", { data, error });
+
+  if (error || !data.user) {
+    submitBtn.disabled = false;
+    errorMessage.textContent = "Incorrect email or password. Try again.";
+    errorMessage.classList.remove("shake");
+    void errorMessage.offsetWidth;
+    errorMessage.classList.add("shake");
+    passwordInput.value = "";
+    passwordInput.focus();
+    return;
+  }
+
+  const profile = await fetchProfile(data.user.id);
+  submitBtn.disabled = false;
+
+  console.log("[Dagoldol] fetched profile:", profile);
+
+  if (!profile) {
+    errorMessage.textContent = "Your account isn't fully set up yet. Please contact the shop owner.";
+    await supabase.auth.signOut();
+    return;
+  }
+
+  currentUserId = data.user.id;
+  currentUser = profile.username;
+  currentUserProfile = profile;
+
+  await supabase.from("activity").insert({
+    id: "LOG-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000),
+    type: "login",
+    username: currentUser,
+    at: Date.now()
+  });
+
+  await enterShop();
+});
+
+logoutBtn.addEventListener("click", backToLogin);
+adminLogoutBtn.addEventListener("click", backToLogin);
+
+// ===================== Sign up handling =====================
+function showSignupCard(){
+  loginCard.classList.add("hidden");
+  signupCard.classList.add("hidden");
+  const forgotCard = document.getElementById("forgot-card");
+  if (forgotCard) forgotCard.classList.add("hidden");
+  signupCard.classList.remove("hidden");
+  loginSuccess.classList.add("hidden");
+  errorMessage.textContent = "";
+  signupEmailInput.focus();
+}
+
+function showLoginCard(){
+  signupCard.classList.add("hidden");
+  const forgotCard = document.getElementById("forgot-card");
+  if (forgotCard) forgotCard.classList.add("hidden");
+  loginCard.classList.remove("hidden");
+  signupError.textContent = "";
+  loginEmailInput.focus();
+}
+
+function showForgotCard(){
+  loginCard.classList.add("hidden");
+  signupCard.classList.add("hidden");
+  const forgotCard = document.getElementById("forgot-card");
+  if (forgotCard) {
+    forgotCard.classList.remove("hidden");
+    const forgotEmail = document.getElementById("forgot-email");
+    if (forgotEmail) forgotEmail.focus();
+  }
+}
+
+showSignupBtn.addEventListener("click", showSignupCard);
+showLoginBtn.addEventListener("click", showLoginCard);
+const showForgotBtn = document.getElementById("show-forgot");
+const forgotBackBtn = document.getElementById("forgot-back-btn");
+const forgotShowLoginBtn = document.getElementById("forgot-show-login");
+if (showForgotBtn) showForgotBtn.addEventListener("click", showForgotCard);
+if (forgotBackBtn) forgotBackBtn.addEventListener("click", exitLoginScreenToGuestShop);
+if (forgotShowLoginBtn) forgotShowLoginBtn.addEventListener("click", showLoginCard);
+
+signupForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (isHoneypotTripped("signup-hp")) return;
+
+  const newEmail = signupEmailInput.value.trim();
+  const newUsername = signupUsernameInput.value.trim();
+  const newPassword = signupPasswordInput.value;
+  const confirmPassword = signupConfirmInput.value;
+
+  if (!newEmail || !newUsername || !newPassword) {
+    signupError.textContent = "Please fill in every field.";
+    return;
+  }
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    signupError.textContent = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    signupError.textContent = "Passwords don't match. Try again.";
+    return;
+  }
+
+  const submitBtn = signupForm.querySelector("button[type='submit']");
+  submitBtn.disabled = true;
+
+  const { data, error } = await supabase.auth.signUp({ email: newEmail, password: newPassword });
+  console.log("[Dagoldol] signUp result:", { data, error });
+
+  if (error) {
+    submitBtn.disabled = false;
+    signupError.textContent = error.message || "Could not create that account.";
+    return;
+  }
+
+  if (!data.user) {
+    submitBtn.disabled = false;
+    signupError.textContent = "Check your email to confirm your account, then log in.";
+    return;
+  }
+
+  const { error: profileError } = await supabase.from("profiles").insert({
+    id: data.user.id,
+    username: newUsername,
+    role: "customer",
+    address: null,
+    profile: {},
+    cart: []
+  });
+
+  submitBtn.disabled = false;
+
+  if (profileError) {
+    console.error("[Dagoldol] profile insert error:", profileError);
+    signupError.textContent = profileError.message.includes("duplicate")
+      ? "That display name is already taken."
+      : "Account created, but the profile setup failed — please contact the shop owner.";
+    return;
+  }
+
+  await supabase.from("activity").insert({
+    id: "LOG-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000),
+    type: "signup",
+    username: newUsername,
+    at: Date.now()
+  });
+
+  signupError.textContent = "";
+  signupForm.reset();
+  document.getElementById("signup-pw-strength-fill").style.width = "0%";
+  document.getElementById("signup-pw-strength-label").textContent = "Enter a password";
+
+  showLoginCard();
+  loginEmailInput.value = newEmail;
+  loginSuccess.textContent = "Account created! Log in below to enter the shop.";
+  loginSuccess.classList.remove("hidden");
+  passwordInput.focus();
+});
+
+// ===================== FIX #9: Password reset flow =====================
+const forgotForm = document.getElementById("forgot-form");
+const forgotEmailInput = document.getElementById("forgot-email");
+const forgotError = document.getElementById("forgot-error");
+const forgotSuccess = document.getElementById("forgot-success");
+
+if (forgotForm) {
+  forgotForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (isHoneypotTripped("forgot-hp")) return;
+
+    const email = forgotEmailInput.value.trim();
+    forgotError.textContent = "";
+    forgotSuccess.classList.add("hidden");
+
+    if (!email) { forgotError.textContent = "Please enter your email address."; return; }
+
+    const submitBtn = forgotForm.querySelector("button[type='submit']");
+    submitBtn.disabled = true;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+
+    submitBtn.disabled = false;
+
+    if (error) console.error("[Dagoldol] resetPasswordForEmail error:", error);
+    forgotSuccess.textContent = "If that email has an account, a reset link is on its way. Check your inbox (and spam folder).";
+    forgotSuccess.classList.remove("hidden");
+    forgotForm.reset();
+  });
+}
+
+const resetCard = document.getElementById("reset-card");
+const resetForm = document.getElementById("reset-form");
+const resetPasswordInput = document.getElementById("reset-password");
+const resetConfirmInput = document.getElementById("reset-confirm");
+const resetError = document.getElementById("reset-error");
+
+if (resetForm) {
+  resetForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = resetPasswordInput.value;
+    const confirm = resetConfirmInput.value;
+    resetError.textContent = "";
+
+    if (pw.length < MIN_PASSWORD_LENGTH) {
+      resetError.textContent = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+      return;
+    }
+    if (pw !== confirm) {
+      resetError.textContent = "Passwords don't match. Try again.";
+      return;
+    }
+
+    const submitBtn = resetForm.querySelector("button[type='submit']");
+    submitBtn.disabled = true;
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    submitBtn.disabled = false;
+
+    if (error) {
+      resetError.textContent = error.message || "Could not update your password. The reset link may have expired — request a new one.";
+      return;
+    }
+
+    resetCard.classList.add("hidden");
+    showLoginCard();
+    loginSuccess.textContent = "Password updated! Log in with your new password.";
+    loginSuccess.classList.remove("hidden");
+  });
+}
+
+supabase.auth.onAuthStateChange((event) => {
+  if (event === "PASSWORD_RECOVERY") {
+    loginScreen.classList.remove("hidden");
+    shopScreen.classList.add("hidden");
+    adminScreen.classList.add("hidden");
+    loginCard.classList.add("hidden");
+    signupCard.classList.add("hidden");
+    const forgotCardEl = document.getElementById("forgot-card");
+    if (forgotCardEl) forgotCardEl.classList.add("hidden");
+    if (resetCard) resetCard.classList.remove("hidden");
+    if (resetPasswordInput) resetPasswordInput.focus();
+  }
+});
 
 initSession();
 
