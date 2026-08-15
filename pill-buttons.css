@@ -30,7 +30,6 @@
 .admin-btn-edit,
 .admin-btn-danger,
 .admin-status-btn,
-.password-toggle-btn,
 .promo-apply-btn{
   position: relative;
   overflow: hidden;
@@ -46,7 +45,6 @@
 .admin-btn-edit::before,
 .admin-btn-danger::before,
 .admin-status-btn::before,
-.password-toggle-btn::before,
 .promo-apply-btn::before{
   content: "";
   position: absolute;
@@ -72,7 +70,6 @@
 .admin-btn-edit,
 .admin-btn-danger,
 .admin-status-btn,
-.password-toggle-btn,
 .promo-apply-btn{
   transition: color var(--pill-anim-duration) var(--pill-anim-ease),
               border-color 0.18s ease,
@@ -90,7 +87,6 @@
 .admin-btn-edit:hover::before,   .admin-btn-edit:focus-visible::before,
 .admin-btn-danger:hover::before, .admin-btn-danger:focus-visible::before,
 .admin-status-btn:hover::before, .admin-status-btn:focus-visible::before,
-.password-toggle-btn:hover::before, .password-toggle-btn:focus-visible::before,
 .promo-apply-btn:hover::before,     .promo-apply-btn:focus-visible::before{
   transform: translateX(-50%) scale(1);
 }
@@ -140,11 +136,12 @@
 .admin-btn-danger:hover,
 .admin-btn-danger:focus-visible{ color: #fff; border-color: var(--rust); }
 
-/* Small utility buttons (password show/hide, apply promo) */
-.password-toggle-btn::before,
+/* Small utility button: promo apply. Password show/hide keeps the
+   absolute-positioned control defined in style.css and intentionally does
+   not participate in the expanding pill animation. */
 .promo-apply-btn::before{ background: var(--brass); }
-.password-toggle-btn:hover,   .password-toggle-btn:focus-visible,
-.promo-apply-btn:hover,       .promo-apply-btn:focus-visible{
+.promo-apply-btn:hover,
+.promo-apply-btn:focus-visible{
   color: #fff;
   border-color: var(--brass);
 }
@@ -175,7 +172,6 @@
   .admin-btn-edit::before,
   .admin-btn-danger::before,
   .admin-status-btn::before,
-  .password-toggle-btn::before,
   .promo-apply-btn::before{
     transition-duration: 0.001ms;
   }
