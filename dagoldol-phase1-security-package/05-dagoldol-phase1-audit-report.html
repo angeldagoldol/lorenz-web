@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Dagoldol Phase 1 Security Audit</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Dagoldol Phase 1 Security Audit</h1>
+</header>
+<h1 id="dagoldol-phase-1-coverage-architecture-security-rls">Dagoldol
+Phase 1 — Coverage, Architecture, Security &amp; RLS</h1>
+<p>Status: <strong>Partial production-readiness audit</strong>. The
+frontend source is newer than the supplied Supabase schema export, so
+modern-table and Storage policy claims remain blocked until the live
+export is collected with
+<code>03-dagoldol-phase1-source-gap-export.sql</code>.</p>
+<h2 id="executive-summary">Executive summary</h2>
+<ul>
+<li>Biggest architecture issue: the single <code>script.js</code> IIFE
+mixes DOM rendering, shared state, Supabase data access, client business
+calculations, Realtime, uploads, admin CRUD, bundles, promotions,
+checkout, and chat. Vanilla ES modules are sufficient; a framework
+migration is not justified by the inspected code.</li>
+<li>Biggest security issue: the supplied <code>profiles</code> UPDATE
+policy lets a user update their entire own row while <code>role</code>
+accepts <code>customer</code> or <code>admin</code>. This creates a
+privilege-escalation path unless DB-side role immutability exists in
+production.</li>
+<li>Most dangerous remaining issue: checkout persists client-calculated
+prices, discount, fees, totals and payment fields; stock decrement,
+order INSERT and promo usage occur across separate client/database
+operations.</li>
+<li>KEEP: Supabase Auth/session use, RLS as the intended authorization
+boundary, escaped HTML helpers, the move toward atomic stock RPCs, and
+the existing restrictive script CSP direction.</li>
+<li>Direction: apply the source-grounded DB guard first, export the live
+schema/policies/functions/storage config, then replace
+browser-authoritative checkout with one transactional server command.
+Modularize Admin → Bundles after its real schema/RLS is known.</li>
+</ul>
+<h2 id="step-1-audit-coverage">Step 1 — Audit coverage</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Source</th>
+<th>Inspected</th>
+<th>Major areas covered</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>index.html</code></td>
+<td>Yes</td>
+<td>CSP, authentication UI, catalogue, checkout, payment proof, admin
+tabs, chat DOM</td>
+</tr>
+<tr class="even">
+<td><code>style.css</code></td>
+<td>Yes</td>
+<td>active styles, repeated responsive blocks, late overrides, hidden
+sticker system</td>
+</tr>
+<tr class="odd">
+<td><code>script.js</code></td>
+<td>Partial but substantial</td>
+<td>Auth/session, products, bundles, promos, checkout, stock RPC calls,
+orders, ratings, uploads, chat, admin</td>
+</tr>
+<tr class="even">
+<td>Supabase schema</td>
+<td>Yes, but stale vs JS</td>
+<td>profiles/products/orders/messages/activity/ratings and policies</td>
+</tr>
+<tr class="odd">
+<td>RLS policies</td>
+<td>Partial</td>
+<td>only policies present in supplied old export</td>
+</tr>
+<tr class="even">
+<td>Storage policies</td>
+<td>No</td>
+<td>no storage.buckets/storage.objects export supplied</td>
+</tr>
+</tbody>
+</table>
+<h3 id="verified-facts">Verified facts</h3>
+<ol type="1">
+<li><code>script.js</code> uses a single Supabase client inside one IIFE
+and contains most application concerns.</li>
+<li>Current JS expects modern DB objects/columns absent from the
+supplied schema: <code>settings</code>, <code>brands</code>,
+<code>bundles</code>, <code>flash_sales</code>,
+<code>promo_codes</code>, DM tables, modern product fields, modern order
+payment/promo fields, and stock RPCs.</li>
+<li><code>profiles.role</code> is privilege-bearing because the UI
+enters admin mode when the loaded profile role is
+<code>admin</code>.</li>
+<li>Supplied profile UPDATE RLS is row-owner/admin based but does not
+make <code>role</code> immutable.</li>
+<li>Current checkout constructs the complete order row in the browser,
+decrements stock by RPC, inserts the order, restores stock if insert
+fails, then increments promo usage separately.</li>
+<li>Current customer order actions directly UPDATE
+<code>cancelled</code> and <code>rated</code>; admin directly UPDATEs
+<code>status_override</code>.</li>
+<li>Current rating insertion writes only <code>product_id</code> and
+<code>value</code>; it is not transactionally tied to an owned
+order.</li>
+<li>Current payment proof uploads use Supabase Storage and obtain a
+public URL; Storage bucket privacy/RLS is not supplied.</li>
+<li>Current HTML CSP has
+<code>script-src 'self' https://cdn.jsdelivr.net</code> and
+<code>style-src 'self' 'unsafe-inline' https://fonts.googleapis.com</code>;
+inline style attributes/templates exist, so removing
+<code>unsafe-inline</code> immediately would break current styling.</li>
+<li>Guest catalogue browsing is an explicit product behavior, while the
+supplied old <code>products</code> SELECT policy only permits
+authenticated sessions.</li>
+</ol>
+<h3 id="missing-evidence-and-blocked-fixes">Missing evidence and blocked
+fixes</h3>
+<ul>
+<li>Current live DDL + constraints + grants for <code>orders</code>,
+<code>products</code>, <code>settings</code>, <code>brands</code>,
+<code>bundles</code>, <code>flash_sales</code>,
+<code>promo_codes</code>, <code>dm_threads</code>,
+<code>dm_messages</code>.</li>
+<li>Current complete <code>pg_policies</code> export.</li>
+<li>Definitions/privileges for <code>decrement_stock_for_order</code>
+and <code>restore_stock_for_order</code>.</li>
+<li><code>storage.buckets</code> rows and every
+<code>storage.objects</code> policy.</li>
+<li>Current <code>delete-auth-user</code> Edge Function
+implementation.</li>
+<li>Exact full raw current <code>script.js</code> in a directly writable
+workspace if a complete byte-preserving frontend replacement is
+required.</li>
+</ul>
+<p>These gaps block the final server-authoritative checkout RPC, atomic
+stock/order/promo transaction, atomic cancellation/restock operation,
+ratings persistence redesign, DM policies, bundle policies, promotion
+policies, settings policies, and Storage policies.</p>
+<h2 id="step-2-current-system-map">Step 2 — Current system map</h2>
+<p>Architecture: <strong>DOM/UI → shared IIFE state → client business
+logic → Supabase JS calls → Postgres / Storage / Realtime</strong>.</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Feature</th>
+<th>HTML</th>
+<th>JS</th>
+<th>Supabase</th>
+<th>Architectural concern</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Auth</td>
+<td>login/signup/reset cards</td>
+<td>session/login/signup/reset handlers</td>
+<td>Auth + profiles</td>
+<td>admin decision depends on mutable profile role under supplied
+RLS</td>
+</tr>
+<tr class="even">
+<td>Catalogue</td>
+<td><code>#catalogue</code></td>
+<td>product loaders/renderers</td>
+<td>products</td>
+<td>guest UI vs old authenticated-only SELECT policy</td>
+</tr>
+<tr class="odd">
+<td>Bundles</td>
+<td><code>#bundles-section</code>, admin bundle tab</td>
+<td>bundle CRUD/rendering</td>
+<td>bundles</td>
+<td>schema/RLS absent from export</td>
+</tr>
+<tr class="even">
+<td>Cart</td>
+<td>cart modal</td>
+<td>profile/guest cart state</td>
+<td>profiles.cart</td>
+<td>broad own-profile UPDATE policy</td>
+</tr>
+<tr class="odd">
+<td>Checkout</td>
+<td><code>#order-form</code></td>
+<td>fees/totals/payment/order submit</td>
+<td>orders + stock RPCs</td>
+<td>browser is commercial authority</td>
+</tr>
+<tr class="even">
+<td>Promotions</td>
+<td>checkout/admin</td>
+<td>validation + used_count increment</td>
+<td>promo_codes</td>
+<td>read→modify→write race</td>
+</tr>
+<tr class="odd">
+<td>Ratings</td>
+<td>order cards</td>
+<td>submitRating/addRating</td>
+<td>orders + ratings</td>
+<td>non-atomic and weak ownership binding</td>
+</tr>
+<tr class="even">
+<td>Payment proof</td>
+<td>file input</td>
+<td>Storage upload/public URL</td>
+<td>Storage</td>
+<td>privacy/RLS unknown</td>
+</tr>
+<tr class="odd">
+<td>Direct messages</td>
+<td>chat modal</td>
+<td>thread/message + Realtime</td>
+<td>DM tables</td>
+<td>schema/RLS absent</td>
+</tr>
+<tr class="even">
+<td>Admin</td>
+<td>admin tabs</td>
+<td>direct CRUD</td>
+<td>many tables</td>
+<td>frontend gating must never replace RLS</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-classification-before-refactor">Code classification before
+refactor</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Area</th>
+<th>Classification</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Main <code>script.js</code> IIFE</td>
+<td>ACTIVE</td>
+<td>current app runtime</td>
+</tr>
+<tr class="even">
+<td>Bundle admin functions</td>
+<td>ACTIVE</td>
+<td>wired to <code>data-tab="bundles"</code> and Supabase CRUD</td>
+</tr>
+<tr class="odd">
+<td><code>--charcoal-*</code> / brass compatibility token family</td>
+<td>ACTIVE/LEGACY</td>
+<td>still referenced by current selectors</td>
+</tr>
+<tr class="even">
+<td>repeated <code>@media (max-width:480px)</code> groups</td>
+<td>DUPLICATED/ACTIVE</td>
+<td>multiple live cascade blocks</td>
+</tr>
+<tr class="odd">
+<td><code>body</code> background followed later by transparent
+background</td>
+<td>ACTIVE OVERRIDE</td>
+<td>current LiquidChrome background architecture</td>
+</tr>
+<tr class="even">
+<td><code>.page-sticker</code> system</td>
+<td>DEAD/UNKNOWN</td>
+<td>base rule sets <code>display:none</code>; no inspected active rule
+enables it</td>
+</tr>
+<tr class="odd">
+<td><code>pill-buttons.css</code></td>
+<td>ACTIVE</td>
+<td>explicitly loaded after <code>style.css</code></td>
+</tr>
+<tr class="even">
+<td><code>liquid-chrome.js</code></td>
+<td>ACTIVE</td>
+<td>explicitly loaded as module</td>
+</tr>
+</tbody>
+</table>
+<h2 id="step-3-architecture">Step 3 — Architecture</h2>
+<h3 id="recommended-target">Recommended target</h3>
+<pre class="text"><code>/
+├── index.html
+├── style.css
+├── pill-buttons.css
+├── config.js
+├── liquid-chrome.js
+├── script.js                     # temporary bootstrap/legacy shell
+└── js/
+    ├── core/
+    │   ├── supabase-client.js
+    │   └── format.js
+    ├── data/
+    │   └── bundles.js
+    └── features/
+        └── admin-bundles.js</code></pre>
+<p>Do <strong>not</strong> migrate the full application at once. Current
+Admin → Bundles is a suitable first slice because its boundaries are
+observable:</p>
+<ul>
+<li>State: <code>products</code>, bundle rows,
+<code>BUNDLE_MAX_ROWS</code>.</li>
+<li>DOM: <code>#admin-tab-bundles</code>,
+<code>#admin-add-bundle-form</code>, <code>#admin-bundle-rows</code>,
+<code>.bundle-builder-row</code>, <code>.bundle-builder-product</code>,
+<code>.bundle-builder-size</code>,
+<code>.bundle-builder-qty</code>.</li>
+<li>Functions: <code>addBundle</code>, <code>deleteBundleRow</code>,
+<code>toggleBundleActive</code>, <code>loadAllBundlesForAdmin</code>,
+<code>renderAdminBundles</code>, <code>bundleBuilderRow</code>,
+<code>wireBundleBuilderRow</code>,
+<code>renderAdminBundlesTab</code>.</li>
+<li>Supabase calls: <code>bundles</code>
+INSERT/SELECT/UPDATE/DELETE.</li>
+<li>Current row contract visible in JS: <code>id</code>,
+<code>name</code>, <code>description</code>, <code>accent</code>,
+<code>icon</code>, <code>items</code>, <code>bundle_price</code>,
+<code>active</code>.</li>
+</ul>
+<p><strong>Verification status: INSUFFICIENT EVIDENCE for a deployable
+module migration.</strong> The actual <code>bundles</code> DDL/RLS is
+still missing, and the complete raw <code>script.js</code> is not
+available as a byte-preserving local file in this execution workspace.
+Producing a replacement <code>script.js</code> would risk silently
+dropping unrelated working behavior, which is prohibited by the audit
+contract.</p>
+<p>Vanilla ES modules remain the recommended direction; no framework
+migration is justified.</p>
+<h2 id="step-4-security-findings">Step 4 — Security findings</h2>
+<h3 id="security-block-profile-role-escalation">[SECURITY] Block profile
+role escalation</h3>
+<p>Evidence: supplied <code>profiles.role</code>; supplied
+<code>update own profile</code> policy; current JS admin selection from
+profile role.</p>
+<p>Problem: Asset → admin privileges. Threat → self-promotion. Attack
+surface → direct PostgREST/Supabase UPDATE. Current protection → row
+ownership only. Missing protection → field-level privilege integrity.
+Consequence → attacker can satisfy every admin policy that trusts
+<code>is_admin()</code>. Mitigation → DB trigger makes role immutable to
+customers and forces client-created profiles to customer.</p>
+<p>Status: <strong>Verified</strong>.</p>
+<p>Fix delivered:
+<code>01-dagoldol-phase1-security-hotfix.sql</code>.</p>
+<p>Validation: normal profile edits still work; direct
+<code>role='admin'</code> customer update fails; trusted SQL admin
+promotion still works.</p>
+<p>Impact: <strong>Critical</strong>. Effort: <strong>S</strong>. Risk:
+<strong>Low</strong>.</p>
+<h3 id="security-constrain-broad-customer-order-update">[SECURITY]
+Constrain broad customer order UPDATE</h3>
+<p>Evidence: supplied customer order UPDATE policy; current
+<code>cancelOrder()</code> writes <code>cancelled</code>; current
+<code>submitRating()</code> writes <code>rated</code>; admin writes
+<code>status_override</code>.</p>
+<p>Problem: Asset → order ledger/payment/commercial fields. Threat →
+customer alters protected columns. Attack surface → direct
+<code>orders.update(...)</code>. Current protection → ownership only.
+Missing protection → column/state transition enforcement. Consequence →
+forged status/total/items/payment metadata on an owned row. Mitigation →
+trigger allows only current customer-side
+<code>cancelled</code>/<code>rated</code> behavior while treating every
+other present/future column as immutable.</p>
+<p>Status: <strong>Verified</strong>.</p>
+<p>Fix delivered:
+<code>01-dagoldol-phase1-security-hotfix.sql</code>.</p>
+<p>Validation: direct total/items/status/payment update fails; legal
+pre-shipping cancellation works; uncancel fails; admin status update
+continues.</p>
+<p>Impact: <strong>Critical</strong>. Effort: <strong>S–M</strong>.
+Risk: <strong>Medium</strong>.</p>
+<h3
+id="security-move-checkout-authority-to-one-server-transaction">[SECURITY]
+Move checkout authority to one server transaction</h3>
+<p>Evidence: current JS computes subtotal, bulk fee, delivery fee, promo
+discount, total, half-payment amounts, writes order; stock decrement is
+separate; promo increment is separate.</p>
+<p>Problem: Asset → revenue, inventory, promo limits. Threat →
+tampering/race/replay/partial failure. Attack surface → browser calls.
+Current protection → order ownership and stock RPC intent. Missing
+protection → authoritative server recomputation and one transaction.
+Consequence → forged commercial values and inventory/order divergence.
+Mitigation → one DB/Edge transaction from identifiers/quantities to
+order commit.</p>
+<p>Status: <strong>Verified problem; final code blocked</strong>.</p>
+<p>Full corrected file: <strong>Verification status: INSUFFICIENT
+EVIDENCE</strong>. Exact live product/bundle/promo/order columns and
+stock RPC bodies are required. <code>03-...source-gap-export.sql</code>
+collects them without changing data.</p>
+<p>Impact: <strong>Critical</strong>. Effort: <strong>L</strong>. Risk:
+<strong>High</strong>.</p>
+<h3
+id="security-make-cancellation-and-stock-restoration-atomic">[SECURITY]
+Make cancellation and stock restoration atomic</h3>
+<p>Evidence: current <code>cancelOrder()</code> first updates
+<code>orders.cancelled</code>, then calls
+<code>restoreStockForLines()</code>.</p>
+<p>Problem: Asset → inventory. Threat → partial failure/direct API
+bypass. Attack surface → two separate operations. Current protection →
+UI checks cancellation status. Missing protection → database
+transaction. Consequence → cancelled order without stock restoration or
+direct cancellation bypassing restore. Mitigation → final server
+<code>cancel_order(...)</code> function updates state and restores
+inventory once in the same transaction.</p>
+<p>Status: <strong>Verified problem; code blocked by stock RPC/product
+representation</strong>.</p>
+<p>Impact: <strong>Critical</strong>. Effort: <strong>M–L</strong>.
+Risk: <strong>High</strong>.</p>
+<h3
+id="security-bind-ratings-atomically-to-eligible-purchases">[SECURITY]
+Bind ratings atomically to eligible purchases</h3>
+<p>Evidence: <code>submitRating()</code> updates
+<code>orders.rated</code>; <code>addRating()</code> separately inserts
+only <code>{product_id,value}</code>; supplied RLS accepts any
+authenticated rating insert.</p>
+<p>Problem: Asset → product reputation. Threat → arbitrary or repeated
+rating insertion. Attack surface → direct ratings INSERT. Missing
+protection → purchase/order ownership binding. Consequence → rating
+manipulation. Mitigation → one server rating command that validates
+owner, delivered/not-cancelled status and product membership, then
+writes order/rating state atomically.</p>
+<p>Status: <strong>Verified problem; final persistence code
+blocked</strong>.</p>
+<p>Important: the older <code>dagoldol-phase1-ratings-fix.sql</code> is
+not deployable because it assumed <code>item-&gt;&gt;'id'</code>, while
+current normal order JSON uses <code>productId</code>.</p>
+<p>Impact: <strong>High</strong>. Effort: <strong>M</strong>. Risk:
+<strong>Medium</strong>.</p>
+<h3 id="security-protect-payment-proofs">[SECURITY] Protect payment
+proofs</h3>
+<p>Evidence: current upload flow uses <code>payment-proofs</code> and
+gets a public URL; admin later renders
+<code>order.paymentProof</code>.</p>
+<p>Problem: Asset → payment evidence. Threat → disclosure/cross-user
+overwrite. Attack surface → Storage URLs/policies. Missing protection →
+verified bucket privacy, namespace ownership and
+<code>storage.objects</code> policies. Consequence → sensitive
+screenshot exposure if bucket is public or policy is broad. Mitigation →
+private bucket, RLS, owner/admin access as required, signed URLs.</p>
+<p>Status: <strong>Needs verification</strong>.</p>
+<p>Full corrected file: <strong>Verification status: INSUFFICIENT
+EVIDENCE</strong>. Run the Storage sections of file 03 first.</p>
+<p>Impact: <strong>High</strong>. Effort: <strong>M</strong>. Risk:
+<strong>Medium</strong>.</p>
+<h3
+id="security-tighten-csp-only-after-removing-actual-inline-style-dependencies">[SECURITY]
+Tighten CSP only after removing actual inline style dependencies</h3>
+<p>Evidence: current CSP uses <code>style-src 'unsafe-inline'</code>;
+current HTML and JS contain inline style attributes/templates.</p>
+<p>Status: <strong>Verified</strong>.</p>
+<p>Fix: migrate inline style declarations to CSS classes, then remove
+<code>'unsafe-inline'</code>. Do not tighten
+<code>img-src</code>/Supabase hosts blindly until the actual
+project/storage origins are confirmed.</p>
+<p>Impact: <strong>Medium</strong>. Effort: <strong>M</strong>. Risk:
+<strong>Medium</strong>.</p>
+<h2 id="step-5-rls-matrix">Step 5 — RLS matrix</h2>
+<table>
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 12%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 12%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Object</th>
+<th>Who</th>
+<th style="text-align: right;">SELECT</th>
+<th style="text-align: right;">INSERT</th>
+<th style="text-align: right;">UPDATE</th>
+<th style="text-align: right;">DELETE</th>
+<th>Current verified condition/status</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>profiles</td>
+<td>owner</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">No</td>
+<td><code>auth.uid() = id</code>; role flaw mitigated by file 01
+trigger</td>
+</tr>
+<tr class="even">
+<td>profiles</td>
+<td>admin</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td><code>is_admin()</code></td>
+</tr>
+<tr class="odd">
+<td>products</td>
+<td>authenticated</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>old export only; guest mismatch exists</td>
+</tr>
+<tr class="even">
+<td>products</td>
+<td>admin</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td><code>is_admin()</code> writes</td>
+</tr>
+<tr class="odd">
+<td>orders</td>
+<td>owner</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">No</td>
+<td>owner row; file 01 constrains UPDATE columns/states but INSERT
+totals remain client-authoritative</td>
+</tr>
+<tr class="even">
+<td>orders</td>
+<td>admin</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">Yes</td>
+<td><code>is_admin()</code></td>
+</tr>
+<tr class="odd">
+<td>messages</td>
+<td>authenticated</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td>old contact table</td>
+</tr>
+<tr class="even">
+<td>messages</td>
+<td>admin</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">Yes</td>
+<td><code>is_admin()</code></td>
+</tr>
+<tr class="odd">
+<td>ratings</td>
+<td>public/auth</td>
+<td style="text-align: right;">Yes</td>
+<td style="text-align: right;">authenticated</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>INSERT lacks purchase binding</td>
+</tr>
+<tr class="even">
+<td>settings/payment settings</td>
+<td>unknown</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td>schema required</td>
+</tr>
+<tr class="odd">
+<td>bundles</td>
+<td>unknown</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td>schema required</td>
+</tr>
+<tr class="even">
+<td>promotions/flash sales</td>
+<td>unknown</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td>schema required</td>
+</tr>
+<tr class="odd">
+<td>DM chat</td>
+<td>participants intended but unverified</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td>schema required</td>
+</tr>
+<tr class="even">
+<td>storage.objects</td>
+<td>unknown</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td style="text-align: right;">?</td>
+<td>Storage policy export required</td>
+</tr>
+</tbody>
+</table>
+<h2 id="priority-backlog">Priority backlog</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Priority</th>
+<th>Finding</th>
+<th>Impact</th>
+<th>Effort</th>
+<th>Risk</th>
+<th>Dependency</th>
+<th>Code area</th>
+<th>Expected result</th>
+<th>Code delivered</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">P0</td>
+<td>Block self-role escalation</td>
+<td>Critical</td>
+<td>S</td>
+<td>Low</td>
+<td>none</td>
+<td>profiles/is_admin</td>
+<td>customer cannot promote self</td>
+<td>Yes</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">P0</td>
+<td>Constrain customer order UPDATE</td>
+<td>Critical</td>
+<td>S–M</td>
+<td>Medium</td>
+<td>none beyond supplied orders</td>
+<td>orders trigger</td>
+<td>protected fields immutable</td>
+<td>Yes</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">P0</td>
+<td>Server-authoritative checkout</td>
+<td>Critical</td>
+<td>L</td>
+<td>High</td>
+<td>live schema/RPC export</td>
+<td>checkout/orders</td>
+<td>tampered prices/fees rejected</td>
+<td>No — blocked</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">P0</td>
+<td>Atomic stock/order/promo commit</td>
+<td>Critical</td>
+<td>L</td>
+<td>High</td>
+<td>live RPC/schema</td>
+<td>checkout/inventory</td>
+<td>no partial commercial state</td>
+<td>No — blocked</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">P0</td>
+<td>Atomic cancellation/restock</td>
+<td>Critical</td>
+<td>M–L</td>
+<td>High</td>
+<td>stock RPC/schema</td>
+<td>orders/inventory</td>
+<td>cancellation/restock commit together</td>
+<td>No — blocked</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">P1</td>
+<td>Purchase-bound ratings</td>
+<td>High</td>
+<td>M</td>
+<td>Medium</td>
+<td>final ratings contract + full frontend integration</td>
+<td>ratings/orders</td>
+<td>fake ratings rejected</td>
+<td>No — blocked</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">P1</td>
+<td>Private payment proofs</td>
+<td>High</td>
+<td>M</td>
+<td>Medium</td>
+<td>Storage export</td>
+<td>storage/orders</td>
+<td>evidence not publicly exposed</td>
+<td>No — blocked</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">P1</td>
+<td>Audit modern-table RLS</td>
+<td>High</td>
+<td>M</td>
+<td>Medium</td>
+<td>live schema/policies</td>
+<td>bundles/promos/settings/DM</td>
+<td>DB authorization verified</td>
+<td>Export file delivered</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">P2</td>
+<td>Guest catalogue/RLS alignment</td>
+<td>Medium</td>
+<td>S–M</td>
+<td>Medium</td>
+<td>current product exposure decision</td>
+<td>products</td>
+<td>guest UI and DB agree</td>
+<td>No — blocked</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">P2</td>
+<td>Admin Bundles ES-module migration</td>
+<td>Medium</td>
+<td>M</td>
+<td>Medium</td>
+<td>bundles DDL/RLS + raw full script</td>
+<td>architecture</td>
+<td>lower regression surface</td>
+<td>No — blocked</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">P2</td>
+<td>CSP inline-style migration</td>
+<td>Medium</td>
+<td>M</td>
+<td>Medium</td>
+<td>exact inline-style migration</td>
+<td>HTML/CSS/JS</td>
+<td>remove unsafe-inline safely</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h2 id="delivered-files">Delivered files</h2>
+<ol type="1">
+<li><code>01-dagoldol-phase1-security-hotfix.sql</code> —
+source-grounded DB hardening for role integrity and customer order
+writes.</li>
+<li><code>02-dagoldol-phase1-security-hotfix-rollback.sql</code> —
+rollback for file 01; reopens the original risks and is
+emergency-only.</li>
+<li><code>03-dagoldol-phase1-source-gap-export.sql</code> — read-only
+production export for tables, constraints, RLS, functions, triggers,
+Realtime and Storage.</li>
+<li><code>04-dagoldol-phase1-rls-template-NOT-SAFE-TO-DEPLOY.sql</code>
+— consolidated verified/proposed/schema-required RLS status with no
+speculative policies.</li>
+<li><code>05-dagoldol-phase1-audit-report.md</code> — this report.</li>
+<li><code>README-FIRST.md</code> — execution order, safety boundaries
+and validation checklist.</li>
+</ol>
+<h2 id="final-engineering-boundary">Final engineering boundary</h2>
+<p>The hotfix materially improves the supplied authorization boundary,
+but it does <strong>not</strong> make checkout production-safe. The next
+legitimate implementation step is determined by the results of file 03.
+Any SQL that invents the missing current product sizes/stock, bundle,
+promo, DM or Storage schema would be less safe than stopping at this
+boundary.</p>
+</body>
+</html>

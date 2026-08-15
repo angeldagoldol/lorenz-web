@@ -1,0 +1,167 @@
+-- ============================================================================
+-- DAGOLDOL — PHASE 1 CONSOLIDATED RLS STATUS FILE ===
+-- File: 04-dagoldol-phase1-rls-template-NOT-SAFE-TO-DEPLOY.sql
+--
+-- SQL STATUS: TEMPLATE — NOT SAFE TO DEPLOY YET
+--
+-- WHY THIS EXISTS:
+--   The supplied SQL export is older than current script.js. This file records
+--   exactly which policy domains are VERIFIED versus SCHEMA REQUIRED without
+--   inventing modern columns, relationships, or storage rules.
+--
+-- DEPLOY THE SOURCE-GROUNDED HOTFIX SEPARATELY:
+--   01-dagoldol-phase1-security-hotfix.sql
+-- ============================================================================
+
+-- ==========================================================================
+-- VERIFIED POLICY DOMAIN: public.profiles
+-- ==========================================================================
+-- Supplied schema:
+--   id uuid PK -> auth.users(id)
+--   username text unique not null
+--   role text check ('customer','admin')
+--   address jsonb
+--   profile jsonb
+--   cart jsonb
+--   created_at timestamptz
+--
+-- Verified supplied policies:
+--   SELECT: owner OR is_admin()
+--   INSERT: owner
+--   UPDATE: owner OR is_admin()
+--   DELETE: is_admin()
+--
+-- Verified defect:
+--   UPDATE ownership does not protect the privilege-bearing role column.
+--
+-- Implemented in file 01:
+--   * fixed-search_path public.is_admin()
+--   * profiles_guard_role_client trigger
+
+-- ==========================================================================
+-- VERIFIED POLICY DOMAIN: public.orders
+-- ==========================================================================
+-- Supplied policies:
+--   SELECT: owner OR admin
+--   INSERT: owner
+--   UPDATE: owner OR admin
+--   DELETE: admin
+--
+-- Verified current JS behavior:
+--   * checkout inserts client-computed commercial fields
+--   * customer UPDATE sets cancelled
+--   * customer UPDATE sets rated
+--   * admin UPDATE sets status_override
+--
+-- Implemented in file 01:
+--   Generic customer UPDATE column guard + cancellation/rated invariants.
+--
+-- SCHEMA REQUIRED before final INSERT policy/server transaction:
+--   * current public.orders definition
+--   * current public.products definition including sizes/stock representation
+--   * public.bundles definition
+--   * public.promo_codes definition
+--   * public.flash_sales definition
+--   * exact delivery-fee authority/data source
+--   * decrement_stock_for_order definition
+--   * restore_stock_for_order definition
+--
+-- FINAL TARGET (not executable until the above is verified):
+--   Customer checkout sends identifiers/quantities/address/payment inputs only.
+--   One server-side transaction derives trusted product/bundle prices, validates
+--   promo eligibility, computes fees/totals, locks/decrements stock, consumes
+--   promo usage, and inserts the order atomically.
+
+-- ==========================================================================
+-- VERIFIED POLICY DOMAIN: public.products (old export only)
+-- ==========================================================================
+-- Supplied SELECT policy allows authenticated users only.
+-- Current HTML/JS explicitly supports logged-out guest catalogue browsing.
+-- The current JS also expects modern product columns (sizes, brand_id,
+-- unit_type) absent from the export.
+--
+-- SCHEMA REQUIRED before changing SELECT exposure:
+--   current product columns + confirmation whether stock/operational fields are
+--   intended to be publicly queryable. Do not blindly replace the policy with
+--   USING (true) on a row that may now contain non-public fields.
+
+-- ==========================================================================
+-- VERIFIED POLICY DOMAIN: public.messages (old contact messages table)
+-- ==========================================================================
+-- Supplied policies:
+--   INSERT authenticated
+--   SELECT admin
+--   DELETE admin
+--
+-- Current HTML displays Contact to guests. Whether guest submissions should be
+-- persisted anonymously is a business/security decision; opening anonymous
+-- INSERT directly would create an unauthenticated spam endpoint.
+--
+-- SCHEMA / ENDPOINT DECISION REQUIRED before changing this policy.
+
+-- ==========================================================================
+-- VERIFIED POLICY DOMAIN: public.ratings (old export)
+-- ==========================================================================
+-- Supplied policies:
+--   INSERT any authenticated user
+--   SELECT public
+--
+-- Current JS inserts only { product_id, value } and separately writes
+-- orders.rated. Current normal order item JSON uses productId, not id.
+--
+-- IMPORTANT:
+--   The earlier dagoldol-phase1-ratings-fix.sql is NOT safe to deploy as-is;
+--   it assumes item ->> 'id' and introduces user_id/order_id without updating
+--   current script.js to send them.
+--
+-- FINAL TARGET requires one atomic rating command/RPC bound to an owned,
+-- delivered, non-cancelled order and a product contained in that order.
+-- Current complete frontend source + live ratings schema are required before
+-- replacing the existing direct insert without breaking the UI.
+
+-- ==========================================================================
+-- SCHEMA REQUIRED: public.settings / payment settings
+-- ==========================================================================
+-- Current script.js queries public.settings and separately uses payment-related
+-- Storage assets. No public.settings DDL/RLS is present in supplied schema.
+-- Do not invent a public.payment_settings table.
+
+-- ==========================================================================
+-- SCHEMA REQUIRED: public.bundles
+-- ==========================================================================
+-- Current JS directly performs SELECT/INSERT/UPDATE/DELETE on public.bundles.
+-- Verified JS row fields include:
+--   id, name, description, accent, icon, items, bundle_price, active
+-- The actual DDL, constraints, grants, and RLS are missing.
+
+-- ==========================================================================
+-- SCHEMA REQUIRED: promotions
+-- ==========================================================================
+-- Current JS references public.promo_codes and public.flash_sales and performs
+-- direct client mutations. Exact DDL/RLS is missing.
+-- Promo used_count currently follows client read -> modify -> write and must be
+-- moved into the final checkout transaction.
+
+-- ==========================================================================
+-- SCHEMA REQUIRED: direct messages/chat
+-- ==========================================================================
+-- Current JS references public.dm_threads and public.dm_messages and subscribes
+-- to both through Realtime. Exact DDL/RLS/publication state is missing.
+-- Participant-only SELECT/INSERT/UPDATE cannot be written safely until their
+-- exact key columns/constraints are verified by file 03.
+
+-- ==========================================================================
+-- STORAGE POLICY EXPORT REQUIRED
+-- ==========================================================================
+-- Current JS references Storage buckets including avatars, payment-proofs,
+-- product-images/brand-related assets, and payment-setting assets.
+-- Exact bucket names/configuration must be taken from storage.buckets and
+-- storage.objects policies, not guessed.
+--
+-- Security target after verification:
+--   payment proof evidence: private bucket, RLS-controlled access, short-lived
+--   signed URLs for display rather than permanent public URLs.
+
+-- ============================================================================
+-- END OF TEMPLATE — intentionally no speculative CREATE POLICY statements.
+-- ============================================================================

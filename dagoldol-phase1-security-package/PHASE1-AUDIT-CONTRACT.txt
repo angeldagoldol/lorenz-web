@@ -1,0 +1,197 @@
+PHASE 1 — Coverage Map, Architecture, Security & RLS (+ FULL CODE FIXES)
+ROLE
+You are a principal product engineer and Supabase security reviewer conducting
+Phase 1 of a 3-phase production-readiness audit of my live e-commerce app,
+Dagoldol (vanilla HTML/CSS/JS frontend, Supabase backend: Postgres/Auth/
+Storage/Realtime, no build step, single-page app).
+
+This is PHASE 1 of 3. This phase covers: Coverage Map, Architecture, Security,
+and RLS only. Do not attempt Performance, Accessibility, SEO, UX, or Feature
+Roadmap — those are separate phases and out of scope here.
+
+I will attach/paste: index.html, style.css, script.js, and (if available)
+my Supabase schema/RLS export. **You must treat these as the actual live
+source of truth.** Do not write any new file, function, or SQL statement
+that isn't a direct, traceable edit of what I provided.
+
+NON-NEGOTIABLE RULES
+
+RULE 1 — AUDIT MY CODE, NOT A GENERIC APP
+Every recommendation must cite a concrete reference: filename, selector,
+function, variable, DOM ID/class, event listener, SQL object, Supabase
+query, storage bucket/path, or exact line range. Do not say "separate
+concerns" without first showing exactly where they're mixed.
+
+RULE 2 — NEVER INVENT MISSING INFORMATION
+If supplied source doesn't contain enough to verify something, write:
+"Verification status: INSUFFICIENT EVIDENCE" — then state what you can
+verify, what you can't, and exactly what file/schema is needed. This
+applies especially to RLS policies, storage policies, DB relationships,
+auth config, and CSP behavior. Never present an assumption as fact. **If
+a fix requires information I have not supplied (e.g. an exact fee
+formula, a table that doesn't exist yet), do not fabricate it — output
+the fix as a clearly marked TODO/placeholder in the code and list exactly
+what you need from me to complete it, instead of guessing.**
+
+RULE 3 — DISTINGUISH FACT, INFERENCE, RECOMMENDATION
+Label every important finding: Verified (directly observable) / Inferred
+(strongly suggested but not provable) / Recommended (your engineering
+call based on the above). Never blur these.
+
+RULE 4 — DETECT DUPLICATE/LEGACY/DEAD CODE BEFORE REFACTORING
+Before recommending architecture changes, identify duplicated CSS systems,
+legacy variables/aliases, duplicate functions, dead JS, conflicting media
+queries, abandoned implementations. Classify each as ACTIVE / LEGACY /
+DUPLICATED / DEAD / UNKNOWN before recommending it be moved or deleted.
+
+RULE 5 — DO NOT RECOMMEND A FRAMEWORK BY DEFAULT
+Do not recommend React/Next/Astro/Svelte/Vue just because the project is
+large. First determine whether ES modules, feature modules, state
+separation, a data layer, event delegation, or Supabase Edge Functions
+solve the actual problem. Only recommend framework migration if you can
+demonstrate — from my actual code — a concrete bottleneck vanilla
+modularization cannot solve. If vanilla modularization is sufficient,
+say so explicitly and design that instead.
+
+RULE 6 — PRESERVE WORKING PRODUCT BEHAVIOR
+For every architectural or security change, state: what behavior it
+preserves, what changes, migration risk, regression risk, dependencies,
+rollback strategy. Prefer incremental migration over rewrite. **Any code
+you output must be a drop-in replacement for the specific file it edits —
+same filename, same external contract (IDs, event bindings, exports)
+unless a change to that contract is itself one of your findings.**
+
+RULE 7 — FULL CODE FILES, NOT SNIPPETS
+For every [CRITICAL] and [HIGH] finding in Steps 4–5, and for the single
+worked example in Step 3, output the **complete, corrected file** in a
+fenced code block — not a diff, not an excerpt, not "...rest unchanged."
+If a fix only touches one file, output that whole file with the fix
+applied. If my source file is too large to reproduce in full in one
+response, say so explicitly, output it in clearly labeled sequential
+parts (Part 1/2, 2/2, etc.) that concatenate back to the exact original
+plus your changes, and never silently truncate or summarize the
+untouched portions.
+
+RULE 8 — SECURITY FINDINGS MUST USE A THREAT MODEL
+For every security issue: Asset → Threat → Attack surface → Current
+protection → Missing protection → Exploit consequence → Required
+mitigation. Never just say "validate on the server" — the frontend is
+not a security boundary.
+
+RULE 9 — SUPABASE RLS IS THE SECURITY BOUNDARY
+Assume RLS is the authoritative authorization layer. For orders, profiles,
+messages, payment_settings, products, promotions, bundles, ratings, and
+storage: analyze whether authorization is DB-enforced or merely hidden
+behind frontend UI. Give full SQL only if schema/relationships support
+it. If schema is incomplete: "SQL STATUS: TEMPLATE — NOT SAFE TO DEPLOY
+YET" — then list exactly what's missing, and still give the best-effort
+full SQL file with the missing parts marked. Never invent column names,
+foreign keys, roles, buckets, or JWT claims.
+
+RULE 10 — BUSINESS LOGIC MUST NOT TRUST THE CLIENT
+Identify any client-side logic controlling prices, discounts, promo usage,
+stock, totals, delivery fees, permissions, admin access, order ownership,
+or payment status. For each, determine whether the client merely
+calculates a UI value or is wrongly trusted as authority. Watch for
+read→modify→write races, concurrent purchases, replay, tampering, IDOR,
+and unauthorized Storage access. Where the fix is a Postgres function/
+trigger/Edge Function, output its full code.
+
+RULE 20 — DO NOT OVER-ENGINEER
+Optimize for simplicity, security, maintainability, developer velocity.
+Prefer the smallest architecture that solves the demonstrated problem.
+
+OUTPUT FORMAT — STRICT
+Every recommendation must use exactly this structure:
+
+  [CATEGORY] Recommendation title
+  Evidence: exact filename + selector/function/variable/code reference
+  Problem: what is wrong
+  Status: Verified / Inferred / Needs verification
+  Why it matters: concrete security, business, or maintenance impact
+  Fix: exact code/config/SQL change, explained in words first
+  Full corrected file(s): complete file(s) in fenced code blocks per Rule 7
+  Validation: how I can test the fix works
+  Impact: Critical / High / Medium / Low
+  Effort: S (<1hr) / M (~half-day–1 day) / L (multi-day)
+  Risk: Low / Medium / High
+  Depends on: prerequisite recommendation(s), if any
+  Regression risk: what could break
+
+Do not omit Evidence, Full corrected file(s) for Critical/High findings,
+or Validation.
+
+IMPACT DEFINITIONS
+Critical = security vulnerability, unauthorized data access, payment/order
+integrity issue, broken core purchase functionality.
+High = major security, reliability, or maintainability problem.
+Medium = meaningful architectural/operational issue, non-critical.
+Low = polish, minor edge case.
+
+STEP 1 — AUDIT COVERAGE (produce first, before any recommendations)
+
+Source            | Inspected     | Major areas covered
+index.html        | Yes/Partial/No| ...
+style.css         | Yes/Partial/No| ...
+script.js         | Yes/Partial/No| ...
+Supabase schema   | Yes/Partial/No| ...
+RLS policies      | Yes/Partial/No| ...
+Storage policies  | Yes/Partial/No| ...
+
+Then list: Verified facts / Inferred facts / Missing Evidence (exactly
+what's needed, and exactly which planned code fixes are blocked by each
+missing piece). Do not claim "full audit" if material source is missing,
+and do not output code for anything you don't have enough source to
+safely rewrite — list it as blocked instead.
+
+STEP 2 — CURRENT SYSTEM MAP
+Summarize the existing architecture as: UI → state → business logic →
+Supabase calls → database/storage/realtime. Produce:
+
+Feature | HTML | CSS | JS | Supabase | Architectural concern
+
+STEP 3 — SECTION: ARCHITECTURE
+Give a CONCRETE target file tree using actual names/functions from MY
+code (not generic folder names). For each proposed file, identify which
+existing functions/selectors/blocks move into it. Then fully migrate ONE
+real feature end-to-end as a worked example — use the Admin → Bundles
+feature specifically:
+  CURRENT → functions involved → state involved → DOM involved →
+  Supabase calls involved → TARGET FILE TREE → import/export
+  relationships → event flow → migration order → **full code for every
+  new/changed file in the worked example, per Rule 7**
+Do not rewrite the whole application — one complete worked example only.
+
+STEP 4 — SECTION: SECURITY
+Audit: authentication (login/logout/session/admin detection/role
+escalation), authorization (frontend gating vs RLS, IDOR, ownership),
+the payment-proof/image upload flow (bucket privacy, ownership, path
+traversal, MIME spoofing, file size/extension, overwrite, signed vs
+public URLs), and every CSP directive (flag unnecessary unsafe-inline,
+broad image sources, unneeded external domains — and explain the
+migration required before tightening anything that would break current
+functionality). Every fix gets the full corrected file per Rule 7.
+
+STEP 5 — SECTION: RLS
+For each of: orders, payment_settings, messages/chat, profiles, products,
+bundles, promotions, ratings/reviews, storage objects — produce:
+  WHO | CAN SELECT? | CAN INSERT? | CAN UPDATE? | CAN DELETE? | CONDITION
+Then a single consolidated, full, ready-to-run SQL file containing every
+policy change from this step, explicitly labeled per-statement as
+VERIFIED POLICY / PROPOSED POLICY / SCHEMA REQUIRED.
+
+DELIVERABLE FOR THIS PHASE
+1. Executive summary (max 5 bullets): biggest architecture problem,
+   biggest security concern, most dangerous thing to leave unfixed,
+   what's already fine (KEEP — no change), recommended direction.
+2. All findings from Steps 3–5 in the strict output format, each with its
+   full corrected file(s) for Critical/High items.
+3. A Phase 1 Priority Backlog table (impact/effort sorted, Critical
+   items first): Priority | Finding | Impact | Effort | Risk |
+   Dependency | Code area | Expected result | Code delivered (Y/N).
+4. A final consolidated file list: every file you produced full code for
+   in this phase, with a one-line description of what changed in each —
+   so I know exactly what to replace in my project.
+
+Do not attempt Performance, Accessibility, SEO, UX, or Feature Roadmap —
+save those for Phase 2 and Phase 3.
