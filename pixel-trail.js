@@ -5,13 +5,17 @@
   window.__dagoldolPixelTrailInstalled = true;
 
   const DEFAULTS = Object.freeze({
-    gridSize: 50,
+    gridSize: 96,
     trailSize: 0.1,
-    maxAge: 420,
-    interpolate: 5,
+    maxAge: 220,
+    interpolate: 7,
     color: '#1A00FE',
+    scratchCount: 3,
+    scratchGap: 1.25,
+    breakEvery: 8,
+    jitter: 0.32,
     maxDevicePixelRatio: 1.5,
-    maxInterpolationSteps: 96
+    maxInterpolationSteps: 120
   });
 
   const externalConfig = (
@@ -20,13 +24,32 @@
   ) ? window.DAGOLDOL_PIXEL_TRAIL_CONFIG : {};
 
   const config = {
-    gridSize: clampNumber(externalConfig.gridSize, 12, 120, DEFAULTS.gridSize),
+    gridSize: clampNumber(externalConfig.gridSize, 48, 160, DEFAULTS.gridSize),
     trailSize: clampNumber(externalConfig.trailSize, 0.02, 0.3, DEFAULTS.trailSize),
-    maxAge: clampNumber(externalConfig.maxAge, 80, 1500, DEFAULTS.maxAge),
-    interpolate: clampNumber(externalConfig.interpolate, 1, 12, DEFAULTS.interpolate),
+    maxAge: clampNumber(externalConfig.maxAge, 100, 600, DEFAULTS.maxAge),
+    interpolate: clampNumber(externalConfig.interpolate, 2, 12, DEFAULTS.interpolate),
     color: typeof externalConfig.color === 'string' && externalConfig.color.trim()
       ? externalConfig.color.trim()
       : DEFAULTS.color,
+    scratchCount: Math.round(clampNumber(
+      externalConfig.scratchCount,
+      3,
+      3,
+      DEFAULTS.scratchCount
+    )),
+    scratchGap: clampNumber(
+      externalConfig.scratchGap,
+      0.8,
+      2,
+      DEFAULTS.scratchGap
+    ),
+    breakEvery: Math.round(clampNumber(
+      externalConfig.breakEvery,
+      6,
+      14,
+      DEFAULTS.breakEvery
+    )),
+    jitter: clampNumber(externalConfig.jitter, 0, 0.7, DEFAULTS.jitter),
     maxDevicePixelRatio: clampNumber(
       externalConfig.maxDevicePixelRatio,
       1,
@@ -35,8 +58,8 @@
     ),
     maxInterpolationSteps: Math.round(clampNumber(
       externalConfig.maxInterpolationSteps,
-      24,
-      160,
+      32,
+      180,
       DEFAULTS.maxInterpolationSteps
     ))
   };
@@ -52,13 +75,14 @@
   let width = 0;
   let height = 0;
   let dpr = 1;
-  let cellSize = 10;
+  let cellSize = 7;
   let gridColumns = 0;
   let gridRows = 0;
   let cellTimes = new Float64Array(0);
   let cellStrengths = new Float32Array(0);
   let activeCells = new Set();
   let lastPointer = null;
+  let segmentSequence = 0;
   let enabled = false;
   let destroyed = false;
 
@@ -113,6 +137,7 @@
     cellTimes.fill(0);
     cellStrengths.fill(0);
     lastPointer = null;
+    segmentSequence = 0;
   }
 
   function clearCanvas() {
@@ -140,7 +165,7 @@
     }
 
     const targetPhysicalCell = Math.max(
-      6,
+      4,
       Math.floor((Math.min(width, height) * dpr) / config.gridSize)
     );
     cellSize = targetPhysicalCell / dpr;
@@ -151,6 +176,7 @@
     cellStrengths = new Float32Array(gridColumns * gridRows);
     activeCells = new Set();
     lastPointer = null;
+    segmentSequence = 0;
 
     clearCanvas();
   }
@@ -175,7 +201,7 @@
     if (age >= config.maxAge) return 0;
 
     const life = 1 - age / config.maxAge;
-    return strength * Math.pow(life, 1.12);
+    return strength * Math.pow(life, 1.35);
   }
 
   function stampCell(gridX, gridY, strength, time) {
@@ -190,52 +216,104 @@
     activeCells.add(index);
   }
 
-  function stampBrush(x, y, time) {
-    const centerX = Math.floor(x / cellSize);
-    const centerY = Math.floor(y / cellSize);
-    const radiusCells = Math.max(1, Math.ceil(config.gridSize * config.trailSize));
-    const radiusLimit = radiusCells + 0.45;
+  function signedNoise(seed) {
+    const raw = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return (raw - Math.floor(raw)) * 2 - 1;
+  }
 
-    for (let offsetY = -radiusCells; offsetY <= radiusCells; offsetY += 1) {
-      for (let offsetX = -radiusCells; offsetX <= radiusCells; offsetX += 1) {
-        const distance = Math.hypot(offsetX, offsetY);
-        if (distance > radiusLimit) continue;
+  function shouldBreakLane(sampleIndex, laneIndex) {
+    const phase = (sampleIndex + laneIndex * 3 + segmentSequence) % config.breakEvery;
+    return phase >= config.breakEvery - 2;
+  }
 
-        const edgeDepth = Math.max(0, radiusLimit - distance);
-        const strength = edgeDepth >= 1
-          ? 1
-          : 0.76 + 0.24 * edgeDepth;
-        stampCell(centerX + offsetX, centerY + offsetY, strength, time);
+  function stampScratchPoint(x, y, laneIndex, sampleIndex, time, tangentX, tangentY, normalX, normalY) {
+    if (shouldBreakLane(sampleIndex, laneIndex)) return;
+
+    const middle = (config.scratchCount - 1) / 2;
+    const laneOffset = (laneIndex - middle) * cellSize * config.scratchGap;
+    const seed = segmentSequence * 97 + sampleIndex * 17 + laneIndex * 31;
+    const sideJitter = signedNoise(seed) * cellSize * config.jitter;
+    const forwardJitter = signedNoise(seed + 0.47) * cellSize * config.jitter * 0.34;
+
+    const scratchX = x
+      + normalX * (laneOffset + sideJitter)
+      + tangentX * forwardJitter;
+    const scratchY = y
+      + normalY * (laneOffset + sideJitter)
+      + tangentY * forwardJitter;
+
+    const gridX = Math.floor(scratchX / cellSize);
+    const gridY = Math.floor(scratchY / cellSize);
+    const laneDistance = Math.abs(laneIndex - middle);
+    const laneStrength = Math.max(0.72, 1 - laneDistance * 0.1);
+    const textureStrength = 0.86 + Math.abs(signedNoise(seed + 1.9)) * 0.14;
+    const ageBias = laneDistance * 12;
+
+    stampCell(gridX, gridY, laneStrength * textureStrength, time - ageBias);
+
+    // Sparse single-cell notches make each line look torn rather than perfectly plotted.
+    if ((sampleIndex + laneIndex + segmentSequence) % 13 === 5) {
+      const notchDirection = signedNoise(seed + 4.2) >= 0 ? 1 : -1;
+      stampCell(
+        gridX + Math.round(normalX * notchDirection),
+        gridY + Math.round(normalY * notchDirection),
+        laneStrength * 0.42,
+        time - 18
+      );
+    }
+  }
+
+  function addScratchSegment(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance < 0.75) return;
+
+    const tangentX = dx / distance;
+    const tangentY = dy / distance;
+    const normalX = -tangentY;
+    const normalY = tangentX;
+    const spacing = Math.max(1.5, cellSize * 0.48);
+    const steps = Math.min(
+      config.maxInterpolationSteps,
+      Math.max(1, Math.ceil(distance / spacing))
+    );
+
+    segmentSequence += 1;
+
+    for (let step = 0; step <= steps; step += 1) {
+      const ratio = step / steps;
+      const x = from.x + dx * ratio;
+      const y = from.y + dy * ratio;
+      const sampleTime = from.time + (to.time - from.time) * ratio;
+
+      for (let lane = 0; lane < config.scratchCount; lane += 1) {
+        stampScratchPoint(
+          x,
+          y,
+          lane,
+          step,
+          sampleTime,
+          tangentX,
+          tangentY,
+          normalX,
+          normalY
+        );
       }
     }
   }
 
   function addInterpolatedTrail(x, y, time) {
     if (!lastPointer) {
-      stampBrush(x, y, time);
+      // Record the starting point without painting a circular cursor blob.
       lastPointer = { x, y, time };
       return;
     }
 
-    const dx = x - lastPointer.x;
-    const dy = y - lastPointer.y;
-    const distance = Math.hypot(dx, dy);
-    const spacing = Math.max(2, cellSize / config.interpolate);
-    const steps = Math.min(
-      config.maxInterpolationSteps,
-      Math.max(1, Math.ceil(distance / spacing))
-    );
-
-    for (let step = 1; step <= steps; step += 1) {
-      const ratio = step / steps;
-      stampBrush(
-        lastPointer.x + dx * ratio,
-        lastPointer.y + dy * ratio,
-        lastPointer.time + (time - lastPointer.time) * ratio
-      );
-    }
-
-    lastPointer = { x, y, time };
+    const nextPointer = { x, y, time };
+    addScratchSegment(lastPointer, nextPointer);
+    lastPointer = nextPointer;
   }
 
   function onPointerMove(event) {
@@ -275,7 +353,7 @@
       const gridY = Math.floor(index / gridColumns);
       const gridX = index - gridY * gridColumns;
 
-      context.globalAlpha = Math.min(1, opacity);
+      context.globalAlpha = Math.min(0.94, opacity);
       context.fillRect(
         gridX * cellSize,
         gridY * cellSize,
