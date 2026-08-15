@@ -1,9 +1,9 @@
 /* =====================================================================
    DAGOLDOL — SHARED PIXEL TRAIL
-   ---------------------------------------------------------------------
-   Additive visual layer only. It never participates in layout and never
-   receives pointer input, so existing buttons, forms, menus, modals, and
-   admin controls remain fully interactive.
+   Reference-video tuning: dense, connected electric-indigo pixel ribbon.
+
+   This remains a visual-only overlay. It does not participate in layout
+   and cannot receive pointer input, so Dagoldol controls stay interactive.
    ===================================================================== */
 
 .pixel-trail-canvas {
@@ -19,6 +19,8 @@
   touch-action: none;
   contain: strict;
   opacity: 1;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 @supports (height: 100dvh) {
