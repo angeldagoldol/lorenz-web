@@ -33,7 +33,9 @@ const REQUIRED_FILES = [
   'terms/index.html',
   'privacy/index.html',
   'contact/index.html',
-  'products/index.html'
+  'products/index.html',
+  'tests/payment-settings-contract.mjs',
+  'tests/payment-settings-runtime.spec.py'
 ];
 
 const REQUIRED_INDEX_IDS = [
@@ -77,6 +79,9 @@ async function main() {
   for (const id of REQUIRED_INDEX_IDS) {
     if (!indexHtml.includes(`id="${id}"`)) throw new Error(`index.html is missing required id="${id}".`);
   }
+  for (const id of ['bank-name-text', 'bank-account-name-text', 'bank-account-number-text', 'bank-qr-img', 'bank-qr-placeholder']) {
+    if (!indexHtml.includes(`id="${id}"`)) throw new Error(`index.html is missing Bank Transfer checkout id="${id}".`);
+  }
 
   const configSource = await readFile(resolve(ROOT, 'config.js'), 'utf8');
   if (!configSource.includes('PHASE3_ENABLED: true')) throw new Error('config.js does not enable Phase 3.');
@@ -95,6 +100,30 @@ async function main() {
   if (scriptSource.includes('3 + Math.floor(Math.random() * 4)')) throw new Error('script.js still contains the old randomized delivery estimate.');
   if (scriptSource.includes('suggestedPeopleCache') || scriptSource.includes('fetchSuggestedPeople')) {
     throw new Error('script.js still contains the removed random profile-suggestion data flow.');
+  }
+  for (const key of ['bank_name', 'bank_account_name', 'bank_account_number', 'bank_qr_image']) {
+    if (!scriptSource.includes(key)) throw new Error(`script.js is missing bank payment setting key: ${key}`);
+    if (!scriptSource.includes(`saveSetting("${key}"`)) throw new Error(`script.js admin payment settings do not persist: ${key}`);
+  }
+  for (const id of ['admin-bank-name', 'admin-bank-account-name', 'admin-bank-account-number', 'admin-bank-qr-input', 'admin-bank-qr-preview', 'admin-bank-qr-remove']) {
+    if (!scriptSource.includes(id)) throw new Error(`script.js is missing admin bank-payment control: ${id}`);
+  }
+  if (!scriptSource.includes('uploadImageToStorage(file, "payment-settings", "bank-qr", 600)')) {
+    throw new Error('script.js is missing bank QR upload integration with the payment-settings bucket.');
+  }
+
+  const pillSource = await readFile(resolve(ROOT, 'pill-buttons.css'), 'utf8');
+  const pillMechanicsMatch = pillSource.match(/\.btn-primary,[\s\S]*?\{\s*position:\s*relative;[\s\S]*?\}/);
+  if (!pillMechanicsMatch) throw new Error('pill-buttons.css is missing the base pill mechanics block.');
+  if (/\.password-toggle-btn\s*,?/.test(pillMechanicsMatch[0])) {
+    throw new Error('pill-buttons.css still overrides password-toggle positioning with the pill mechanics block.');
+  }
+
+  const generatorSource = await readFile(resolve(ROOT, 'scripts/generate-public-catalogue.mjs'), 'utf8');
+  for (const key of ['bank_name', 'bank_account_name', 'bank_account_number', 'bank_qr_image']) {
+    if (!generatorSource.includes(`'${key}'`) && !generatorSource.includes(`"${key}"`)) {
+      throw new Error(`Public catalogue settings allowlist is missing: ${key}`);
+    }
   }
 
   const phase2AccessibilitySource = await readFile(resolve(ROOT, 'phase2-accessibility.js'), 'utf8');
