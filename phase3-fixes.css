@@ -270,3 +270,296 @@
     font-size:1rem;
   }
 }
+
+/* =====================================================================
+   DAGOLDOL MOBILE STABILITY
+   ---------------------------------------------------------------------
+   Phone-class touch devices use the static LiquidChrome fallback in JS.
+   These rules keep every primary workspace inside the visual viewport,
+   remove the 421–720px filter overflow path, and avoid 100vh browser-UI
+   gaps on mobile browsers that support dynamic viewport units.
+   ===================================================================== */
+
+html{
+  width:100%;
+  max-width:100%;
+  background:#0e1016;
+  overflow-x:hidden;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
+
+body{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
+}
+
+@supports (overflow:clip){
+  html,
+  body{
+    overflow-x:clip;
+  }
+}
+
+.screen,
+#login-screen,
+#shop-screen,
+#admin-screen,
+.route-screen,
+.route-screen-main,
+.route-panel,
+.shop-header,
+.header-actions,
+.header-filters,
+.hero,
+.catalogue,
+.product-card,
+.bundles-section,
+.reco-section,
+.admin-panel,
+.chat-layout,
+.chat-thread-list,
+.chat-conversation,
+.modal-overlay,
+.modal-panel{
+  min-width:0;
+  max-width:100%;
+}
+
+#login-screen,
+#shop-screen,
+#admin-screen,
+.route-screen{
+  min-height:100vh;
+  min-height:100dvh;
+}
+
+.liquid-chrome-bg{
+  background:
+    radial-gradient(circle at 14% 12%, rgba(255,138,91,0.10), transparent 36%),
+    radial-gradient(circle at 86% 10%, rgba(79,227,193,0.12), transparent 34%),
+    radial-gradient(circle at 50% 92%, rgba(90,108,180,0.09), transparent 42%),
+    #0e1016;
+}
+
+.liquid-chrome-bg.liquid-chrome-static canvas{
+  display:none !important;
+}
+
+@media (max-width:720px){
+  #shop-screen .shop-header{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto auto;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    padding-top:max(10px, env(safe-area-inset-top));
+    padding-right:max(12px, env(safe-area-inset-right));
+    padding-bottom:10px;
+    padding-left:max(12px, env(safe-area-inset-left));
+  }
+
+  #shop-screen .brand-mark{
+    grid-column:1;
+    grid-row:1;
+    min-width:0;
+    max-width:100%;
+  }
+
+  #shop-screen .brand-mark span{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  #shop-screen .header-actions{
+    display:contents;
+  }
+
+  #shop-screen #cart-btn{
+    grid-column:2;
+    grid-row:1;
+    min-width:44px;
+    min-height:44px;
+    padding:8px 10px;
+  }
+
+  #shop-screen .account-menu-wrap{
+    grid-column:3;
+    grid-row:1;
+    min-width:0;
+  }
+
+  #shop-screen #account-menu-toggle{
+    min-width:44px;
+    min-height:44px;
+    padding:8px 10px;
+  }
+
+  #shop-screen .header-filters{
+    grid-column:1 / -1;
+    grid-row:2;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    width:100%;
+    min-width:0;
+    margin:0;
+  }
+
+  #shop-screen .header-filters .filter-search-field{
+    grid-column:1 / -1;
+    width:100%;
+    min-width:0;
+    min-height:44px;
+  }
+
+  #shop-screen .header-filters .filter-search-field input,
+  #shop-screen .header-filters select,
+  #shop-screen .header-filters #catalogue-filter-clear{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    min-height:44px;
+  }
+
+  #shop-screen .header-filters #catalogue-filter-clear{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:8px 12px;
+    border:1px solid var(--phase2-control-border, #626b80);
+    border-radius:8px;
+    background:rgba(29,33,44,0.94);
+    text-decoration:none;
+  }
+
+  #shop-screen .account-menu{
+    right:0;
+    left:auto;
+    width:min(240px, calc(100vw - 24px));
+    max-width:calc(100vw - 24px);
+  }
+
+  .hero,
+  .bundles-section,
+  .reco-section,
+  .admin-panel{
+    width:100%;
+    max-width:100%;
+  }
+
+  .catalogue{
+    width:100%;
+    max-width:100%;
+    grid-template-columns:minmax(0,1fr);
+    gap:12px;
+    padding-right:12px;
+    padding-left:12px;
+  }
+
+  .product-card,
+  .bundle-card,
+  .order-card,
+  .admin-card{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .product-actions,
+  .promo-row,
+  .chat-input-row,
+  .chat-new-row,
+  .cost-row,
+  .cart-line{
+    min-width:0;
+    max-width:100%;
+  }
+
+  .promo-row input,
+  .chat-input-row input,
+  .chat-new-row input{
+    min-width:0;
+  }
+
+  .route-screen-header{
+    width:100%;
+    padding-top:max(10px, env(safe-area-inset-top));
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:10px;
+    padding-left:max(14px, env(safe-area-inset-left));
+  }
+
+  .route-screen-main{
+    width:100%;
+    max-width:100%;
+    padding:18px 0 0;
+  }
+
+  .route-panel,
+  .route-panel-wide{
+    width:100%;
+    max-width:100%;
+    min-height:0;
+    padding-top:22px;
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:max(32px, env(safe-area-inset-bottom));
+    padding-left:max(14px, env(safe-area-inset-left));
+  }
+
+  .modal-overlay{
+    width:100%;
+    max-width:100%;
+    height:100vh;
+    height:100dvh;
+    min-height:100dvh;
+    overflow:hidden;
+  }
+
+  .modal-panel,
+  .modal-panel-wide{
+    width:100%;
+    max-width:100%;
+    max-height:92vh;
+    max-height:92dvh;
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:max(24px, env(safe-area-inset-bottom));
+    padding-left:max(14px, env(safe-area-inset-left));
+  }
+
+  .chat-layout,
+  .chat-thread-list,
+  .chat-conversation,
+  .admin-chat-layout,
+  .admin-chat-thread-list,
+  .admin-chat-conversation{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  .admin-tabs{
+    max-width:100vw;
+    overscroll-behavior-inline:contain;
+  }
+
+  .background-motion-toggle{
+    display:none !important;
+  }
+}
+
+@media (max-width:420px){
+  #shop-screen .header-filters{
+    grid-template-columns:1fr;
+  }
+
+  #shop-screen .header-filters .filter-search-field{
+    grid-column:1;
+  }
+}
