@@ -66,20 +66,99 @@ const DEFAULT_GCASH_NUMBER = "0963 202 0564";
 
 let currentSettings = { gcash_number: DEFAULT_GCASH_NUMBER, gcash_qr_image: null, shop_logo_image: null };
 
+// Same-origin public catalogue snapshot generated at deploy time.
+// It is a resilience layer for browsers/networks that temporarily fail direct
+// Supabase REST reads. Checkout stock verification never trusts this snapshot.
+let catalogueSnapshotPromise = null;
+let catalogueUsingSnapshot = false;
+
+async function loadCatalogueSnapshot(){
+  if (catalogueSnapshotPromise) return catalogueSnapshotPromise;
+
+  catalogueSnapshotPromise = (async () => {
+    try {
+      const response = await fetch("/catalogue-snapshot.json", {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!response.ok) throw new Error(`Snapshot HTTP ${response.status}`);
+      const payload = await response.json();
+      return payload && typeof payload === "object" ? payload : null;
+    } catch (error) {
+      console.warn("[Dagoldol] Same-origin catalogue snapshot unavailable:", error);
+      return null;
+    }
+  })();
+
+  return catalogueSnapshotPromise;
+}
+
+async function replaceEmbeddedProductImagesFromSnapshot(mappedProducts){
+  const hasEmbeddedImages = (mappedProducts || []).some(product =>
+    (product.sizes || []).some(size => typeof size.image === "string" && size.image.startsWith("data:image/"))
+  );
+  if (!hasEmbeddedImages) return mappedProducts;
+
+  const snapshot = await loadCatalogueSnapshot();
+  if (!Array.isArray(snapshot?.products)) return mappedProducts;
+
+  const replacementByVariant = new Map();
+  snapshot.products.forEach(row => {
+    const productId = String(row?.id ?? "");
+    (Array.isArray(row?.sizes) ? row.sizes : []).forEach(size => {
+      const image = typeof size?.image === "string" ? size.image : "";
+      if (!image || image.startsWith("data:image/")) return;
+      replacementByVariant.set(`${productId}::${String(size.feet)}`, image);
+    });
+  });
+
+  if (!replacementByVariant.size) return mappedProducts;
+
+  return mappedProducts.map(product => ({
+    ...product,
+    sizes: (product.sizes || []).map(size => {
+      if (typeof size.image !== "string" || !size.image.startsWith("data:image/")) return size;
+      const replacement = replacementByVariant.get(`${String(product.id)}::${String(size.feet)}`);
+      return replacement ? { ...size, image: replacement } : size;
+    })
+  }));
+}
+
+function settingsFromRows(rows){
+  const map = {};
+  (rows || []).forEach(row => {
+    if (row && row.key != null) map[row.key] = row.value;
+  });
+  return {
+    gcash_number: map.gcash_number || DEFAULT_GCASH_NUMBER,
+    gcash_qr_image: map.gcash_qr_image || null,
+    shop_logo_image: map.shop_logo_image || null
+  };
+}
+
 async function loadSettings(){
+  let liveError = null;
+
   try {
     const { data, error } = await supabase.from("settings").select("*");
-    if (error) { console.error("[Dagoldol] loadSettings error:", error); return; }
-    const map = {};
-    (data || []).forEach(row => { map[row.key] = row.value; });
-    currentSettings = {
-      gcash_number: map.gcash_number || DEFAULT_GCASH_NUMBER,
-      gcash_qr_image: map.gcash_qr_image || null,
-      shop_logo_image: map.shop_logo_image || null
-    };
+    if (error) throw error;
+    currentSettings = settingsFromRows(data || []);
+    applySettingsToDom();
+    return;
   } catch (err) {
-    console.error("[Dagoldol] loadSettings threw:", err);
+    liveError = err;
+    console.warn("[Dagoldol] Live settings read failed; trying same-origin snapshot:", err);
   }
+
+  const snapshot = await loadCatalogueSnapshot();
+  if (Array.isArray(snapshot?.settings)) {
+    currentSettings = settingsFromRows(snapshot.settings);
+    catalogueUsingSnapshot = true;
+    applySettingsToDom();
+    return;
+  }
+
+  console.error("[Dagoldol] loadSettings failed:", liveError);
   applySettingsToDom();
 }
 
@@ -984,9 +1063,25 @@ function isSizeOutOfStock(product, feet){
 
 // ===================== Flash sales =====================
 async function loadFlashSales(){
-  const { data, error } = await supabase.from("flash_sales").select("*");
-  if (error) { reportLoadError("Flash sales", error); flashSales = []; return; }
-  flashSales = (data || []).map(mapFlashSaleRow);
+  try {
+    const { data, error } = await supabase.from("flash_sales").select("*");
+    if (error) throw error;
+    flashSales = (data || []).map(mapFlashSaleRow);
+    return;
+  } catch (error) {
+    if (catalogueUsingSnapshot) {
+      const snapshot = await loadCatalogueSnapshot();
+      if (Array.isArray(snapshot?.flashSales)) {
+        flashSales = snapshot.flashSales.map(mapFlashSaleRow);
+        return;
+      }
+      console.warn("[Dagoldol] Flash sales unavailable while using catalogue snapshot:", error);
+      flashSales = [];
+      return;
+    }
+    reportLoadError("Flash sales", error);
+    flashSales = [];
+  }
 }
 
 function getActiveFlashSale(productId){
@@ -1027,9 +1122,25 @@ function productMinPrice(product){
 
 // ===================== Brands =====================
 async function loadBrands(){
-  const { data, error } = await supabase.from("brands").select("*").order("name");
-  if (error) { reportLoadError("Brands", error); brands = []; return; }
-  brands = (data || []).map(mapBrandRow);
+  try {
+    const { data, error } = await supabase.from("brands").select("*").order("name");
+    if (error) throw error;
+    brands = (data || []).map(mapBrandRow);
+    return;
+  } catch (error) {
+    if (catalogueUsingSnapshot) {
+      const snapshot = await loadCatalogueSnapshot();
+      if (Array.isArray(snapshot?.brands)) {
+        brands = snapshot.brands.map(mapBrandRow);
+        return;
+      }
+      console.warn("[Dagoldol] Brands unavailable while using catalogue snapshot:", error);
+      brands = [];
+      return;
+    }
+    reportLoadError("Brands", error);
+    brands = [];
+  }
 }
 function findBrand(brandId){
   return brands.find(b => b.id === brandId) || null;
@@ -1087,7 +1198,12 @@ function expandOrderLinesForStock(items){
 }
 
 async function verifyStockAvailable(items){
-  const freshProducts = await loadProducts();
+  // Checkout must verify against the live database. The deploy-time snapshot is
+  // deliberately browsing-only because inventory may have changed since build.
+  const freshProducts = await loadProducts({ allowSnapshotFallback: false, showLoadError: false });
+  if (!freshProducts.length) {
+    return { ok: false, message: "We couldn't verify live stock right now. Check your connection and try again before placing the order." };
+  }
   const lines = expandOrderLinesForStock(items);
   for (const line of lines) {
     const product = freshProducts.find(p => p.id === line.productId);
@@ -1134,7 +1250,16 @@ async function incrementPromoUsage(promoId){
 // ===================== Bundles =====================
 async function loadBundles(){
   const { data, error } = await supabase.from("bundles").select("*").order("name");
-  if (error) { reportLoadError("Bundles", error); bundles = []; return; }
+  if (error) {
+    if (catalogueUsingSnapshot) {
+      console.warn("[Dagoldol] Bundles unavailable while using catalogue snapshot:", error);
+      bundles = [];
+      return;
+    }
+    reportLoadError("Bundles", error);
+    bundles = [];
+    return;
+  }
   bundles = (data || []).map(mapBundleRow).filter(b => b.active);
 }
 function findBundle(bundleId){
@@ -1591,10 +1716,31 @@ if (orderPaymentProofRemoveBtn) {
 }
 
 // ===================== Products =====================
-async function loadProducts(){
-  const { data, error } = await supabase.from("products").select("*").order("name");
-  if (error) { reportLoadError("Products", error); return []; }
-  return (data || []).map(mapProductRow);
+async function loadProducts({ allowSnapshotFallback = true, showLoadError = true } = {}){
+  let liveError = null;
+
+  try {
+    const { data, error } = await supabase.from("products").select("*").order("name");
+    if (error) throw error;
+    catalogueUsingSnapshot = false;
+    const mappedProducts = (data || []).map(mapProductRow);
+    return await replaceEmbeddedProductImagesFromSnapshot(mappedProducts);
+  } catch (error) {
+    liveError = error;
+    console.warn("[Dagoldol] Live products read failed:", error);
+  }
+
+  if (allowSnapshotFallback) {
+    const snapshot = await loadCatalogueSnapshot();
+    if (Array.isArray(snapshot?.products) && snapshot.products.length) {
+      catalogueUsingSnapshot = true;
+      console.warn("[Dagoldol] Rendering the deploy-time catalogue snapshot because the live products request failed.");
+      return snapshot.products.map(mapProductRow);
+    }
+  }
+
+  if (showLoadError) reportLoadError("Products", liveError);
+  return [];
 }
 
 function findProduct(productId){
@@ -1668,17 +1814,32 @@ function buildProductCardPhoto(product, index){
 let ratingsMap = {};
 
 async function loadRatingsMap(){
-  const { data, error } = await supabase.from("ratings").select("product_id, value");
   const map = {};
-  if (!error) {
-    (data || []).forEach(r => {
+  let rows = null;
+  let liveError = null;
+
+  try {
+    const { data, error } = await supabase.from("ratings").select("product_id, value");
+    if (error) throw error;
+    rows = data || [];
+  } catch (error) {
+    liveError = error;
+    if (catalogueUsingSnapshot) {
+      const snapshot = await loadCatalogueSnapshot();
+      if (Array.isArray(snapshot?.ratings)) rows = snapshot.ratings;
+    }
+  }
+
+  if (rows) {
+    rows.forEach(r => {
       if (!map[r.product_id]) map[r.product_id] = { sum: 0, count: 0 };
-      map[r.product_id].sum += r.value;
+      map[r.product_id].sum += Number(r.value) || 0;
       map[r.product_id].count += 1;
     });
-  } else {
-    reportLoadError("Ratings", error);
+  } else if (liveError) {
+    reportLoadError("Ratings", liveError);
   }
+
   ratingsMap = map;
 }
 
