@@ -15,11 +15,15 @@ window.SUPABASE_ANON_KEY =
 window.DAGOLDOL_CONFIG = Object.freeze({
   PHASE2_ENABLED: true,
   PHASE3_ENABLED: true,
-  VERSION: "3.0.0",
+  VERSION: "3.1.0",
+  ASSET_VERSION: "3.1.0",
   SITE_URL: "https://lorenz-web-six.vercel.app"
 });
 
 (function initializeEnhancements(){
+  const assetVersion = encodeURIComponent(window.DAGOLDOL_CONFIG.ASSET_VERSION || window.DAGOLDOL_CONFIG.VERSION || "3");
+  const versioned = (path) => `${path}?v=${assetVersion}`;
+
   function loadCSS(href){
     if (document.querySelector(`link[href="${href}"]`)) return;
     const link = document.createElement("link");
@@ -37,11 +41,11 @@ window.DAGOLDOL_CONFIG = Object.freeze({
   }
 
   if (window.DAGOLDOL_CONFIG.PHASE2_ENABLED) {
-    loadCSS("./phase2-fixes.css");
-    loadModule("./phase2-accessibility.js");
+    loadCSS(versioned("./phase2-fixes.css"));
+    loadModule(versioned("./phase2-accessibility.js"));
   }
 
   if (window.DAGOLDOL_CONFIG.PHASE3_ENABLED) {
-    loadCSS("./phase3-fixes.css");
+    loadCSS(versioned("./phase3-fixes.css"));
   }
 })();
