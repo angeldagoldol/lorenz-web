@@ -986,3 +986,124 @@ button:focus-visible {
   outline-offset: 3px;
   border-radius: 4px;
 }
+/* =========================================================
+   DAGOLDOL PORTFOLIO MOBILE STABILITY
+   -------------------------------------------------------------------------
+   Keeps the secondary portfolio page inside the phone viewport and pairs
+   with the shared LiquidChrome mobile fallback. Desktop layout is unchanged.
+   ========================================================= */
+html,
+body{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
+
+@supports (overflow:clip){
+  html,
+  body{
+    overflow-x:clip;
+  }
+}
+
+main,
+.nav,
+.mobile-menu,
+.hero,
+.section,
+.hero__text,
+.hero__terminal,
+.about__grid,
+.skills__grid,
+.projects__grid,
+.contact__grid,
+.footer{
+  min-width:0;
+  max-width:100%;
+}
+
+@media (max-width:640px){
+  .nav{
+    width:100%;
+    padding-top:max(12px, env(safe-area-inset-top));
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:12px;
+    padding-left:max(16px, env(safe-area-inset-left));
+  }
+
+  .mobile-menu{
+    width:100%;
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-left:max(16px, env(safe-area-inset-left));
+  }
+
+  .hero{
+    width:100%;
+    grid-template-columns:1fr;
+    gap:30px;
+    padding-top:40px;
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:48px;
+    padding-left:max(16px, env(safe-area-inset-left));
+  }
+
+  .section{
+    width:100%;
+    padding-top:64px;
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:64px;
+    padding-left:max(16px, env(safe-area-inset-left));
+  }
+
+  .hero__terminal,
+  .skill-card,
+  .project-card,
+  .contact-card{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+    background:rgba(23,26,35,0.96);
+  }
+
+  .terminal__body{
+    max-width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .hero__title{
+    font-size:clamp(2rem, 11vw, 2.8rem);
+    overflow-wrap:anywhere;
+  }
+
+  .hero__sub,
+  .about__body,
+  .project-card,
+  .timeline__content,
+  .contact-card__value{
+    overflow-wrap:anywhere;
+  }
+
+  .hero__cta,
+  .hero__cta .btn,
+  .btn--large{
+    width:100%;
+  }
+
+  .hero__cta .btn,
+  .btn--large{
+    justify-content:center;
+    text-align:center;
+  }
+
+  .footer{
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:max(36px, env(safe-area-inset-bottom));
+    padding-left:max(16px, env(safe-area-inset-left));
+    overflow-wrap:anywhere;
+  }
+}
