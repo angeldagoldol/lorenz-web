@@ -7,11 +7,11 @@
   const DEFAULTS = Object.freeze({
     gridSize: 50,
     trailSize: 0.1,
-    maxAge: 250,
+    maxAge: 420,
     interpolate: 5,
-    color: '#4FE3C1',
+    color: '#1A00FE',
     maxDevicePixelRatio: 1.5,
-    maxSamples: 240
+    maxInterpolationSteps: 96
   });
 
   const externalConfig = (
@@ -33,7 +33,12 @@
       2,
       DEFAULTS.maxDevicePixelRatio
     ),
-    maxSamples: clampNumber(externalConfig.maxSamples, 60, 600, DEFAULTS.maxSamples)
+    maxInterpolationSteps: Math.round(clampNumber(
+      externalConfig.maxInterpolationSteps,
+      24,
+      160,
+      DEFAULTS.maxInterpolationSteps
+    ))
   };
 
   const reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
@@ -42,14 +47,18 @@
 
   let canvas = null;
   let context = null;
-  let samples = [];
-  let lastPointer = null;
   let animationFrame = 0;
   let resizeFrame = 0;
   let width = 0;
   let height = 0;
   let dpr = 1;
-  let cellSize = 16;
+  let cellSize = 10;
+  let gridColumns = 0;
+  let gridRows = 0;
+  let cellTimes = new Float64Array(0);
+  let cellStrengths = new Float32Array(0);
+  let activeCells = new Set();
+  let lastPointer = null;
   let enabled = false;
   let destroyed = false;
 
@@ -94,8 +103,21 @@
       return;
     }
 
+    context.imageSmoothingEnabled = false;
     document.body.appendChild(canvas);
     resizeCanvas();
+  }
+
+  function clearGrid() {
+    activeCells.clear();
+    cellTimes.fill(0);
+    cellStrengths.fill(0);
+    lastPointer = null;
+  }
+
+  function clearCanvas() {
+    if (!context) return;
+    context.clearRect(0, 0, width, height);
   }
 
   function resizeCanvas() {
@@ -114,9 +136,22 @@
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.imageSmoothingEnabled = false;
     }
 
-    cellSize = Math.max(8, Math.min(width, height) / config.gridSize);
+    const targetPhysicalCell = Math.max(
+      6,
+      Math.floor((Math.min(width, height) * dpr) / config.gridSize)
+    );
+    cellSize = targetPhysicalCell / dpr;
+
+    gridColumns = Math.max(1, Math.ceil(width / cellSize));
+    gridRows = Math.max(1, Math.ceil(height / cellSize));
+    cellTimes = new Float64Array(gridColumns * gridRows);
+    cellStrengths = new Float32Array(gridColumns * gridRows);
+    activeCells = new Set();
+    lastPointer = null;
+
     clearCanvas();
   }
 
@@ -128,21 +163,56 @@
     });
   }
 
-  function clearCanvas() {
-    if (!context) return;
-    context.clearRect(0, 0, width, height);
+  function getCellIndex(gridX, gridY) {
+    return gridY * gridColumns + gridX;
   }
 
-  function addSample(x, y, time) {
-    samples.push({ x, y, time });
-    if (samples.length > config.maxSamples) {
-      samples.splice(0, samples.length - config.maxSamples);
+  function getCellOpacity(index, time) {
+    const strength = cellStrengths[index];
+    if (strength <= 0) return 0;
+
+    const age = Math.max(0, time - cellTimes[index]);
+    if (age >= config.maxAge) return 0;
+
+    const life = 1 - age / config.maxAge;
+    return strength * Math.pow(life, 1.12);
+  }
+
+  function stampCell(gridX, gridY, strength, time) {
+    if (gridX < 0 || gridY < 0 || gridX >= gridColumns || gridY >= gridRows) return;
+
+    const index = getCellIndex(gridX, gridY);
+    const existingOpacity = getCellOpacity(index, time);
+    const nextStrength = Math.max(existingOpacity, strength);
+
+    cellTimes[index] = time;
+    cellStrengths[index] = nextStrength;
+    activeCells.add(index);
+  }
+
+  function stampBrush(x, y, time) {
+    const centerX = Math.floor(x / cellSize);
+    const centerY = Math.floor(y / cellSize);
+    const radiusCells = Math.max(1, Math.ceil(config.gridSize * config.trailSize));
+    const radiusLimit = radiusCells + 0.45;
+
+    for (let offsetY = -radiusCells; offsetY <= radiusCells; offsetY += 1) {
+      for (let offsetX = -radiusCells; offsetX <= radiusCells; offsetX += 1) {
+        const distance = Math.hypot(offsetX, offsetY);
+        if (distance > radiusLimit) continue;
+
+        const edgeDepth = Math.max(0, radiusLimit - distance);
+        const strength = edgeDepth >= 1
+          ? 1
+          : 0.76 + 0.24 * edgeDepth;
+        stampCell(centerX + offsetX, centerY + offsetY, strength, time);
+      }
     }
   }
 
-  function addInterpolatedSamples(x, y, time) {
+  function addInterpolatedTrail(x, y, time) {
     if (!lastPointer) {
-      addSample(x, y, time);
+      stampBrush(x, y, time);
       lastPointer = { x, y, time };
       return;
     }
@@ -150,12 +220,15 @@
     const dx = x - lastPointer.x;
     const dy = y - lastPointer.y;
     const distance = Math.hypot(dx, dy);
-    const spacing = Math.max(3, cellSize / config.interpolate);
-    const steps = Math.min(16, Math.max(1, Math.ceil(distance / spacing)));
+    const spacing = Math.max(2, cellSize / config.interpolate);
+    const steps = Math.min(
+      config.maxInterpolationSteps,
+      Math.max(1, Math.ceil(distance / spacing))
+    );
 
     for (let step = 1; step <= steps; step += 1) {
       const ratio = step / steps;
-      addSample(
+      stampBrush(
         lastPointer.x + dx * ratio,
         lastPointer.y + dy * ratio,
         lastPointer.time + (time - lastPointer.time) * ratio
@@ -170,7 +243,7 @@
     if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
 
     const now = performance.now();
-    addInterpolatedSamples(event.clientX, event.clientY, now);
+    addInterpolatedTrail(event.clientX, event.clientY, now);
     ensureAnimation();
   }
 
@@ -183,66 +256,41 @@
     animationFrame = 0;
     if (!enabled || !context) return;
 
-    const oldestAllowed = now - config.maxAge;
-    samples = samples.filter((sample) => sample.time >= oldestAllowed);
-
     clearCanvas();
 
-    if (!samples.length) return;
-
-    const radiusCells = Math.max(1, Math.ceil(config.gridSize * config.trailSize * 0.5));
-    const pixels = new Map();
-
-    for (const sample of samples) {
-      const age = Math.max(0, now - sample.time);
-      const life = Math.max(0, 1 - age / config.maxAge);
-      if (life <= 0) continue;
-
-      const centerX = Math.floor(sample.x / cellSize);
-      const centerY = Math.floor(sample.y / cellSize);
-
-      for (let offsetY = -radiusCells; offsetY <= radiusCells; offsetY += 1) {
-        for (let offsetX = -radiusCells; offsetX <= radiusCells; offsetX += 1) {
-          const distance = Math.hypot(offsetX, offsetY);
-          if (distance > radiusCells + 0.35) continue;
-
-          const gridX = centerX + offsetX;
-          const gridY = centerY + offsetY;
-          if (gridX < 0 || gridY < 0) continue;
-
-          const radial = Math.max(0, 1 - distance / (radiusCells + 0.5));
-          const opacity = Math.pow(life, 1.6) * Math.pow(radial, 1.15);
-          if (opacity < 0.035) continue;
-
-          const key = `${gridX}:${gridY}`;
-          const existing = pixels.get(key) || 0;
-          if (opacity > existing) pixels.set(key, opacity);
-        }
-      }
-    }
+    if (!activeCells.size) return;
 
     context.fillStyle = config.color;
-    const gap = Math.max(1, Math.round(cellSize * 0.18));
-    const pixelSize = Math.max(2, cellSize - gap);
-    const inset = (cellSize - pixelSize) / 2;
 
-    for (const [key, opacity] of pixels) {
-      const [gridX, gridY] = key.split(':').map(Number);
-      context.globalAlpha = Math.min(0.92, opacity);
+    for (const index of activeCells) {
+      const opacity = getCellOpacity(index, now);
+
+      if (opacity <= 0.015) {
+        cellTimes[index] = 0;
+        cellStrengths[index] = 0;
+        activeCells.delete(index);
+        continue;
+      }
+
+      const gridY = Math.floor(index / gridColumns);
+      const gridX = index - gridY * gridColumns;
+
+      context.globalAlpha = Math.min(1, opacity);
       context.fillRect(
-        gridX * cellSize + inset,
-        gridY * cellSize + inset,
-        pixelSize,
-        pixelSize
+        gridX * cellSize,
+        gridY * cellSize,
+        cellSize,
+        cellSize
       );
     }
 
     context.globalAlpha = 1;
-    ensureAnimation();
+
+    if (activeCells.size) ensureAnimation();
   }
 
   function ensureAnimation() {
-    if (!enabled || animationFrame || !samples.length) return;
+    if (!enabled || animationFrame || !activeCells.size) return;
     animationFrame = requestAnimationFrame(drawFrame);
   }
 
@@ -251,13 +299,13 @@
       cancelAnimationFrame(animationFrame);
       animationFrame = 0;
     }
-    samples = [];
-    lastPointer = null;
+    clearGrid();
     clearCanvas();
   }
 
   function enable() {
     if (enabled || !shouldEnable()) return;
+
     createCanvas();
     if (!canvas || !context) return;
 
