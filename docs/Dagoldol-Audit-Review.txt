@@ -1,0 +1,1315 @@
+# Dagoldol Phase 2 — Performance & Accessibility Audit
+
+Baseline inspected: current `index.html`, current `style.css`, current `script.js`, plus the two files that the current HTML actually executes as part of the frontend experience: `pill-buttons.css` and `liquid-chrome.js`. The HTML explicitly loads those dependencies, so excluding them would make the performance/motion audit incomplete. fileciteturn25file1 fileciteturn25file0 fileciteturn24file1 fileciteturn24file0
+
+This is a static-code audit. I do **not** have a Chrome Performance trace, Lighthouse result, layer tree, heap snapshot, GPU timeline, or a recording from a mid-range Android phone. I therefore do not claim measured FPS, INP, memory usage, or actual jank.
+
+## Executive summary
+
+- **Biggest performance risk:** the continuously animated full-viewport LiquidChrome WebGL canvas runs behind a stack of translucent `backdrop-filter` surfaces, including the sticky header and every product card. Static analysis strongly identifies this as the first GPU/compositing hotspot to profile.
+- **Biggest accessibility barrier:** the size-selector radios are `display:none`; this removes the native radio controls from keyboard navigation/accessibility exposure while product selection is a required purchase step.
+- **Second major accessibility issue:** the application has a custom focus trap, but its modals have no `role="dialog"`, `aria-modal`, programmatic labels, background inertness, or scroll lock; the separate image lightbox makes nested-modal behavior unsafe.
+- **KEEP:** the existing skip link, explicit focus-visible styling, semantic labels on many main forms, lazy-loaded product images, bounded search/delivery debounces, Realtime channel teardown, and CSS reduced-motion rules.
+- Source alone is sufficient to fix the size selector, modal semantics, admin tabs, focus visibility, contrast failures, eager admin loading, and several glass effects. Actual LiquidChrome GPU cost, memory behavior during large image uploads, and 721–1024 px rendering need browser/device profiling.
+
+---
+
+# SECTION 1 — PERFORMANCE
+
+## Existing responsive breakpoint map
+
+The current breakpoint system is not one unified system; several declarations overlap.
+
+| Source order | Query | Main behavior |
+|---|---|---|
+| `style.css` | `prefers-reduced-motion: reduce` | Sets animation/transition durations near zero and disables smooth scrolling |
+| `style.css` | `max-width:480px` | Form rows, modal padding, payment columns |
+| `style.css` | `max-width:960px` | Hero changes to one column and hides `.hero-visual` |
+| `style.css` | second `prefers-reduced-motion` | Globally removes animations/transitions |
+| `style.css` | second `max-width:480px` | Repeats form/payment rules; adds size and bundle changes |
+| `style.css` | `max-width:720px` | Main mobile header/catalogue/modal/admin/chat treatment |
+| `style.css` | third `max-width:480px` | Repeats several declarations; changes analytics |
+| `style.css` | `max-width:420px` | Narrow-phone filters/admin controls |
+| `style.css` | `max-width:900px` | Hides `.sticker-leaf` |
+| `style.css` | `max-width:600px` | Hides `.page-sticker` |
+| `style.css` | another `max-width:720px` | Logo sizing |
+| `style.css` | another `max-width:600px` | Mobile typography/spacing |
+| `style.css` | another `max-width:720px` | Chat layout |
+| `pill-buttons.css` | `prefers-reduced-motion: reduce` | Disables pill-circle transition |
+
+This is directly visible in the stylesheet. fileciteturn25file0
+
+The important tablet discontinuity is:
+
+- `<=960px`: hero has already switched to its compact one-column treatment.
+- `>720px`: header, header filters, admin layout, modal layout, and much of the navigation still use desktop behavior.
+- Therefore 721–960px is a mixed desktop/mobile state.
+- 961–1024px remains almost completely desktop.
+
+`body { overflow-x:hidden; }` can also hide horizontal-overflow symptoms rather than prove they do not exist. fileciteturn25file0
+
+---
+
+## CSS expensive-effect inventory
+
+### A. Every active `backdrop-filter`
+
+| Source | Effect | Classification | Why | Suggested replacement |
+|---|---|---|---|---|
+| `.login-card` | `blur(24px) saturate(180%)` | SIMPLIFY | Large translucent panel over animated canvas | 12–16px blur + more opaque fill |
+| `.login-gate-message` | 16px blur | REMOVE | Nested inside already blurred login card | Opaque/semi-opaque fill only |
+| `.field input` | 16px blur | REMOVE | Repeated controls, frequently nested in blurred panels | `rgba(29,33,44,.90)` |
+| `.field select` | 16px blur | REMOVE | Same | Solid/semi-solid dark surface |
+| `.field textarea` | 16px blur | REMOVE | Same | Solid/semi-solid dark surface |
+| `.payment-section` | 16px blur | REMOVE | Large nested blur inside order modal | Semi-opaque fill + border |
+| `.modal-panel` | 24px blur | SIMPLIFY | Large scrolling translucent surface | 12px or opaque surface on mobile |
+| `.shop-header` | 24px blur | **SIMPLIFY** | Full-width sticky element repaints/composites while document scrolls and WebGL changes behind it | `rgba(14,16,22,.90)` + 8px blur or none on tablet/mobile |
+| `.account-menu` | 24px blur | KEEP | Small and transient | Keep unless Layers profiling shows promotion cost |
+| `.filter-search-field` | 16px blur | REMOVE | Can be nested within blurred sticky header | Semi-opaque fill |
+| `.filter-bar select` | 16px blur | REMOVE | Small control; effect adds little visual value | Semi-opaque fill |
+| `.header-filters select` | 16px blur | REMOVE | Multiple controls inside sticky blurred header | Semi-opaque fill |
+| `.product-card` | 20px blur | **REMOVE** | Potentially many cards simultaneously visible over moving canvas; repaint area scales with catalogue | `rgba(23,26,35,.86-.94)` |
+| `.promo-row input` | 16px blur | REMOVE | Nested inside blurred order panel | Semi-opaque fill |
+| `.chat-input-row input` | 16px blur | REMOVE | Nested inside modal/chat surface | Semi-opaque fill |
+
+Each also has the corresponding `-webkit-backdrop-filter`. fileciteturn25file0
+
+Chrome's rendering tooling can expose paint flashing and layer/compositing behavior; those are the correct browser tools for confirming whether these surfaces are actually causing expensive repaints on target devices. ([developer.chrome.com](https://developer.chrome.com/docs/devtools/rendering/performance?authuser=2))
+
+### B. Box-shadow inventory
+
+| Selector/effect | Classification | Reason |
+|---|---|---|
+| `.global-error-banner` `0 4px 16px` | KEEP | Small, exceptional fixed surface |
+| `.login-card` sheen + `0 20px 50px` | SIMPLIFY | Large blurred panel already using backdrop blur |
+| `.btn-primary` base/hover/active shadows | KEEP | Small, interaction-only |
+| `.modal-panel` sheen + `0 20px 50px` | SIMPLIFY | Large scrolling panel |
+| `.toast` `0 8px 24px` | KEEP | Small, short-lived |
+| `.account-menu` sheen + `0 12px 28px` | KEEP | Small, transient |
+| `.btn-cart` hover/active | KEEP | Small, interaction-only |
+| `.btn-ghost` hover/active | KEEP | Same |
+| `.product-card` base + `0 14px 30px` hover | SIMPLIFY | Repeated across catalogue and combined with backdrop blur |
+| `.btn-secondary` hover/active | KEEP | Small |
+| `.btn-add` base/hover/active | KEEP | Small |
+| `.tracker-step.active .tracker-dot` ring | KEEP | Tiny area |
+| `.btn-cancel-order` hover/active | KEEP | Small |
+| `.admin-status-btn` hover/active | KEEP | Small |
+| `.admin-btn-danger` hover/active | KEEP | Small |
+| `.admin-btn-edit` hover/active | KEEP | Small |
+| `.online-dot` ring | KEEP | Tiny |
+| `.reaction-picker` | KEEP | Small, temporary |
+| `.image-lightbox-content img` `0 20px 60px` | KEEP | Single transient image |
+
+No active `text-shadow` declaration was found in the inspected current stylesheet. fileciteturn25file0
+
+### C. Filters, gradients, animation and transitions
+
+| Source | Effect | Classification | Reason |
+|---|---|---|---|
+| `.page-sticker` | `filter:drop-shadow(...)` | REMOVE/dead cleanup | `.page-sticker` is globally `display:none`; no runtime cost while hidden |
+| `.zoomable-img:hover` | `filter:brightness(1.03)` | KEEP | Short user interaction |
+| `#shop-screen` | 3 static radial gradients | KEEP | Static background; substantially cheaper concern than moving WebGL |
+| `.skeleton` | animated gradient via `background-position` | SIMPLIFY | Infinite paint-changing animation while skeletons are present |
+| `.error-message.shake` | transform keyframes | KEEP | Short, bounded, reduced-motion-disabled |
+| `.toast` | opacity + transform animation | KEEP | Short and compositing-friendly |
+| `pill-buttons.css` | transform-based circle expansion | KEEP | Interaction-only; reduced motion already supported |
+| `.product-card` | transform/background/shadow transitions | SIMPLIFY | Transform is fine; shadow + transparent blur combination is the issue |
+| `.product-photo img/svg` | scale transform | KEEP | Interaction-only |
+| `.skip-link` | animates `top` | SIMPLIFY | Layout-affecting property; convert to transform |
+| `.pw-strength-fill` | animates width | SIMPLIFY | Width can trigger layout; tiny but easy to improve |
+| multiple button classes | `transition:all` | SIMPLIFY | Explicit properties avoid accidentally animating layout/paint-heavy properties |
+| `.payment-option` | `transition:all` | SIMPLIFY | Same |
+| `.size-option` | `transition:all` | SIMPLIFY | Same |
+
+Current pill-button animation itself is already transform-based and explicitly disables the transition under reduced-motion preferences. fileciteturn24file0
+
+---
+
+## JavaScript — five highest performance risks
+
+| Rank | Actual code | Static risk |
+|---:|---|---|
+| 1 | LiquidChrome continuous full-screen `requestAnimationFrame()` WebGL rendering | High GPU candidate; must be profiled |
+| 2 | `enterShop()` administrator path eagerly calls almost every `renderAdmin*()` function simultaneously | High avoidable network/DOM workload |
+| 3 | `loadRecommendationData()` reloads orders and reconstructs trending/co-occurrence data; Realtime can trigger repeated refreshes | Medium–High as order volume grows |
+| 4 | `renderCatalogueList()` replaces the complete visible catalogue through `innerHTML` and rebinds every card listener | Medium, increasing with “Load more” |
+| 5 | `resizeImageToBlob()`/image canvas pipeline decodes large user photos on the main thread | Medium memory/long-task candidate on mobile |
+
+The relevant catalogue, recommendation, image-upload, Realtime and admin code is present in the current script. fileciteturn24file1
+
+---
+
+## Performance findings
+
+### [PERFORMANCE] Reduce the WebGL + full-page glass compositing stack
+
+**Evidence:** `index.html` contains fixed `#liquid-chrome-bg-shop`; `style.css` declares `.liquid-chrome-bg { position:fixed; inset:0; }`, `.shop-header` with strong `backdrop-filter`, `.product-card` with 20px backdrop blur, `.modal-panel` and `.login-card` with 24px backdrop blur. The loaded LiquidChrome module continuously renders its canvas. fileciteturn25file1 fileciteturn25file0
+
+**Problem:** The canvas continuously changes pixels behind multiple transparent surfaces. This combination can increase GPU compositing and repaint work, particularly for the sticky header and multiple catalogue cards.
+
+**Status:** Inferred performance hotspot from static code. Runtime severity needs verification.
+
+**Why it matters:** A mid-range mobile GPU has to render the shader and then continually resolve translucent/blurred surfaces above it. Product cards multiply the affected surface count.
+
+**Fix:** Preserve LiquidChrome as the primary visual effect, but remove blur from repeated elements:
+
+```css id="0yite6"
+.product-card{
+  background:rgba(23,26,35,.90);
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+
+.field input,
+.field select,
+.field textarea,
+.promo-row input,
+.chat-input-row input,
+.filter-search-field,
+.filter-bar select,
+.header-filters select,
+.payment-section,
+.login-gate-message{
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}
+
+.shop-header{
+  background:rgba(14,16,22,.90);
+  backdrop-filter:blur(8px) saturate(130%);
+  -webkit-backdrop-filter:blur(8px) saturate(130%);
+}
+```
+
+For `.login-card` and `.modal-panel`, reduce 24px to approximately 12–16px rather than eliminating the effect.
+
+**Validation:** Chrome DevTools → Performance: record a 10-second scroll through catalogue on desktop and Android remote debugging. Rendering → Paint Flashing. Layers → inspect number/size of composited layers. Compare before/after GPU/main-thread activity. Lighthouse Performance may be recorded as supplementary evidence, but not as a substitute for the scroll trace. ([developer.chrome.com](https://developer.chrome.com/docs/devtools/rendering/performance?authuser=2))
+
+**Impact:** High  
+**Effort:** M  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Glass appearance becomes slightly more opaque; functionality does not change.
+
+---
+
+### [PERFORMANCE] Stop eagerly loading every hidden admin tab
+
+**Evidence:** In `enterShop()`, the admin path executes a large `Promise.all()` containing `renderAdminOrders()`, `renderAdminProducts()`, `renderAdminBundles()`, `renderAdminBrands()`, `renderAdminFlashSales()`, `renderAdminPromos()`, `renderAdminMessages()`, `renderAdminActivity()`, `renderAdminAnalytics()`, and `renderAdminSettings()`, followed by `renderAdminAccounts()`. Clicking a tab later calls those render functions again. fileciteturn24file1
+
+**Problem:** Hidden admin screens perform Supabase reads and DOM construction before the administrator requests them.
+
+**Status:** Verified.
+
+**Why it matters:** Initial admin entry does more network traffic, JSON parsing, array processing, SVG chart construction, image references and DOM replacement than is necessary to show the default Orders tab.
+
+**Fix:** On admin entry, load only the visible tab plus cross-screen state genuinely needed by the header:
+
+```js id="xr5xqe"
+if (account.role === "admin") {
+  shopScreen.classList.add("hidden");
+  adminWelcomeName.textContent = currentUser;
+  adminScreen.classList.remove("hidden");
+
+  adminOrdersVisibleCount = ADMIN_ORDERS_PAGE_SIZE;
+  await renderAdminOrders();
+
+  initPresenceGeneric();
+  subscribeDmRealtime();
+  unreadChatCount = await computeMyDmUnreadCount();
+  updateChatBadge();
+  updateDocumentTitleUnread(unreadChatCount);
+}
+```
+
+Keep the existing per-tab click handlers as the lazy loaders.
+
+**Validation:** Chrome DevTools → Network: compare Supabase requests from admin login until Orders is usable. Performance → compare scripting and rendering time. Confirm each remaining tab loads correctly on first click and subsequent clicks.
+
+**Impact:** High  
+**Effort:** S  
+**Risk:** Medium  
+**Depends on:** None  
+**Regression risk:** A hidden tab may currently populate shared caches that another tab accidentally relies on. Test Products → Bundles → Analytics → Accounts in sequence.
+
+---
+
+### [PERFORMANCE] Pause or bound the continuously animated LiquidChrome background
+
+**Evidence:** `index.html` automatically initializes the LiquidChrome module for the body-level fixed background. The implementation continuously schedules rendering through `requestAnimationFrame()` and does not use the existing `prefers-reduced-motion` CSS policy to stop the WebGL animation. fileciteturn25file1
+
+**Problem:** A decorative canvas continues consuming rendering resources even when the page itself is idle.
+
+**Status:** Verified source behavior; actual device cost Needs verification.
+
+**Why it matters:** Continuous animation consumes GPU/battery resources throughout browsing, checkout, chat and admin use.
+
+**Fix:** At minimum:
+
+1. Render a still frame when `prefers-reduced-motion: reduce` is active.
+2. Pause rendering while `document.hidden`.
+3. Either stop the decorative animation before five seconds or provide a Pause/Resume control.
+
+Conceptually:
+
+```js id="tyzf2l"
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+let running = !document.hidden && !reducedMotion.matches;
+
+document.addEventListener("visibilitychange", () => {
+  running = !document.hidden && !reducedMotion.matches;
+  if (running) requestAnimationFrame(update);
+});
+```
+
+A full implementation must ensure only one RAF chain can exist when visibility toggles.
+
+**Validation:** Performance panel: idle 15 seconds before/after. Rendering panel: FPS/frame rendering activity. Android remote-debugging: compare while page is stationary. Verify no RAF work continues while the tab is hidden.
+
+**Impact:** High  
+**Effort:** S–M  
+**Risk:** Medium  
+**Depends on:** LiquidChrome source modification  
+**Regression risk:** Background motion changes after tab switching or reduced-motion preference changes unless RAF lifecycle is carefully guarded.
+
+---
+
+### [PERFORMANCE] Avoid full catalogue DOM reconstruction for every catalogue interaction
+
+**Evidence:** `renderCatalogueList()` runs:
+
+```js id="z3fe70"
+catalogue.innerHTML =
+  visible.map((p, i) => buildFullProductCardHTML(p, i)).join("");
+```
+
+and immediately loops over `[data-action='cart']` and `[data-action='order']` to attach new handlers. Search invokes it after a 250ms debounce; filters, sorting and Load More invoke it directly. fileciteturn24file1
+
+**Problem:** Every catalogue state change reparses and replaces all visible product cards.
+
+**Status:** Verified.
+
+**Why it matters:** At the initial 12 products this is bounded, but every Load More raises the reconstruction size. It also forces listener reattachment and discards DOM/focus state.
+
+**Fix:** First remove per-render listener attachment and use one delegated listener:
+
+```js id="lhx5lh"
+catalogue.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-action]");
+  if (!btn || !catalogue.contains(btn)) return;
+
+  const id = btn.dataset.id;
+  const qtyInput = document.getElementById(`qty-${id}`);
+  const qty = clampQty(qtyInput ? qtyInput.value : 1);
+
+  if (btn.dataset.action === "cart") {
+    openSizeModal(id, qty, "cart");
+  } else if (btn.dataset.action === "order") {
+    openSizeModal(id, qty, "order");
+  }
+});
+```
+
+Then remove the two `querySelectorAll(...).forEach(addEventListener)` blocks from `renderCatalogueList()`.
+
+Do not introduce virtualization until profiling demonstrates a need.
+
+**Validation:** DevTools Performance with 12, 24, 48 and 96 loaded cards. Measure scripting/DOM update duration while changing sort/filter. Confirm one click produces one action after many rerenders.
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Incorrect delegation selector could affect recommendation cards if they use separate containers; keep their existing handlers unless deliberately migrated too.
+
+---
+
+### [PERFORMANCE] Prevent overlapping recommendation recomputation
+
+**Evidence:** `loadRecommendationData()` reads non-cancelled orders, reconstructs product-line data, creates a co-occurrence map with nested product-pair loops, and computes trending quantities. `subscribeRecommendationsRealtime()` listens for order INSERT and UPDATE and calls `scheduleRecsRefresh()`. `refreshRecommendationsLive()` can reload data and rerender recommendations. fileciteturn24file1
+
+**Problem:** The 30-second throttle is good, but there is no explicit in-flight refresh lock or visibility check.
+
+**Status:** Inferred scaling risk. Current order volume is not available.
+
+**Why it matters:** With larger order history or slow network, another scheduled refresh can overlap or do work while the application is backgrounded.
+
+**Fix:**
+
+```js id="dxyw4q"
+let recsRefreshPromise = null;
+
+async function refreshRecommendationsLive(){
+  if (document.hidden) return;
+  if (recsRefreshPromise) return recsRefreshPromise;
+
+  recsLastRefreshAt = Date.now();
+
+  recsRefreshPromise = (async () => {
+    await loadRecommendationData();
+    await renderTrendingSection();
+    await renderRecommendedSection();
+  })();
+
+  try {
+    await recsRefreshPromise;
+  } finally {
+    recsRefreshPromise = null;
+  }
+}
+```
+
+Keep the existing 30-second throttle.
+
+**Validation:** Network panel with artificial Slow 3G; trigger several order changes. There should never be overlapping recommendation-order fetches. Performance panel should show one recomputation window.
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** A refresh arriving while hidden is skipped until another trigger unless a `visibilitychange` refresh is also scheduled.
+
+---
+
+### [PERFORMANCE] Move large image decode/resize away from the most memory-heavy path
+
+**Evidence:** `resizeImageToBlob()` uses `FileReader.readAsDataURL()`, constructs an `Image`, allocates a canvas at resized dimensions, draws the decoded source and calls `canvas.toBlob()`. The helper is used before Storage uploads. fileciteturn24file1
+
+**Problem:** A 12–50 MP camera image still has to be decoded before downscaling; the Data URL introduces additional memory overhead.
+
+**Status:** Verified implementation; real memory pressure Needs verification.
+
+**Why it matters:** On memory-constrained phones a large upload can generate a long main-thread task or transient memory spike.
+
+**Fix:** Prefer `createImageBitmap(file)` where supported, then fall back to the existing implementation. Also reject unreasonably large dimensions/file sizes before decode.
+
+Do not assign a numerical file-size threshold without a product requirement.
+
+**Validation:** DevTools Memory + Performance. Upload representative 12 MP, 24 MP and largest permitted photos on Android. Inspect peak JS/graphics memory and long tasks.
+
+**Impact:** Medium  
+**Effort:** M  
+**Risk:** Medium  
+**Depends on:** Representative production image sizes  
+**Regression risk:** Browser-specific image-format differences; retain a FileReader fallback.
+
+---
+
+### [PERFORMANCE] Add a deliberate 721–1024px tablet bridge
+
+**Evidence:** `.hero` changes at `max-width:960px`, while the principal header/admin/modal reflow begins only at `max-width:720px`; later `600`, `480`, and `420` rules compound the cascade. fileciteturn25file0
+
+**Problem:** Tablet widths can receive a compact hero with desktop-density header, filters and admin spacing. Multiple independent `480px` and `720px` blocks also make cascade behavior difficult to reason about.
+
+**Status:** Verified breakpoint gap; actual visual breakage requires runtime verification.
+
+**Why it matters:** Layout wrapping can increase page height, repaint area and accidental overflow; `overflow-x:hidden` can conceal it.
+
+**Fix:** Add a narrowly scoped bridge rather than redesigning all breakpoints:
+
+```css id="hsq6w0"
+@media (min-width:721px) and (max-width:1024px){
+  .shop-header{
+    padding:16px 24px;
+    align-items:flex-start;
+  }
+
+  .header-filters{
+    order:3;
+    flex:1 1 100%;
+    min-width:0;
+  }
+
+  .admin-tabs{
+    padding:0 24px;
+  }
+
+  .admin-panel{
+    padding:28px 24px 64px;
+  }
+}
+```
+
+Then consolidate duplicate `max-width:480px` blocks only after visual regression testing.
+
+**Validation:** Browser widths 721, 768, 820, 912, 960, 961 and 1024px. Check `document.documentElement.scrollWidth === document.documentElement.clientWidth`; temporarily remove `overflow-x:hidden` while testing to expose hidden overflow.
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** Browser visual test  
+**Regression risk:** Existing deliberate header wrapping may change.
+
+---
+
+### [PERFORMANCE] Verify the Google Font requests are actually used
+
+**Evidence:** `index.html` requests Fraunces and Work Sans. Current CSS sets display type to `"Space Grotesk"`/`"Inter"` and body to `"Inter"`; those requested Google families are not the principal stylesheet stack. Work Sans is referenced inside the decorative hero SVG that is subsequently hidden by the current CSS rule targeting `svg[viewBox="0 0 360 400"]`. fileciteturn25file1 fileciteturn25file0
+
+**Problem:** The browser may request font CSS/fonts that contribute little or nothing to the rendered application.
+
+**Status:** Inferred. Actual font transfer must be checked in Network/Coverage.
+
+**Why it matters:** Unused font requests add connection and download overhead.
+
+**Fix:** Do not remove them blindly. First verify in DevTools Network → Font and Coverage. If no rendered content uses them, remove the two preconnects and Google Fonts stylesheet.
+
+**Validation:** DevTools Network and Coverage with cache disabled.
+
+**Impact:** Low  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** Runtime font inspection  
+**Regression risk:** A currently hidden or secondary screen could rely on one of the fonts.
+
+---
+
+# SECTION 2 — ACCESSIBILITY
+
+WCAG references below use WCAG 2.1. The relevant criteria include Keyboard 2.1.1, Focus Order 2.4.3, Focus Visible 2.4.7, Resize Text 1.4.4, Reflow 1.4.10, Contrast 1.4.3, Non-text Contrast 1.4.11, Error Identification 3.3.1, Labels or Instructions 3.3.2, Name/Role/Value 4.1.2 and Status Messages 4.1.3. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/keyboard.html))
+
+---
+
+## Contrast calculations
+
+Ratios below use WCAG relative luminance and `(L1 + 0.05) / (L2 + 0.05)`. WCAG 2.1 AA requires 4.5:1 for normal text and WCAG 1.4.11 generally requires 3:1 for meaningful non-text UI boundaries. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum))
+
+### Verified failures
+
+| Actual use | Foreground | Background | Ratio | Required | Status | Corrected value | Corrected ratio |
+|---|---:|---:|---:|---:|---|---:|---:|
+| White text on teal pill hover | `#FFFFFF` | `#4FE3C1` | **1.60:1** | 4.5:1 text | FAIL | `#08110F` | **11.93:1** |
+| White text on coral error/danger backgrounds | `#FFFFFF` | `#FF8A5B` | **2.32:1** | 4.5:1 text | FAIL | `#08110F` | **8.24:1** |
+| Dark control border on `#171A23` | `#2A2F3D` | `#171A23` | **1.30:1** | 3:1 UI | FAIL | `#626B80` | **3.25:1** |
+| Corrected border against `#1D212C` | `#626B80` | `#1D212C` | **3.01:1** | 3:1 UI | PASS | — | — |
+| Muted text on panel | `#D6DAE4` | `#171A23` | **12.42:1** | 4.5:1 | PASS | — | — |
+| Faint text on panel | `#A4ACBF` | `#171A23` | **7.64:1** | 4.5:1 | PASS | — | — |
+| Accent on base dark | `#4FE3C1` | `#0E1016` | **11.85:1** | 4.5:1 | PASS | — | — |
+
+The first failure is introduced specifically by `pill-buttons.css`, which changes teal-filled controls to `color:#fff` on `:hover` and `:focus-visible`. fileciteturn24file0
+
+### Glass surfaces
+
+A reliable static ratio cannot be calculated for text rendered over:
+
+```css id="eyv3ob"
+background: rgba(..., .35);
+backdrop-filter: blur(...);
+```
+
+when the composited background is a changing WebGL shader/gradient. The final background pixel varies by location and frame.
+
+For those cases:
+
+**Foreground:** typically `#FFFFFF`, `#D6DAE4` or `#A4ACBF`  
+**Background:** translucent glass + animated canvas  
+**Ratio:** N/A statically  
+**Required:** 4.5:1 normal text  
+**Status:** **NEEDS IN-BROWSER MEASUREMENT**
+
+A deterministic fallback such as `#D6DAE4` on solid `#171A23` yields **12.42:1**.
+
+---
+
+## Accessibility findings
+
+### [ACCESSIBILITY] Restore keyboard-accessible native size radios
+
+**Evidence:** `renderSizeOptions()` creates genuine:
+
+```html id="44vp3f"
+<input type="radio" name="size-feet" ...>
+```
+
+but `style.css` then applies:
+
+```css id="i04bml"
+.size-option input{ display:none; }
+```
+
+After every `change`, `renderSizeOptions(product)` reconstructs the entire radio group. fileciteturn24file1 fileciteturn25file0
+
+**Problem:** `display:none` removes the native radio controls from sequential keyboard navigation/accessibility exposure. The required product-variant selection is therefore not reliably keyboard operable.
+
+**Status:** Verified.
+
+**Why it matters:** A keyboard-only user can reach “Continue” without being able to navigate/change the product size using normal radio semantics.
+
+**Fix:**
+
+```css id="cnmgxq"
+.size-option{
+  position:relative;
+}
+
+.size-option input{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  clip-path:inset(50%);
+  white-space:nowrap;
+  border:0;
+}
+
+.size-option:focus-within{
+  outline:2px solid #4FE3C1;
+  outline-offset:2px;
+}
+```
+
+Then stop rerendering the complete radio group on every change:
+
+```js id="5upbys"
+radio.addEventListener("change", () => {
+  sizeModalState.selectedFeet = radio.value;
+
+  sizeOptionsEl.querySelectorAll(".size-option").forEach(option => {
+    const input = option.querySelector("input[name='size-feet']");
+    option.classList.toggle("selected", Boolean(input && input.checked));
+  });
+
+  renderSizeModalPhoto(product);
+  updateSizeModalQtyMax(product);
+});
+```
+
+Add an accessible group label:
+
+```html id="1h0vso"
+<div
+  class="size-options"
+  id="size-options"
+  role="radiogroup"
+  aria-label="Available sizes">
+</div>
+```
+
+**Validation:** WCAG **2.1.1 Keyboard**, **2.4.7 Focus Visible**, **4.1.2 Name, Role, Value**. Tab into the group; use Arrow Left/Right/Up/Down; confirm checked state follows native radio behavior; disabled out-of-stock choices must not be selectable. Test NVDA/Firefox and VoiceOver/Safari. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/keyboard.html))
+
+**Impact:** High  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Removing the current rerender means `.selected` must be updated explicitly as shown.
+
+---
+
+### [ACCESSIBILITY] Complete the modal system instead of relying only on a focus trap
+
+**Evidence:** `#size-modal`, `#profile-modal`, `#cart-modal`, `#order-modal`, `#orders-modal`, `#contact-modal` and `#chat-modal` are plain `.modal-overlay` `<div>` elements. They have no `role="dialog"`, `aria-modal="true"` or `aria-labelledby`. `openModalAccessible()` does save focus, focus an initial element and trap Tab/Shift+Tab; `Escape` invokes `closeTopModal()`. fileciteturn25file1 fileciteturn24file1
+
+**Problem:** The modal system has:
+
+- Focus entry: **present**
+- Tab trap: **present**
+- Shift+Tab trap: **present**
+- Escape: **present**
+- Basic single-modal focus restoration: **present**
+- Disabled controls excluded from trap: **present**
+- Dialog role: **missing**
+- `aria-modal`: **missing**
+- Accessible programmatic title: **missing**
+- Background inertness: **missing**
+- Scroll locking: **missing**
+- Nested-modal stack: **not supported safely**
+
+ARIA modal patterns require an accessible dialog name and modal behavior in which content outside the active modal is inert. ([w3.org](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/))
+
+**Status:** Verified.
+
+**Why it matters:** Screen-reader users are not told they entered a dialog, may navigate into content behind it, and nested interactions can restore focus incorrectly.
+
+**Fix:** For example:
+
+```html id="88kvcm"
+<div id="cart-modal" class="modal-overlay hidden">
+  <div
+    class="modal-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="cart-modal-title"
+    tabindex="-1">
+    <button ...>×</button>
+    <p class="eyebrow">Your Cart</p>
+    <h2 class="modal-item-name" id="cart-modal-title">
+      What you've added
+    </h2>
+    ...
+  </div>
+</div>
+```
+
+Do the equivalent for every modal with its own heading ID.
+
+Replace the single:
+
+```js id="kbmd5h"
+let lastFocusedBeforeModal = null;
+let activeModalEl = null;
+```
+
+with a stack of modal states so nested dialogs/lightboxes can restore the correct previous focus target.
+
+Add:
+
+```css id="eszxq5"
+body.modal-open{
+  overflow:hidden;
+}
+```
+
+and apply `inert` to the active screen/background while a dialog is open.
+
+**Validation:** WCAG **2.4.3 Focus Order**, **2.1.1 Keyboard**, **4.1.2 Name, Role, Value**. Test:
+
+1. Open with keyboard.
+2. Verify focus enters intended first control.
+3. Tab through all controls.
+4. Tab from last → first.
+5. Shift+Tab first → last.
+6. Press Escape.
+7. Verify focus returns to opener.
+8. Attempt screen-reader navigation outside modal — background must be unavailable.
+9. Verify page cannot scroll behind modal.
+10. Repeat while opening a nested lightbox.
+
+([w3.org](https://www.w3.org/WAI/WCAG21/understanding/focus-order.html))
+
+**Impact:** High  
+**Effort:** M  
+**Risk:** Medium  
+**Depends on:** Lightbox fix below  
+**Regression risk:** Incorrect `inert` handling can accidentally disable the active modal.
+
+---
+
+### [ACCESSIBILITY] Make image zoom/lightbox a real keyboard-accessible dialog
+
+**Evidence:** Global delegated code opens a lightbox only when:
+
+```js id="unuxt0"
+const img = e.target.closest(".zoomable-img");
+```
+
+is clicked. `.zoomable-img` is an `<img>`, not a button. `openImageLightbox()` dynamically creates an overlay and close button but does not provide dialog semantics, a focus trap, initial focus or focus restoration. It also installs an independent document-level Escape handler. fileciteturn24file1
+
+The GCash QR area is additionally declared:
+
+```html id="4o44ks"
+<div class="qr-box" ... aria-hidden="true">
+```
+
+even though the real QR `<img>` has meaningful alternative text and the interface tells the user to tap it. fileciteturn25file1
+
+**Problem:** Mouse users can zoom; keyboard users cannot. When launched from another modal, the lightbox and underlying modal have separate Escape handlers.
+
+**Status:** Verified.
+
+**Why it matters:** Payment QR enlargement and product/payment-proof enlargement are interactive features unavailable through keyboard.
+
+**Fix:** Make the visual a button:
+
+```html id="5uqkes"
+<button
+  type="button"
+  class="zoomable-image-button"
+  aria-label="Open GCash QR code full size">
+  <img
+    id="gcash-qr-img"
+    ...
+    alt="Owner's GCash QR code">
+</button>
+```
+
+Use the same centralized modal stack for the lightbox rather than its independent keydown implementation.
+
+**Validation:** WCAG **2.1.1 Keyboard**, **2.4.3 Focus Order**, **4.1.2 Name, Role, Value**. Tab to QR/product image button, press Enter/Space, verify dialog announcement, Escape close, and correct focus restoration.
+
+**Impact:** High  
+**Effort:** M  
+**Risk:** Medium  
+**Depends on:** Modal system fix  
+**Regression risk:** Existing delegated `.zoomable-img` click logic needs to recognize the new button without double-opening.
+
+---
+
+### [ACCESSIBILITY] Give Admin tabs true tab semantics and keyboard navigation
+
+**Evidence:** Admin navigation is:
+
+```html id="1q1thh"
+<nav class="admin-tabs">
+  <button class="admin-tab-btn active" data-tab="orders">Orders</button>
+  ...
+</nav>
+```
+
+JS toggles `.active` and `.hidden` on click only. There is no `role="tablist"`, `role="tab"`, `aria-selected`, `aria-controls`, panel association or Arrow-key handling. fileciteturn25file1 fileciteturn24file1
+
+**Problem:** Visual selected state is not programmatically conveyed.
+
+**Status:** Verified.
+
+**Why it matters:** Screen-reader users cannot reliably determine which admin section is active. If this visually tabbed interface is represented as a tab widget, keyboard behavior should match that representation.
+
+**Fix:** Use:
+
+```html id="13227b"
+<nav
+  class="admin-tabs"
+  role="tablist"
+  aria-label="Administration sections">
+
+  <button
+    id="admin-tab-button-orders"
+    class="admin-tab-btn active"
+    role="tab"
+    aria-selected="true"
+    aria-controls="admin-tab-orders"
+    tabindex="0"
+    data-tab="orders">
+    Orders
+  </button>
+</nav>
+```
+
+Panels:
+
+```html id="fv0x3g"
+<div
+  id="admin-tab-orders"
+  class="admin-tab-panel"
+  role="tabpanel"
+  aria-labelledby="admin-tab-button-orders">
+</div>
+```
+
+Inactive tabs use `aria-selected="false"` and `tabindex="-1"`.
+
+Add ArrowLeft/ArrowRight/Home/End movement.
+
+**Validation:** WCAG **2.1.1 Keyboard**, **2.4.3 Focus Order**, **4.1.2 Name, Role, Value**. Test Tab enters tablist once, arrow keys move tabs, active tab is announced as selected, panel content follows in logical order.
+
+**Impact:** Medium  
+**Effort:** M  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Existing click logic must remain the single activation path called by both click and keyboard.
+
+---
+
+### [ACCESSIBILITY] Identify exact invalid form fields rather than only showing generic errors
+
+**Evidence:** `order-form`, login/signup/contact forms use `novalidate`. Order submission checks:
+
+```js id="98mrht"
+if (!name || !phone || !address || !city || !postal || !landmark) {
+  orderError.textContent =
+    "Please fill in every field before confirming...";
+  return;
+}
+```
+
+It does not identify which control failed or set `aria-invalid`. Similar custom validation patterns occur elsewhere. fileciteturn25file1 fileciteturn24file1
+
+**Problem:** A user is informed that “something” is missing but not programmatically told which field is invalid.
+
+**Status:** Verified.
+
+**Why it matters:** Error recovery is substantially harder for screen-reader and magnification users in a long checkout form.
+
+**Fix:** Preserve the centralized message but annotate specific controls:
+
+```js id="nhghkj"
+function markOrderFieldInvalid(input, invalid){
+  input.setAttribute("aria-invalid", String(invalid));
+
+  if (invalid) {
+    input.setAttribute("aria-describedby", "order-error");
+  } else {
+    input.removeAttribute("aria-describedby");
+  }
+}
+```
+
+Create a list of required controls and focus the first invalid one.
+
+**Validation:** WCAG **3.3.1 Error Identification** and **3.3.2 Labels or Instructions**. Submit with Street Address and Postal Code empty. Error text must name them; both controls must expose `aria-invalid="true"`; focus moves to the first error. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/error-identification.html))
+
+**Impact:** Medium  
+**Effort:** S–M  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Make sure `aria-invalid` is removed as fields are corrected.
+
+---
+
+### [ACCESSIBILITY] Label quantity and chat controls explicitly
+
+**Evidence:** Size modal currently uses:
+
+```html id="hte487"
+<div class="qty-row">
+  <span>Qty</span>
+  <input ... id="size-modal-qty">
+</div>
+```
+
+Product/bundle quantity inputs follow the same visual-span pattern. `#chat-new-username` relies on its placeholder, and the dynamically generated `#dm-input` also uses only a placeholder. fileciteturn25file1 fileciteturn24file1
+
+**Problem:** Visible neighboring text is not necessarily the input's accessible label.
+
+**Status:** Verified.
+
+**Why it matters:** Assistive technology may announce “edit, blank” or the placeholder rather than the input's persistent purpose.
+
+**Fix:**
+
+```html id="hr1sfi"
+<label for="size-modal-qty">Qty</label>
+<input id="size-modal-qty" ...>
+```
+
+For dynamic product quantities, use a unique `aria-label` such as:
+
+```html id="0g2coq"
+<input
+  class="qty-input"
+  aria-label="Quantity for ${escapeHtml(p.name)}"
+  ...>
+```
+
+Chat:
+
+```html id="46ybuh"
+<label for="chat-new-username">Start a chat with username</label>
+<input id="chat-new-username" ...>
+```
+
+and dynamically:
+
+```html id="38l74s"
+<label class="sr-only" for="dm-input">Message</label>
+<input id="dm-input" ...>
+```
+
+**Validation:** WCAG **3.3.2 Labels or Instructions** and **1.3.1 Info and Relationships**. Inspect the Accessibility tree and test with screen reader focus.
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Minimal.
+
+---
+
+### [ACCESSIBILITY] Announce dynamic delivery, promo, upload and chat states
+
+**Evidence:** The script mutates `textContent` for `#delivery-distance-status`, `#promo-status`, upload-status spans, password strength text and `#chat-new-error`. Some error containers already have `role="alert"` but several operational status elements do not have live-region semantics. fileciteturn25file1 fileciteturn24file1
+
+**Problem:** Visible asynchronous state changes may not be announced to assistive technologies.
+
+**Status:** Verified for missing semantics; exact AT behavior depends on browser/screen reader.
+
+**Why it matters:** A user may not learn that delivery has finished calculating, a coupon succeeded/failed, or an upload completed.
+
+**Fix:**
+
+```html id="spjmfw"
+<p
+  id="delivery-distance-status"
+  class="delivery-status"
+  role="status"
+  aria-live="polite">
+</p>
+
+<p
+  id="promo-status"
+  class="promo-status"
+  role="status"
+  aria-live="polite">
+</p>
+```
+
+Use `role="alert"` for actual blocking errors such as `#chat-new-error`.
+
+The toast system currently has both a live container and individual live children. Prefer one announcement boundary to avoid potential duplicate announcements:
+
+```html id="ta8r27"
+<div
+  id="toast-container"
+  class="toast-container"
+  role="status"
+  aria-live="polite"
+  aria-atomic="false">
+</div>
+```
+
+and remove `role`/`aria-live` from individual toast nodes.
+
+**Validation:** WCAG **4.1.3 Status Messages**. Test with NVDA and VoiceOver without moving focus; each meaningful state change should be announced once. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/status-messages.html))
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Overly aggressive `role="alert"` can make the interface noisy; use polite status for non-blocking updates.
+
+---
+
+### [ACCESSIBILITY] Fix white text introduced on teal pill hover/focus
+
+**Evidence:** `pill-buttons.css` sets `color:#fff` on focus/hover for `.btn-primary`, `.btn-add`, `.btn-secondary`, `.btn-cart`, `.btn-ghost`, `.admin-btn-edit`, `.admin-status-btn`, `.password-toggle-btn` and `.promo-apply-btn` while their expanding fill is teal `var(--brass)` / `var(--accent)`. fileciteturn24file0
+
+**Problem:**  
+Foreground: `#FFFFFF`  
+Background: `#4FE3C1`  
+Ratio: **1.60:1**  
+Required: **4.5:1 text**  
+Status: **FAIL**
+
+**Status:** Verified.
+
+**Why it matters:** Hover and keyboard-focus states make button text substantially harder to read.
+
+**Fix:**
+
+```css id="sitr79"
+.btn-primary:hover,
+.btn-primary:focus-visible,
+.btn-add:hover,
+.btn-add:focus-visible,
+.btn-secondary:hover,
+.btn-secondary:focus-visible,
+.btn-cart:hover,
+.btn-cart:focus-visible,
+.btn-ghost:hover,
+.btn-ghost:focus-visible,
+.admin-btn-edit:hover,
+.admin-btn-edit:focus-visible,
+.admin-status-btn:hover,
+.admin-status-btn:focus-visible,
+.password-toggle-btn:hover,
+.password-toggle-btn:focus-visible,
+.promo-apply-btn:hover,
+.promo-apply-btn:focus-visible{
+  color:#08110f;
+}
+```
+
+Corrected foreground: `#08110F`  
+Corrected ratio: **11.93:1**
+
+**Validation:** WCAG **1.4.3 Contrast (Minimum)**. Test rest, hover and keyboard-focus states independently. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum))
+
+**Impact:** High  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** None beyond intentional text-color change.
+
+---
+
+### [ACCESSIBILITY] Fix white text on coral backgrounds
+
+**Evidence:** Coral `var(--rust)` equals `#FF8A5B`. Several states combine that background with `var(--cream)`/white, including the global error banner, flash-sale badge, danger hover state and chat badge. fileciteturn25file0
+
+**Problem:**  
+Foreground: `#FFFFFF`  
+Background: `#FF8A5B`  
+Ratio: **2.32:1**  
+Required: **4.5:1 text**  
+Status: **FAIL**
+
+**Status:** Verified.
+
+**Why it matters:** Important error/destructive/sale indicators are among the least appropriate elements to render with insufficient text contrast.
+
+**Fix:**
+
+```css id="m15fx8"
+.global-error-banner,
+.flash-sale-badge,
+.admin-chat-thread-badge,
+.btn-cancel-order:hover,
+.admin-btn-danger:hover,
+.admin-btn-danger:focus-visible{
+  color:#08110f;
+}
+```
+
+Corrected value: `#08110F`  
+Corrected ratio: **8.24:1**
+
+**Validation:** WCAG **1.4.3 Contrast (Minimum)**. Check every coral-filled state, including hover/focus.
+
+**Impact:** High  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Visual tone changes from white-on-coral to dark-on-coral.
+
+---
+
+### [ACCESSIBILITY] Increase meaningful input/control boundary contrast
+
+**Evidence:** Several solid dark controls use `border:1px solid var(--line)` where `--line:#2A2F3D`; their background is `#171A23` or `#1D212C`, including size-builder and bundle-builder controls. fileciteturn25file0
+
+**Problem:**  
+Border: `#2A2F3D`  
+Background: `#171A23`  
+Ratio: **1.30:1**  
+Required: **3:1 UI component boundary**  
+Status: **FAIL**
+
+**Status:** Verified for the solid dark controls. Glass controls require browser measurement.
+
+**Why it matters:** Users with low vision may have difficulty identifying editable controls and their boundaries.
+
+**Fix:** Do not globally replace `--line` because it is also used for decorative separators. Create a control-border token:
+
+```css id="n03hgt"
+:root{
+  --control-border:#626B80;
+}
+
+.qty-input,
+.size-builder-price,
+.size-builder-stock,
+.bundle-builder-row select,
+.bundle-builder-row input,
+.chat-new-row input{
+  border-color:var(--control-border);
+}
+```
+
+Corrected value: `#626B80`  
+Corrected ratio:
+- against `#171A23`: **3.25:1**
+- against `#1D212C`: **3.01:1**
+
+**Validation:** WCAG **1.4.11 Non-text Contrast**; inspect controls in normal, focus and disabled states. ([w3.org](https://www.w3.org/WAI/standards-guidelines/wcag/new-in-21/))
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Controls become visibly more defined.
+
+---
+
+### [ACCESSIBILITY] Restore a visible focus indicator on catalogue search
+
+**Evidence:**
+
+```css id="b8egts"
+.filter-search-field input:focus{
+  outline:none;
+}
+```
+
+There is no corresponding `.filter-search-field:focus-within` focus ring. The general field-specific focus rule does not target this search input. fileciteturn25file0
+
+**Problem:** The search box can receive keyboard focus without a sufficiently obvious focus indicator.
+
+**Status:** Verified.
+
+**Why it matters:** Keyboard users can lose track of where they are.
+
+**Fix:**
+
+```css id="jtynui"
+.filter-search-field:focus-within{
+  border-color:#4FE3C1;
+  box-shadow:
+    0 0 0 2px #4FE3C1,
+    0 0 0 4px #0E1016;
+}
+```
+
+Focus indicator foreground: `#4FE3C1`  
+Adjacent dark background: `#0E1016`  
+Ratio: **11.85:1**  
+Required: 3:1 UI indication  
+Status: PASS.
+
+**Validation:** WCAG **2.4.7 Focus Visible**. Tab through the header and verify search focus is visible without using the mouse. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/focus-visible))
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** None.
+
+---
+
+### [ACCESSIBILITY] Reveal message reaction controls for keyboard focus, not only hover
+
+**Evidence:**
+
+```css id="xyu67r"
+.chat-react-toggle{
+  ...
+  opacity:0;
+}
+
+.chat-bubble-row:hover .chat-react-toggle{
+  opacity:1;
+}
+```
+
+The actual element is a keyboard-focusable `<button>`. fileciteturn25file0 fileciteturn24file1
+
+**Problem:** Keyboard focus can land on a fully transparent reaction button.
+
+**Status:** Verified.
+
+**Why it matters:** Keyboard users can encounter an invisible interactive control.
+
+**Fix:**
+
+```css id="i75fez"
+.chat-bubble-row:hover .chat-react-toggle,
+.chat-bubble-row:focus-within .chat-react-toggle,
+.chat-react-toggle:focus-visible{
+  opacity:1;
+}
+```
+
+**Validation:** WCAG **2.4.7 Focus Visible**. Navigate chat entirely by Tab/Shift+Tab; reaction button must appear before or as focus reaches it.
+
+**Impact:** Medium  
+**Effort:** S  
+**Risk:** Low  
+**Depends on:** None  
+**Regression risk:** Reaction icon will remain visible while keyboard focus stays inside a message.
+
+---
+
+### [ACCESSIBILITY] Extend reduced-motion behavior to the WebGL background
+
+**Evidence:** `style.css` contains two reduced-motion blocks and `pill-buttons.css` also respects reduced motion. However those CSS rules do not stop JavaScript's continuously rendered LiquidChrome canvas. fileciteturn25file0 fileciteturn24file0 fileciteturn25file1
+
+**Problem:** Decorative movement starts automatically and continues independently of the CSS preference.
+
+**Status:** Verified.
+
+**Why it matters:** Continuous motion can be distracting or problematic for motion-sensitive users. WCAG 2.2.2 requires a mechanism to pause/stop/hide qualifying automatically moving content that continues beyond five seconds unless essential. ([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/pause-stop-hide.html))
+
+**Fix:** For users with `prefers-reduced-motion: reduce`, render a static frame only.
+
+For all other users, either:
+
+- stop the decorative motion before five seconds; or
+- provide a visible Pause Background Motion control.
+
+**Validation:** WCAG **2.2.2 Pause, Stop, Hide**. Emulate `prefers-reduced-motion` in DevTools Rendering. Verify WebGL animation stops while all app functions remain usable.
+
+**Impact:** High  
+**Effort:** S–M  
+**Risk:** Medium  
+**Depends on:** LiquidChrome modification  
+**Regression risk:** Changes a noticeable visual effect.
+
+---
+
+### [ACCESSIBILITY] Verify zoom/reflow instead of assuming `overflow-x:hidden` proves compliance
+
+**Evidence:** The viewport allows `maximum-scale=5.0`, many responsive layouts already collapse cleanly, `.analytics-table-wrap` and admin tabs explicitly allow horizontal scrolling. Conversely, `body { overflow-x:hidden; }` can conceal clipped content. Dynamic admin/chat/order content lengths are not predictable from static source. fileciteturn25file1 fileciteturn25file0
+
+**Problem:** Static source alone cannot prove that all content remains usable at 200% text resize or equivalent 320-CSS-pixel reflow.
+
+**Status:** **Verification status: INSUFFICIENT EVIDENCE.**
+
+**Why it matters:** Clipped actions or fields at high zoom constitute a substantive accessibility failure.
+
+**Fix:** No source change should be invented until the failure is located. During testing, temporarily disable `overflow-x:hidden` to expose overflow sources.
+
+**Validation:** WCAG **1.4.4 Resize Text** and **1.4.10 Reflow**:
+
+- 200% browser text/zoom.
+- 320 CSS-pixel effective viewport.
+- Test shop header, filters, product cards, every modal, admin tabs, product builders, bundle builder, analytics table and chat.
+- Check for clipped text/control loss rather than merely absence of a scrollbar.
+
+([w3.org](https://www.w3.org/WAI/WCAG21/Understanding/resize-text))
+
+**Impact:** Medium  
+**Effort:** M  
+**Risk:** Low  
+**Depends on:** Live browser testing  
+**Regression risk:** None for the audit itself.
+
+---
+
+# Accessibility Tick-Off Checklist
+
+- [ ] Size-selector radios remain native keyboard-accessible and expose checked/disabled states.
+- [ ] Arrow-key behavior works within the size radio group.
+- [ ] Every modal has `role="dialog"` and `aria-modal="true"`.
+- [ ] Every modal has an accessible name via `aria-labelledby` or `aria-label`.
+- [ ] Focus enters each modal at the intended point.
+- [ ] Tab wraps last → first.
+- [ ] Shift+Tab wraps first → last.
+- [ ] Escape closes only the topmost modal.
+- [ ] Focus returns to the correct opener.
+- [ ] Background content is inert while a modal is active.
+- [ ] Body/background scrolling is locked during a modal.
+- [ ] Image lightbox uses the same modal stack.
+- [ ] Zoomable product/payment/QR images can be activated with Enter/Space.
+- [ ] Admin tabs expose `tablist`/`tab`/`tabpanel`, `aria-selected`, and associations.
+- [ ] Admin tabs support ArrowLeft/ArrowRight/Home/End.
+- [ ] Quantity controls have persistent programmatic labels.
+- [ ] Chat username and DM message inputs have labels.
+- [ ] Required-field errors identify the exact invalid controls.
+- [ ] Invalid controls expose `aria-invalid`.
+- [ ] Delivery calculation and promo results are live status messages.
+- [ ] Upload progress/completion is announced appropriately.
+- [ ] Toast messages are announced once, not duplicated.
+- [ ] Catalogue search has a visible keyboard focus ring.
+- [ ] Chat reaction controls become visible under keyboard focus.
+- [ ] White-on-teal hover/focus text has been replaced with `#08110F`.
+- [ ] White-on-coral text has been replaced with `#08110F` where coral is the background.
+- [ ] Dark form-control boundaries meet 3:1 non-text contrast.
+- [ ] Glass text contrast is measured over the brightest and darkest actual rendered frames.
+- [ ] CSS animations obey `prefers-reduced-motion`.
+- [ ] LiquidChrome also obeys reduced-motion.
+- [ ] Automatic background motion can be paused/stopped or ends before five seconds.
+- [ ] 200% zoom/text-resize test passes.
+- [ ] 320-CSS-pixel reflow test passes.
+- [ ] No important control is clipped by `overflow-x:hidden`.
+
+---
+
+# Phase 2 Priority Backlog
+
+| Priority | Finding | Impact | Effort | Risk | Dependency | Code area | Expected result |
+|---:|---|---|---|---|---|---|---|
+| P0 | Restore native keyboard size selector | High | S | Low | None | `.size-option`, `renderSizeOptions()` | Required product variants keyboard-accessible |
+| P0 | Complete modal semantics/inertness/nesting | High | M | Medium | Lightbox integration | Modal HTML + modal helpers | Correct focus and screen-reader modal behavior |
+| P0 | Fix white-on-teal pill contrast | High | S | Low | None | `pill-buttons.css` | 11.93:1 button text |
+| P0 | Fix white-on-coral contrast | High | S | Low | None | `style.css` | 8.24:1 critical-status text |
+| P0 | Reduced-motion support for LiquidChrome | High | S–M | Medium | LiquidChrome source | Motion preference respected |
+| P1 | Reduce WebGL + backdrop-blur stack | High | M | Low | Device profiling | CSS/LiquidChrome | Lower GPU/compositing pressure |
+| P1 | Lazy-load admin tabs | High | S | Medium | Regression test | `enterShop()` | Fewer startup queries/DOM builds |
+| P1 | Keyboard-accessible image lightbox | High | M | Medium | Modal fix | Lightbox/QR/product images | Zoom available without mouse |
+| P2 | Add admin tab semantics/keyboard model | Medium | M | Low | None | Admin tabs | Selected state programmatically exposed |
+| P2 | Explicit form-error associations | Medium | S–M | Low | None | Checkout/forms | Faster accessible error recovery |
+| P2 | Add missing quantity/chat labels | Medium | S | Low | None | HTML/dynamic templates | Inputs announced correctly |
+| P2 | Add status/live-region semantics | Medium | S | Low | None | Delivery/promo/upload/toasts | Async results announced |
+| P2 | Fix catalogue search focus indication | Medium | S | Low | None | `.filter-search-field` | Visible keyboard location |
+| P2 | Reveal reaction button on focus | Medium | S | Low | None | chat CSS | Invisible focus target removed |
+| P2 | Raise form-control boundary contrast | Medium | S | Low | None | form/control CSS | ≥3:1 meaningful boundaries |
+| P2 | Prevent overlapping recommendation refreshes | Medium | S | Low | None | recommendations | Bounded Realtime recomputation |
+| P2 | Delegate catalogue actions | Medium | S | Low | None | `renderCatalogueList()` | Fewer listener rebuilds |
+| P2 | Add 721–1024 tablet bridge | Medium | S | Low | Visual testing | responsive CSS | More consistent tablet layout |
+| P2 | Profile image resize memory | Medium | M | Medium | Device testing | image upload helper | Reduced upload long-task/memory risk |
+| P2 | Verify resize/reflow | Medium | M | Low | Browser testing | full frontend | WCAG 1.4.4/1.4.10 evidence |
+| P3 | Remove verified-unused Google fonts | Low | S | Low | Coverage results | `index.html` | Fewer network bytes |
+| P3 | Consolidate repeated media queries | Low | M | Medium | Visual regression | `style.css` | Predictable cascade |
+
+The strongest source-only corrections are the **size radios, modal semantics, contrast, LiquidChrome reduced-motion behavior, lazy admin-tab loading, form/status semantics, focus styling, and repeated card blur removal**. Actual GPU/frame-time claims should wait for the specified Chrome trace rather than assigning fabricated performance percentages.
