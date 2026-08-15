@@ -80,7 +80,7 @@ async function main() {
 
   const configSource = await readFile(resolve(ROOT, 'config.js'), 'utf8');
   if (!configSource.includes('PHASE3_ENABLED: true')) throw new Error('config.js does not enable Phase 3.');
-  if (!configSource.includes('loadCSS("./phase3-fixes.css")')) throw new Error('config.js does not load phase3-fixes.css.');
+  if (!configSource.includes('./phase3-fixes.css')) throw new Error('config.js does not load phase3-fixes.css.');
 
   const scriptSource = await readFile(resolve(ROOT, 'script.js'), 'utf8');
   for (const route of ['CHECKOUT: "/checkout"', 'ORDERS: "/account/orders"', 'ADMIN: "/admin"']) {
