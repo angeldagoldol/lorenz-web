@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>Shipping & Delivery | Dagoldol Trading Co.</title>
+<meta name="description" content="Current Dagoldol delivery-fee calculation, free-delivery rules, fallback fee, and delivery-status behavior.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://lorenz-web-six.vercel.app/shipping-delivery/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Dagoldol">
+<meta property="og:title" content="Shipping & Delivery | Dagoldol Trading Co.">
+<meta property="og:description" content="Current Dagoldol delivery-fee calculation, free-delivery rules, fallback fee, and delivery-status behavior.">
+<meta property="og:url" content="https://lorenz-web-six.vercel.app/shipping-delivery/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/phase2-fixes.css">
+<link rel="stylesheet" href="/phase3-fixes.css">
+<link rel="stylesheet" href="/info-page.css">
+</head>
+<body class="info-page-body">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<header class="info-page-header">
+  <a class="brand-mark" href="/" aria-label="Dagoldol home"><span>Dagoldol</span></a>
+  <nav aria-label="Shop information"><a href="/">Shop</a><a href="/products/">Products</a><a href="/faq/">FAQ</a><a href="/shipping-delivery/">Delivery</a><a href="/contact/">Contact</a></nav>
+</header>
+<main id="main-content" class="info-page-main">
+<p class="info-page-eyebrow">Orders</p>
+<h1>Shipping & Delivery</h1>
+<p class="info-page-lead">Delivery charges are calculated during checkout from the address entered by the customer. The rules below reflect the current application logic.</p>
+<section class="info-section">
+<h2>Current delivery-fee rules</h2>
+<ul>
+<li>Free delivery applies when the road distance is within 5 km of the configured shop origin.</li>
+<li>The application also checks configured free-delivery zones around Katipunan National High School in Arakan, Cotabato and Kimasog in Marilog District; an address within 5 km of either configured zone receives free delivery.</li>
+<li>Outside the free-delivery rule, the configured rate is ₱60 per calculated road kilometer.</li>
+<li>If the application cannot geocode the address or obtain a road route, it uses a ₱600 fallback delivery fee.</li>
+</ul>
+</section>
+<section class="info-section">
+<h2>Address processing</h2>
+<p>The checkout sends the entered address to the OpenStreetMap Nominatim geocoding service and uses the public OSRM routing service to estimate road distance. Add a clear landmark because map services may locate a street without identifying the exact door.</p>
+</section>
+<section class="info-section">
+<h2>Estimated delivery and real status</h2>
+<p>The current customer-facing delivery estimate is 3–6 days after order placement. Phase 3 no longer advances fulfillment stages automatically from elapsed time: Order Placed, Processing, Shipped, Out for Delivery, and Delivered now reflect the persisted status selected by the seller/admin.</p>
+</section>
+<section class="info-section">
+<h2>Questions about delivery</h2>
+<p>If the calculated fee or location looks incorrect, contact Dagoldol before confirming payment. Use the <a class="info-link" href="/contact/">Contact page</a>.</p>
+</section>
+<p class="info-meta">Effective August 15, 2026</p>
+</main>
+<footer class="shop-footer">
+  <nav class="shop-footer-nav" aria-label="Shop information"><a href="/products/">Products</a><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/shipping-delivery/">Shipping &amp; Delivery</a><a href="/returns/">Returns</a><a href="/contact/">Contact</a><a href="/terms/">Terms</a><a href="/privacy/">Privacy</a></nav>
+  <p>&copy; 2026 Dagoldol Trading Co.</p>
+</footer>
+</body>
+</html>
