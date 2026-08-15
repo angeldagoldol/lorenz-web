@@ -1,0 +1,10 @@
+7ce540dd5d7758cb2315616e759123e0448bf58caf31235f8f37c63f0a6ee46f  ./BANK-PAYMENT-FIX-README.txt
+370d36edffa05e390d77586f3e5dc7b805fbe16cff37684bcc372d2e7d3ab6f0  ./BANK-PAYMENT-FIX-VERIFICATION.txt
+efc204cf0666fed814cd7cbce5f21b44fd9ed57f5fab44b182fb1cd404dce377  ./index.html
+2b1189ee352de8e623f48d004fd3880e323dc9ff1c133da3863f16f433475508  ./package.json
+9ceb2f61c1508e47f9b45fc62f5684f1dc4e5056bf1be0f8fee5b34c3629f08a  ./pill-buttons.css
+f7c3e54c71e768fcdd5c24799ba8d469f5beeb15fee5b8a6c5c6981cef9f35a2  ./script.js
+908b32f17171b016922fdc1dc20fac3f678cbe689784d97936f5ebb9a8e702f3  ./scripts/generate-public-catalogue.mjs
+061082afa2862ea80b67364587fa53a2d689c2ffd3b54e93373007d83f9a6e70  ./scripts/verify-source.mjs
+e3ac96fcf85d5446c7b7615b49d6cb4169a62af0bcfe61b1f4a52bc06a2f918e  ./tests/payment-settings-contract.mjs
+b6daa22b15417a9800e0dbea4ea861b41798f739e7664ebdc44f4666f5bf31df  ./tests/payment-settings-runtime.spec.py
