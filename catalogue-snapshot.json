@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-15T17:18:43.964176Z",
+  "products": [
+    {
+      "id": "pmsgomk3z",
+      "name": "benguet pine",
+      "description": "Pinus kesiya is one of the most widely distributed pines in southeast Asia. Its range extends south and east from the Khasi Hills in the northeast Indian state of Meghalaya, to Burma, northern Thailand, Cambodia, Laos, southernmost China, Vietnam, and the Philippines",
+      "accent": "#4fe3c1",
+      "icon": "",
+      "sizes": [
+        {
+          "feet": 2,
+          "price": 20,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 4,
+          "price": 200,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 6,
+          "price": 400,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 8,
+          "price": 600,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 10,
+          "price": 800,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 12,
+          "price": 1000,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 13,
+          "price": 1099,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 14,
+          "price": 1250,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        },
+        {
+          "feet": 15,
+          "price": 1500,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgojtlu-ik1z.jpg"
+        }
+      ],
+      "brand_id": null,
+      "unit_type": "feet"
+    },
+    {
+      "id": "pmsgowyr2",
+      "name": "durian tree",
+      "description": ") is a large tropical evergreen native to Southeast Asia that produces the famous \"King of Fruits.\" It grows up to 25\u201350 meters tall, featuring oblong leaves, fragrant yellowish-green flowers, and large, spiny, hard-husked fruits known for their rich, custard-like pulp and intense aroma.",
+      "accent": "#4fe3c1",
+      "icon": "",
+      "sizes": [
+        {
+          "feet": 8,
+          "price": 600,
+          "stock": null,
+          "image": "https://rvrjkfbenramappteuae.supabase.co/storage/v1/object/public/product-images/sizes/msgow8yc-qkm.jpg"
+        }
+      ],
+      "brand_id": null,
+      "unit_type": "feet"
+    },
+    {
+      "id": "pmsdumr9l",
+      "name": "norfolk pine tree",
+      "description": "Araucaria heterophylla (synonym A. excelsa) is a species of conifer. As its vernacular name Norfolk Island pine (or Norfolk pine)",
+      "accent": "#4fe3c1",
+      "icon": "",
+      "sizes": [
+        {
+          "feet": 2,
+          "price": 49,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 4,
+          "price": 199,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 6,
+          "price": 599,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 8,
+          "price": 899,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 10,
+          "price": 999,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 12,
+          "price": 1499,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 13,
+          "price": 1999,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 14,
+          "price": 2299,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        },
+        {
+          "feet": 15,
+          "price": 2499,
+          "stock": null,
+          "image": "/assets/generated-product-images/9bdeb8fc61ff9c0be9fd844c.jpg"
+        }
+      ],
+      "brand_id": null,
+      "unit_type": "feet"
+    }
+  ],
+  "brands": [],
+  "ratings": [],
+  "flashSales": [],
+  "settings": []
+}
