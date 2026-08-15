@@ -431,3 +431,174 @@
     grid-column:1;
   }
 }
+
+/* =====================================================================
+   PHASE 3.1 — PHONE-ONLY LAYOUT STABILIZATION
+   ---------------------------------------------------------------------
+   Desktop/tablet presentation is intentionally untouched. These rules only
+   resolve the narrow-screen header wrap, safe-area spacing and content fit.
+   ===================================================================== */
+@media (max-width:720px){
+  html,
+  body{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden;
+  }
+
+  #shop-screen .shop-header{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto auto;
+    grid-template-areas:
+      "brand cart account"
+      "filters filters filters";
+    align-items:center;
+    column-gap:10px;
+    row-gap:12px;
+    width:100%;
+    padding-top:max(12px, env(safe-area-inset-top));
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:14px;
+    padding-left:max(14px, env(safe-area-inset-left));
+  }
+
+  #shop-screen .brand-mark{
+    grid-area:brand;
+    min-width:0;
+    justify-self:start;
+  }
+
+  #shop-screen .brand-mark span{
+    white-space:nowrap;
+  }
+
+  #shop-screen .header-actions{
+    display:contents;
+  }
+
+  #shop-screen #cart-btn{
+    grid-area:cart;
+    justify-self:end;
+    min-width:44px;
+    min-height:44px;
+    padding:9px 12px;
+  }
+
+  #shop-screen .account-menu-wrap{
+    grid-area:account;
+    justify-self:end;
+    min-width:0;
+  }
+
+  #shop-screen #account-menu-toggle{
+    min-width:44px;
+    min-height:44px;
+    padding:8px 11px;
+  }
+
+  #shop-screen .header-filters{
+    grid-area:filters;
+    width:100%;
+    min-width:0;
+    margin-top:0;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+
+  #shop-screen .header-filters .filter-search-field{
+    grid-column:1 / -1;
+    width:100%;
+    min-width:0;
+    min-height:48px;
+  }
+
+  #shop-screen .header-filters select,
+  #shop-screen .header-filters #catalogue-filter-clear{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    min-height:48px;
+  }
+
+  #shop-screen .header-filters select{
+    padding-inline:12px 32px;
+  }
+
+  #shop-screen .header-filters #catalogue-filter-clear{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:10px 12px;
+  }
+
+  #shop-screen .hero{
+    width:100%;
+    padding:34px max(18px, env(safe-area-inset-right)) 28px max(18px, env(safe-area-inset-left));
+  }
+
+  #shop-screen .hero .hero-title{
+    max-width:15ch;
+    font-size:clamp(2rem,9.2vw,2.55rem);
+    line-height:1.12;
+    overflow-wrap:normal;
+  }
+
+  #shop-screen .hero-sub{
+    width:100%;
+    max-width:100%;
+    font-size:0.95rem;
+    line-height:1.62;
+  }
+
+  #shop-screen .hero-cta{
+    width:100%;
+    min-height:48px;
+  }
+
+  #catalogue{
+    width:100%;
+    padding-inline:max(14px, env(safe-area-inset-left));
+  }
+
+  #catalogue .product-card{
+    width:100%;
+    min-width:0;
+  }
+
+  .shop-footer{
+    padding-left:max(16px, env(safe-area-inset-left));
+    padding-right:max(16px, env(safe-area-inset-right));
+    padding-bottom:max(40px, calc(24px + env(safe-area-inset-bottom)));
+  }
+
+  .modal-overlay,
+  .route-screen,
+  .route-screen-main,
+  .route-panel,
+  .route-panel-wide{
+    width:100%;
+    max-width:100%;
+  }
+}
+
+@media (max-width:360px){
+  #shop-screen .shop-header{
+    grid-template-columns:minmax(0,1fr) 44px 44px;
+    column-gap:8px;
+    padding-left:12px;
+    padding-right:12px;
+  }
+
+  #shop-screen .brand-mark span{
+    font-size:1rem;
+  }
+
+  #shop-screen .header-filters{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  #shop-screen .hero .hero-title{
+    font-size:clamp(1.9rem,9.5vw,2.2rem);
+  }
+}
