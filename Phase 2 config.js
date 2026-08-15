@@ -1,342 +1,423 @@
-// liquid-chrome.js
-// Vanilla JS port of the LiquidChrome effect (no React, no build step required).
-// Loads OGL straight from a CDN as an ES module.
-// Phase 2 adds visibility/reduced-motion/user-pause lifecycle control while
-// preserving createLiquidChrome(container, options) and the existing data-* API.
-import { Renderer, Program, Mesh, Triangle } from 'https://cdn.jsdelivr.net/npm/ogl@1.0.11/+esm';
-import { shouldAnimateLiquidChrome } from './phase2-core.js';
+/* =====================================================================
+   DAGOLDOL — PHASE 3 SEO / UX / INFORMATION ARCHITECTURE OVERRIDES
+   ---------------------------------------------------------------------
+   Additive styles only. This file is loaded after phase2-fixes.css.
+   ===================================================================== */
 
-const vertexShader = `
-  attribute vec2 position;
-  attribute vec2 uv;
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = vec4(position, 0.0, 1.0);
-  }
-`;
-
-const fragmentShader = `
-  precision highp float;
-  uniform float uTime;
-  uniform vec3 uResolution;
-  uniform vec3 uBaseColor;
-  uniform float uAmplitude;
-  uniform float uFrequencyX;
-  uniform float uFrequencyY;
-  uniform vec2 uMouse;
-  varying vec2 vUv;
-
-  vec4 renderImage(vec2 uvCoord) {
-      vec2 fragCoord = uvCoord * uResolution.xy;
-      vec2 uv = (2.0 * fragCoord - uResolution.xy) / min(uResolution.x, uResolution.y);
-
-      for (float i = 1.0; i < 10.0; i++){
-          uv.x += uAmplitude / i * cos(i * uFrequencyX * uv.y + uTime + uMouse.x * 3.14159);
-          uv.y += uAmplitude / i * cos(i * uFrequencyY * uv.x + uTime + uMouse.y * 3.14159);
-      }
-
-      vec2 diff = (uvCoord - uMouse);
-      float dist = length(diff);
-      float falloff = exp(-dist * 20.0);
-      float ripple = sin(10.0 * dist - uTime * 2.0) * 0.03;
-      uv += (diff / (dist + 0.0001)) * ripple * falloff;
-
-      vec3 color = uBaseColor / abs(sin(uTime - uv.y - uv.x));
-      return vec4(color, 1.0);
-  }
-
-  void main() {
-      vec4 col = vec4(0.0);
-      int samples = 0;
-      for (int i = -1; i <= 1; i++){
-          for (int j = -1; j <= 1; j++){
-              vec2 offset = vec2(float(i), float(j)) * (1.0 / min(uResolution.x, uResolution.y));
-              col += renderImage(vUv + offset);
-              samples++;
-          }
-      }
-      gl_FragColor = col / float(samples);
-  }
-`;
-
-
-function isPhoneClassTouchDevice() {
-  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches === true;
-  const touchPoints = Number(navigator.maxTouchPoints) || 0;
-  if (!coarsePointer && touchPoints <= 0) return false;
-
-  const viewportWidth = Number(window.innerWidth) || Number(document.documentElement?.clientWidth) || Infinity;
-  const viewportHeight = Number(window.innerHeight) || Number(document.documentElement?.clientHeight) || Infinity;
-  const screenWidth = Number(window.screen?.width) || viewportWidth;
-  const screenHeight = Number(window.screen?.height) || viewportHeight;
-  const shortEdge = Math.min(viewportWidth, viewportHeight, screenWidth, screenHeight);
-
-  // The full-screen shader is decorative. On phone-class touch hardware the
-  // safest behavior is to avoid creating a WebGL context at all. This keeps
-  // the storefront, Supabase runtime, buttons, catalogue, images and routes
-  // completely independent from GPU/WebGL availability.
-  return Number.isFinite(shortEdge) && shortEdge <= 768;
+/* Public homepage now has the principal document heading. */
+.hero .hero-title{
+  font-family:var(--font-display);
+  font-weight:600;
+  font-size:clamp(2rem, 4.5vw, 3.2rem);
+  line-height:1.12;
+  margin:10px 0 16px;
+  color:var(--cream);
+  letter-spacing:-0.01em;
 }
 
-function markLiquidChromeStatic(container, reason) {
-  if (!(container instanceof HTMLElement)) return;
-  container.classList.add('liquid-chrome-static');
-  container.dataset.liquidChromeStatus = `static:${reason}`;
+/* Crawlable product-detail links without taking away quick-add controls. */
+.product-detail-link{
+  color:inherit;
+  text-decoration:none;
+  text-decoration-thickness:1px;
+  text-underline-offset:3px;
 }
 
-const mountedControllers = new Set();
-let globalUserPaused = false;
-let motionToggle = null;
-
-function updateMotionToggle() {
-  if (!(motionToggle instanceof HTMLButtonElement)) return;
-  motionToggle.setAttribute('aria-pressed', globalUserPaused ? 'true' : 'false');
-  motionToggle.textContent = globalUserPaused ? 'Resume background motion' : 'Pause background motion';
+.product-detail-link:hover,
+.product-detail-link:focus-visible{
+  color:var(--brass-bright);
+  text-decoration:underline;
 }
 
-function setGlobalUserPaused(paused) {
-  globalUserPaused = Boolean(paused);
-  mountedControllers.forEach((controller) => controller.setUserPaused(globalUserPaused));
-  updateMotionToggle();
+/* Public information architecture lives in the footer, not the account menu. */
+.shop-footer{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
 }
 
-function ensureBackgroundMotionToggle() {
-  if (mountedControllers.size === 0) return;
-  if (document.querySelector('.background-motion-toggle')) return;
-  if (!document.querySelector('.liquid-chrome-bg')) return;
-
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-  if (reducedMotion) return;
-
-  motionToggle = document.createElement('button');
-  motionToggle.type = 'button';
-  motionToggle.className = 'background-motion-toggle';
-  motionToggle.setAttribute('aria-label', 'Pause or resume decorative background motion');
-  motionToggle.addEventListener('click', () => setGlobalUserPaused(!globalUserPaused));
-  document.body.appendChild(motionToggle);
-  updateMotionToggle();
+.shop-footer-nav{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:8px 18px;
+  max-width:900px;
 }
 
-/**
- * Mounts the LiquidChrome effect inside `container`.
- * Returns a destroy() function to tear it down.
- */
-export function createLiquidChrome(container, options = {}) {
-  const {
-    baseColor = [0.1, 0.1, 0.1],
-    speed = 0.2,
-    amplitude = 0.3,
-    frequencyX = 3,
-    frequencyY = 3,
-    interactive = true,
-  } = options;
-
-  const renderer = new Renderer({ antialias: true });
-  const gl = renderer.gl;
-  gl.clearColor(1, 1, 1, 1);
-  gl.canvas.style.display = 'block';
-  gl.canvas.style.width = '100%';
-  gl.canvas.style.height = '100%';
-
-  const geometry = new Triangle(gl);
-  const program = new Program(gl, {
-    vertex: vertexShader,
-    fragment: fragmentShader,
-    uniforms: {
-      uTime: { value: 0 },
-      uResolution: {
-        value: new Float32Array([gl.canvas.width, gl.canvas.height, gl.canvas.width / gl.canvas.height])
-      },
-      uBaseColor: { value: new Float32Array(baseColor) },
-      uAmplitude: { value: amplitude },
-      uFrequencyX: { value: frequencyX },
-      uFrequencyY: { value: frequencyY },
-      uMouse: { value: new Float32Array([0, 0]) }
-    }
-  });
-  const mesh = new Mesh(gl, { geometry, program });
-
-  function resize() {
-    const w = container.offsetWidth;
-    const h = container.offsetHeight;
-    if (w === 0 || h === 0) return;
-    renderer.setSize(w, h);
-    const resUniform = program.uniforms.uResolution.value;
-    resUniform[0] = gl.canvas.width;
-    resUniform[1] = gl.canvas.height;
-    resUniform[2] = gl.canvas.width / gl.canvas.height;
-  }
-  window.addEventListener('resize', resize);
-
-  let resizeObserver;
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => resize());
-    resizeObserver.observe(container);
-  }
-  resize();
-
-  function handleMouseMove(event) {
-    const rect = container.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = 1 - (event.clientY - rect.top) / rect.height;
-    const mouseUniform = program.uniforms.uMouse.value;
-    mouseUniform[0] = x;
-    mouseUniform[1] = y;
-  }
-
-  function handleTouchMove(event) {
-    if (event.touches.length > 0) {
-      const touch = event.touches[0];
-      const rect = container.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const x = (touch.clientX - rect.left) / rect.width;
-      const y = 1 - (touch.clientY - rect.top) / rect.height;
-      const mouseUniform = program.uniforms.uMouse.value;
-      mouseUniform[0] = x;
-      mouseUniform[1] = y;
-    }
-  }
-
-  if (interactive) {
-    container.addEventListener('mousemove', handleMouseMove, { passive:true });
-    container.addEventListener('touchmove', handleTouchMove, { passive:true });
-  }
-
-  const reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
-  let userPaused = globalUserPaused;
-  let animationId = null;
-  let destroyed = false;
-  let lastFrameTime = performance.now();
-
-  function canAnimate() {
-    return shouldAnimateLiquidChrome({
-      documentHidden: document.hidden,
-      reducedMotion: Boolean(reducedMotionQuery?.matches),
-      userPaused
-    });
-  }
-
-  function renderFrame(time) {
-    const safeTime = Number.isFinite(time) ? time : lastFrameTime;
-    lastFrameTime = safeTime;
-    program.uniforms.uTime.value = safeTime * 0.001 * speed;
-    renderer.render({ scene: mesh });
-  }
-
-  function update(time) {
-    animationId = null;
-    if (destroyed || !canAnimate()) return;
-    renderFrame(time);
-    scheduleAnimation();
-  }
-
-  function scheduleAnimation() {
-    if (destroyed || animationId !== null || !canAnimate()) return;
-    animationId = requestAnimationFrame(update);
-  }
-
-  function stopAnimation() {
-    if (animationId !== null) {
-      cancelAnimationFrame(animationId);
-      animationId = null;
-    }
-  }
-
-  function syncAnimationState({ renderStaticFrame = false } = {}) {
-    if (destroyed) return;
-    if (canAnimate()) {
-      scheduleAnimation();
-      return;
-    }
-
-    stopAnimation();
-    if (renderStaticFrame && !document.hidden) renderFrame(lastFrameTime);
-  }
-
-  function handleVisibilityChange() {
-    syncAnimationState({ renderStaticFrame:false });
-  }
-
-  function handleReducedMotionChange() {
-    syncAnimationState({ renderStaticFrame:true });
-    if (reducedMotionQuery?.matches && motionToggle instanceof HTMLElement) {
-      motionToggle.remove();
-      motionToggle = null;
-    } else {
-      ensureBackgroundMotionToggle();
-    }
-  }
-
-  const controller = {
-    setUserPaused(paused) {
-      userPaused = Boolean(paused);
-      syncAnimationState({ renderStaticFrame:true });
-    }
-  };
-  mountedControllers.add(controller);
-
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  reducedMotionQuery?.addEventListener?.('change', handleReducedMotionChange);
-
-  container.appendChild(gl.canvas);
-  renderFrame(lastFrameTime);
-  syncAnimationState();
-
-  return function destroy() {
-    destroyed = true;
-    mountedControllers.delete(controller);
-    stopAnimation();
-    window.removeEventListener('resize', resize);
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    reducedMotionQuery?.removeEventListener?.('change', handleReducedMotionChange);
-    if (resizeObserver) resizeObserver.disconnect();
-    if (interactive) {
-      container.removeEventListener('mousemove', handleMouseMove);
-      container.removeEventListener('touchmove', handleTouchMove);
-    }
-    if (gl.canvas.parentElement) {
-      gl.canvas.parentElement.removeChild(gl.canvas);
-    }
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-  };
+.shop-footer-nav a{
+  color:var(--cream-dim);
+  text-decoration:underline;
+  text-decoration-color:transparent;
+  text-underline-offset:3px;
 }
 
-/**
- * Auto-mounts LiquidChrome into every element with class "liquid-chrome-bg".
- * Reads optional overrides from data-* attributes:
- *   data-speed, data-amplitude, data-frequency-x, data-frequency-y,
- *   data-interactive="false", data-base-color="0.1,0.1,0.1"
- */
-function autoInit() {
-  document.querySelectorAll('.liquid-chrome-bg').forEach((el) => {
-    if (el.dataset.liquidChromeMounted) return;
-    el.dataset.liquidChromeMounted = 'true';
-
-    if (isPhoneClassTouchDevice()) {
-      markLiquidChromeStatic(el, 'phone');
-      return;
-    }
-
-    const opts = {};
-    if (el.dataset.speed) opts.speed = parseFloat(el.dataset.speed);
-    if (el.dataset.amplitude) opts.amplitude = parseFloat(el.dataset.amplitude);
-    if (el.dataset.frequencyX) opts.frequencyX = parseFloat(el.dataset.frequencyX);
-    if (el.dataset.frequencyY) opts.frequencyY = parseFloat(el.dataset.frequencyY);
-    if (el.dataset.interactive === 'false') opts.interactive = false;
-    if (el.dataset.baseColor) {
-      opts.baseColor = el.dataset.baseColor.split(',').map((n) => parseFloat(n));
-    }
-
-    createLiquidChrome(el, opts);
-  });
-
-  ensureBackgroundMotionToggle();
+.shop-footer-nav a:hover,
+.shop-footer-nav a:focus-visible{
+  color:var(--brass-bright);
+  text-decoration-color:currentColor;
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', autoInit, { once:true });
-} else {
-  autoInit();
+/* --------------------- Routed transactional workspaces --------------------- */
+.route-screen{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255,138,91,0.05), transparent 34%),
+    radial-gradient(circle at 88% 8%, rgba(79,227,193,0.06), transparent 32%);
+}
+
+.route-screen-header{
+  position:sticky;
+  top:0;
+  z-index:45;
+  min-height:72px;
+  padding:14px clamp(16px, 5vw, 64px);
+  display:grid;
+  grid-template-columns:minmax(130px, 1fr) auto minmax(130px, 1fr);
+  align-items:center;
+  gap:16px;
+  background:rgba(14,16,22,0.97);
+  border-bottom:1px solid var(--line);
+}
+
+.route-screen-header .brand-mark{
+  justify-self:center;
+}
+
+.route-back-btn{
+  justify-self:start;
+  min-height:44px;
+  border:1px solid var(--phase2-control-border, #626b80);
+  border-radius:8px;
+  padding:8px 14px;
+  background:rgba(29,33,44,0.92);
+  color:var(--cream);
+  font:600 0.82rem/1.2 var(--font-body);
+}
+
+.route-back-btn:hover,
+.route-back-btn:focus-visible{
+  border-color:var(--brass);
+  color:var(--brass-bright);
+}
+
+.route-screen-kicker{
+  justify-self:end;
+  color:var(--cream-dim);
+  font-size:0.76rem;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+}
+
+.route-screen-main{
+  width:100%;
+  max-width:1120px;
+  margin:0 auto;
+  padding:42px clamp(16px, 5vw, 64px) 72px;
+}
+
+.route-panel{
+  width:min(100%, 760px);
+  margin:0 auto;
+  padding:32px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:rgba(23,26,35,0.96);
+  box-shadow:0 18px 44px rgba(0,0,0,0.28);
+}
+
+.route-panel-wide{
+  width:min(100%, 940px);
+}
+
+.route-screen-title{
+  margin:6px 0 22px;
+  font-family:var(--font-display);
+  font-size:clamp(1.55rem, 3vw, 2.1rem);
+  line-height:1.2;
+  color:var(--cream);
+}
+
+.checkout-route-panel .modal-items-list{
+  max-height:none;
+  margin-bottom:22px;
+}
+
+.checkout-route-panel .payment-section{
+  background:rgba(29,33,44,0.92);
+}
+
+#orders-screen .orders-list{
+  margin-top:18px;
+}
+
+#orders-screen .load-more-row{
+  margin:24px 0 0;
+}
+
+/* --------------------- Tablet header information hierarchy --------------------- */
+@media (min-width:721px) and (max-width:1024px){
+  #shop-screen .shop-header{
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr) auto auto;
+    align-items:center;
+    gap:12px;
+    padding:14px 24px 16px;
+  }
+
+  #shop-screen .brand-mark{
+    grid-column:1;
+    grid-row:1;
+  }
+
+  #shop-screen .header-actions{
+    display:contents;
+  }
+
+  #shop-screen #cart-btn{
+    grid-column:3;
+    grid-row:1;
+    min-height:44px;
+  }
+
+  #shop-screen .account-menu-wrap{
+    grid-column:4;
+    grid-row:1;
+  }
+
+  #shop-screen #account-menu-toggle{
+    min-height:44px;
+  }
+
+  #shop-screen .header-filters{
+    grid-column:1 / -1;
+    grid-row:2;
+    width:100%;
+    min-width:0;
+    margin-top:2px;
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:8px;
+  }
+
+  #shop-screen .header-filters .filter-search-field{
+    grid-column:1 / -1;
+    width:100%;
+    min-width:0;
+    min-height:44px;
+  }
+
+  #shop-screen .header-filters select,
+  #shop-screen .header-filters #catalogue-filter-clear{
+    min-width:0;
+    min-height:44px;
+  }
+
+  #shop-screen .header-filters #catalogue-filter-clear{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:8px 12px;
+    border:1px solid var(--phase2-control-border, #626b80);
+    border-radius:8px;
+    text-decoration:none;
+    background:rgba(29,33,44,0.90);
+  }
+}
+
+@media (max-width:720px){
+  .route-screen-header{
+    grid-template-columns:1fr auto;
+    padding:10px 14px;
+  }
+
+  .route-screen-header .brand-mark{
+    justify-self:end;
+  }
+
+  .route-screen-kicker{
+    display:none;
+  }
+
+  .route-screen-main{
+    padding:24px 0 0;
+  }
+
+  .route-panel,
+  .route-panel-wide{
+    width:100%;
+    border-left:0;
+    border-right:0;
+    border-bottom:0;
+    border-radius:18px 18px 0 0;
+    padding:24px 16px 40px;
+    min-height:calc(100vh - 96px);
+  }
+
+  .shop-footer-nav{
+    gap:10px 16px;
+    padding:0 8px;
+  }
+}
+
+@media (max-width:480px){
+  .route-back-btn{
+    padding:8px 10px;
+    font-size:0.76rem;
+  }
+
+  .route-screen-header .brand-mark{
+    font-size:1rem;
+  }
+}
+
+/* =====================================================================
+   DAGOLDOL — MOBILE FIT ONLY
+   ---------------------------------------------------------------------
+   Additive phone-only containment. Desktop/tablet layout, catalogue card
+   design, images, buttons, routed workflows and application DOM remain the
+   original Phase 3 implementation from Pasted text(1).txt.
+   ===================================================================== */
+
+.liquid-chrome-bg.liquid-chrome-static{
+  background:
+    radial-gradient(circle at 14% 12%, rgba(255,138,91,0.08), transparent 36%),
+    radial-gradient(circle at 86% 10%, rgba(79,227,193,0.10), transparent 34%),
+    #0e1016;
+}
+
+.liquid-chrome-bg.liquid-chrome-static canvas{
+  display:none !important;
+}
+
+@media (max-width:720px){
+  html,
+  body{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden;
+    -webkit-text-size-adjust:100%;
+    text-size-adjust:100%;
+  }
+
+  #login-screen,
+  #shop-screen,
+  #admin-screen,
+  .route-screen,
+  .shop-header,
+  .header-actions,
+  .header-filters,
+  .hero,
+  .catalogue,
+  .reco-section,
+  .bundles-section,
+  .product-card,
+  .bundle-card,
+  .admin-panel,
+  .route-screen-main,
+  .route-panel,
+  .route-panel-wide,
+  .modal-panel,
+  .modal-panel-wide,
+  .chat-layout,
+  .chat-thread-list,
+  .chat-conversation{
+    min-width:0;
+    max-width:100%;
+  }
+
+  #shop-screen .header-actions,
+  #shop-screen .header-filters{
+    width:100%;
+    min-width:0;
+  }
+
+  #shop-screen .header-filters .filter-search-field,
+  #shop-screen .header-filters .filter-search-field input,
+  #shop-screen .header-filters select{
+    min-width:0;
+    max-width:100%;
+  }
+
+  .product-card img,
+  .product-card svg,
+  .size-modal-photo img,
+  .size-modal-photo svg,
+  .payment-proof-thumb img,
+  .admin-payment-proof-thumb img{
+    max-width:100%;
+  }
+
+  .field-row,
+  .product-actions,
+  .promo-row,
+  .chat-input-row,
+  .chat-new-row,
+  .cart-line,
+  .cost-row{
+    min-width:0;
+    max-width:100%;
+  }
+
+  .promo-row input,
+  .chat-input-row input,
+  .chat-new-row input,
+  .field input,
+  .field select,
+  .field textarea{
+    min-width:0;
+    max-width:100%;
+  }
+}
+
+/* The original CSS stacks the filters below 420px. This closes only the
+   intermediate 421–720px gap that could squeeze all filter controls into a
+   single row. */
+@media (min-width:421px) and (max-width:720px){
+  #shop-screen .header-filters{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:stretch;
+    gap:8px;
+  }
+
+  #shop-screen .header-filters .filter-search-field{
+    flex:1 1 100%;
+    width:100%;
+  }
+
+  #shop-screen .header-filters select{
+    flex:1 1 calc(50% - 4px);
+    width:calc(50% - 4px);
+  }
+
+  #shop-screen .header-filters #catalogue-filter-clear{
+    flex:1 1 100%;
+    min-height:44px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border:1px solid var(--phase2-control-border, #626b80);
+    border-radius:8px;
+    background:rgba(29,33,44,0.90);
+    text-decoration:none;
+  }
+}
+
+@supports (height:100dvh){
+  @media (max-width:720px){
+    .route-screen{
+      min-height:100dvh;
+    }
+
+    .route-panel,
+    .route-panel-wide{
+      min-height:calc(100dvh - 96px);
+    }
+
+    .modal-panel,
+    .modal-panel-wide{
+      max-height:92dvh;
+    }
+  }
 }
