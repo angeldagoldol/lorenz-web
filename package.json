@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/generate-public-catalogue.mjs",
     "check": "node --check script.js && node --check config.js && node --check liquid-chrome.js && node --check phase2-accessibility.js && node --check phase2-core.js && node --check script1.js && node --check scripts/generate-public-catalogue.mjs && node --check scripts/verify-source.mjs",
-    "verify": "npm run check && node scripts/verify-source.mjs"
+    "verify": "npm run check && npm run test:payment && node scripts/verify-source.mjs",
+    "test:payment": "node --test tests/payment-settings-contract.mjs"
   }
 }
