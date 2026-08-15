@@ -1,311 +1,565 @@
-// liquid-chrome.js
-// Vanilla JS port of the LiquidChrome effect (no React, no build step required).
-// Loads OGL straight from a CDN as an ES module.
-// Phase 2 adds visibility/reduced-motion/user-pause lifecycle control while
-// preserving createLiquidChrome(container, options) and the existing data-* API.
-import { Renderer, Program, Mesh, Triangle } from 'https://cdn.jsdelivr.net/npm/ogl@1.0.11/+esm';
-import { shouldAnimateLiquidChrome } from './phase2-core.js';
+import { getNextTabIndex } from './phase2-core.js';
 
-const vertexShader = `
-  attribute vec2 position;
-  attribute vec2 uv;
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = vec4(position, 0.0, 1.0);
-  }
-`;
+const MODAL_SELECTOR = '.modal-overlay:not(.hidden), #image-lightbox-overlay';
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]'
+].join(',');
 
-const fragmentShader = `
-  precision highp float;
-  uniform float uTime;
-  uniform vec3 uResolution;
-  uniform vec3 uBaseColor;
-  uniform float uAmplitude;
-  uniform float uFrequencyX;
-  uniform float uFrequencyY;
-  uniform vec2 uMouse;
-  varying vec2 vUv;
+const previousInertState = new Map();
+let currentTopOverlay = null;
+let lastZoomTrigger = null;
 
-  vec4 renderImage(vec2 uvCoord) {
-      vec2 fragCoord = uvCoord * uResolution.xy;
-      vec2 uv = (2.0 * fragCoord - uResolution.xy) / min(uResolution.x, uResolution.y);
-
-      for (float i = 1.0; i < 10.0; i++){
-          uv.x += uAmplitude / i * cos(i * uFrequencyX * uv.y + uTime + uMouse.x * 3.14159);
-          uv.y += uAmplitude / i * cos(i * uFrequencyY * uv.x + uTime + uMouse.y * 3.14159);
-      }
-
-      vec2 diff = (uvCoord - uMouse);
-      float dist = length(diff);
-      float falloff = exp(-dist * 20.0);
-      float ripple = sin(10.0 * dist - uTime * 2.0) * 0.03;
-      uv += (diff / (dist + 0.0001)) * ripple * falloff;
-
-      vec3 color = uBaseColor / abs(sin(uTime - uv.y - uv.x));
-      return vec4(color, 1.0);
-  }
-
-  void main() {
-      vec4 col = vec4(0.0);
-      int samples = 0;
-      for (int i = -1; i <= 1; i++){
-          for (int j = -1; j <= 1; j++){
-              vec2 offset = vec2(float(i), float(j)) * (1.0 / min(uResolution.x, uResolution.y));
-              col += renderImage(vUv + offset);
-              samples++;
-          }
-      }
-      gl_FragColor = col / float(samples);
-  }
-`;
-
-const mountedControllers = new Set();
-let globalUserPaused = false;
-let motionToggle = null;
-
-function updateMotionToggle() {
-  if (!(motionToggle instanceof HTMLButtonElement)) return;
-  motionToggle.setAttribute('aria-pressed', globalUserPaused ? 'true' : 'false');
-  motionToggle.textContent = globalUserPaused ? 'Resume background motion' : 'Pause background motion';
+function isElementVisible(element) {
+  if (!(element instanceof HTMLElement)) return false;
+  if (element.hidden || element.classList.contains('hidden')) return false;
+  const style = window.getComputedStyle(element);
+  return style.display !== 'none' && style.visibility !== 'hidden';
 }
 
-function setGlobalUserPaused(paused) {
-  globalUserPaused = Boolean(paused);
-  mountedControllers.forEach((controller) => controller.setUserPaused(globalUserPaused));
-  updateMotionToggle();
+function getFocusableElements(container) {
+  if (!(container instanceof Element)) return [];
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    if (element.hasAttribute('disabled')) return false;
+    if (element.getAttribute('aria-hidden') === 'true') return false;
+    return isElementVisible(element);
+  });
 }
 
-function ensureBackgroundMotionToggle() {
-  if (document.querySelector('.background-motion-toggle')) return;
-  if (!document.querySelector('.liquid-chrome-bg')) return;
-
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-  if (reducedMotion) return;
-
-  motionToggle = document.createElement('button');
-  motionToggle.type = 'button';
-  motionToggle.className = 'background-motion-toggle';
-  motionToggle.setAttribute('aria-label', 'Pause or resume decorative background motion');
-  motionToggle.addEventListener('click', () => setGlobalUserPaused(!globalUserPaused));
-  document.body.appendChild(motionToggle);
-  updateMotionToggle();
+function ensureUniqueId(element, fallback) {
+  if (element.id) return element.id;
+  let candidate = fallback;
+  let index = 2;
+  while (document.getElementById(candidate)) {
+    candidate = `${fallback}-${index}`;
+    index += 1;
+  }
+  element.id = candidate;
+  return candidate;
 }
 
-/**
- * Mounts the LiquidChrome effect inside `container`.
- * Returns a destroy() function to tear it down.
- */
-export function createLiquidChrome(container, options = {}) {
-  const {
-    baseColor = [0.1, 0.1, 0.1],
-    speed = 0.2,
-    amplitude = 0.3,
-    frequencyX = 3,
-    frequencyY = 3,
-    interactive = true,
-  } = options;
+function ensureDialogSemantics(overlay) {
+  if (!(overlay instanceof HTMLElement)) return;
 
-  const renderer = new Renderer({ antialias: true });
-  const gl = renderer.gl;
-  gl.clearColor(1, 1, 1, 1);
-  gl.canvas.style.display = 'block';
-  gl.canvas.style.width = '100%';
-  gl.canvas.style.height = '100%';
+  const panel = overlay.id === 'image-lightbox-overlay'
+    ? overlay.querySelector('.image-lightbox-content')
+    : overlay.querySelector('.modal-panel');
 
-  const geometry = new Triangle(gl);
-  const program = new Program(gl, {
-    vertex: vertexShader,
-    fragment: fragmentShader,
-    uniforms: {
-      uTime: { value: 0 },
-      uResolution: {
-        value: new Float32Array([gl.canvas.width, gl.canvas.height, gl.canvas.width / gl.canvas.height])
-      },
-      uBaseColor: { value: new Float32Array(baseColor) },
-      uAmplitude: { value: amplitude },
-      uFrequencyX: { value: frequencyX },
-      uFrequencyY: { value: frequencyY },
-      uMouse: { value: new Float32Array([0, 0]) }
+  if (!(panel instanceof HTMLElement)) return;
+
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  if (!panel.hasAttribute('tabindex')) panel.setAttribute('tabindex', '-1');
+
+  const heading = panel.querySelector('h1, h2, h3, .modal-item-name');
+  if (heading instanceof HTMLElement) {
+    const overlayName = overlay.id || 'dagoldol-dialog';
+    const headingId = ensureUniqueId(heading, `${overlayName}-title`);
+    panel.setAttribute('aria-labelledby', headingId);
+    panel.removeAttribute('aria-label');
+  } else if (!panel.hasAttribute('aria-label')) {
+    panel.setAttribute('aria-label', overlay.id === 'image-lightbox-overlay' ? 'Image preview' : 'Dialog');
+  }
+
+  overlay.setAttribute('aria-hidden', overlay.classList.contains('hidden') ? 'true' : 'false');
+}
+
+function getOpenOverlays() {
+  return Array.from(document.querySelectorAll(MODAL_SELECTOR)).filter((overlay) => {
+    return overlay instanceof HTMLElement && !overlay.classList.contains('hidden') && isElementVisible(overlay);
+  });
+}
+
+function restoreBackgroundInertness() {
+  for (const [element, wasInert] of previousInertState.entries()) {
+    if (element.isConnected) element.inert = wasInert;
+  }
+  previousInertState.clear();
+}
+
+function applyBackgroundInertness(topOverlay) {
+  restoreBackgroundInertness();
+
+  for (const child of Array.from(document.body.children)) {
+    if (!(child instanceof HTMLElement)) continue;
+    if (child.tagName === 'SCRIPT') continue;
+    if (child === topOverlay || child.id === 'toast-container') continue;
+
+    previousInertState.set(child, child.inert);
+    child.inert = true;
+  }
+}
+
+function updateModalEnvironment() {
+  const openOverlays = getOpenOverlays();
+  currentTopOverlay = openOverlays.length ? openOverlays[openOverlays.length - 1] : null;
+
+  document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+    if (!(overlay instanceof HTMLElement)) return;
+    ensureDialogSemantics(overlay);
+    overlay.setAttribute('aria-hidden', overlay.classList.contains('hidden') ? 'true' : 'false');
+  });
+
+  if (currentTopOverlay) {
+    document.body.classList.add('modal-open');
+    applyBackgroundInertness(currentTopOverlay);
+  } else {
+    document.body.classList.remove('modal-open');
+    restoreBackgroundInertness();
+  }
+}
+
+function trapTopModalKeydown(event) {
+  if (!currentTopOverlay) return;
+
+  if (event.key === 'Escape') {
+    const closeButton = currentTopOverlay.querySelector(
+      '.modal-close, .image-lightbox-close, [id$="-modal-close"], [aria-label="Close"]'
+    );
+    if (closeButton instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeButton.click();
+    }
+    return;
+  }
+
+  if (event.key !== 'Tab') return;
+
+  const scope = currentTopOverlay.id === 'image-lightbox-overlay'
+    ? currentTopOverlay.querySelector('.image-lightbox-content') || currentTopOverlay
+    : currentTopOverlay.querySelector('.modal-panel') || currentTopOverlay;
+
+  const focusable = getFocusableElements(scope);
+  event.stopImmediatePropagation();
+
+  if (!focusable.length) {
+    event.preventDefault();
+    if (scope instanceof HTMLElement) scope.focus();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && (active === first || !scope.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function enhanceStaticModals() {
+  document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+    if (overlay instanceof HTMLElement) ensureDialogSemantics(overlay);
+  });
+}
+
+function enhanceSizeSelector(root = document) {
+  const group = root.querySelector?.('#size-options');
+  if (group instanceof HTMLElement) {
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', 'Available sizes');
+  }
+}
+
+function restoreSizeRadioFocus(event) {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  if (!input.matches('#size-options input[type="radio"][name="size-feet"]')) return;
+
+  const selectedValue = input.value;
+  requestAnimationFrame(() => {
+    const replacement = Array.from(
+      document.querySelectorAll('#size-options input[type="radio"][name="size-feet"]')
+    ).find((candidate) => candidate instanceof HTMLInputElement && candidate.value === selectedValue);
+
+    if (replacement instanceof HTMLElement && !replacement.hasAttribute('disabled')) {
+      replacement.focus({ preventScroll: true });
     }
   });
-  const mesh = new Mesh(gl, { geometry, program });
+}
 
-  function resize() {
-    const w = container.offsetWidth;
-    const h = container.offsetHeight;
-    if (w === 0 || h === 0) return;
-    renderer.setSize(w, h);
-    const resUniform = program.uniforms.uResolution.value;
-    resUniform[0] = gl.canvas.width;
-    resUniform[1] = gl.canvas.height;
-    resUniform[2] = gl.canvas.width / gl.canvas.height;
-  }
-  window.addEventListener('resize', resize);
+function getQuantityLabel(input) {
+  if (input.id === 'size-modal-qty') return 'Quantity for selected size';
 
-  let resizeObserver;
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => resize());
-    resizeObserver.observe(container);
-  }
-  resize();
+  const productCard = input.closest('.product-card');
+  const productName = productCard?.querySelector('.product-name')?.textContent?.trim();
+  if (productName) return `Quantity for ${productName}`;
 
-  function handleMouseMove(event) {
-    const rect = container.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = 1 - (event.clientY - rect.top) / rect.height;
-    const mouseUniform = program.uniforms.uMouse.value;
-    mouseUniform[0] = x;
-    mouseUniform[1] = y;
-  }
+  const bundleCard = input.closest('.bundle-card');
+  const bundleName = bundleCard?.querySelector('.bundle-name')?.textContent?.trim();
+  if (bundleName) return `Quantity for ${bundleName}`;
 
-  function handleTouchMove(event) {
-    if (event.touches.length > 0) {
-      const touch = event.touches[0];
-      const rect = container.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const x = (touch.clientX - rect.left) / rect.width;
-      const y = 1 - (touch.clientY - rect.top) / rect.height;
-      const mouseUniform = program.uniforms.uMouse.value;
-      mouseUniform[0] = x;
-      mouseUniform[1] = y;
+  const rateOrOrderName = input.closest('.cart-line, .order-card')?.querySelector('.cart-line-name, .order-id')?.textContent?.trim();
+  if (rateOrOrderName) return `Quantity for ${rateOrOrderName}`;
+
+  return 'Quantity';
+}
+
+function enhanceInputLabels(root = document) {
+  root.querySelectorAll?.('.qty-input').forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) return;
+    if (!input.hasAttribute('aria-label') && !input.hasAttribute('aria-labelledby')) {
+      input.setAttribute('aria-label', getQuantityLabel(input));
     }
+  });
+
+  const chatUsername = document.getElementById('chat-new-username');
+  if (chatUsername instanceof HTMLInputElement && !chatUsername.hasAttribute('aria-label')) {
+    chatUsername.setAttribute('aria-label', 'Start a chat with username');
   }
 
-  if (interactive) {
-    container.addEventListener('mousemove', handleMouseMove, { passive:true });
-    container.addEventListener('touchmove', handleTouchMove, { passive:true });
+  const dmInput = document.getElementById('dm-input');
+  if (dmInput instanceof HTMLInputElement && !dmInput.hasAttribute('aria-label')) {
+    dmInput.setAttribute('aria-label', 'Message');
+  }
+}
+
+function enhanceStatusMessages(root = document) {
+  const statusSelectors = [
+    '#delivery-distance-status',
+    '#promo-status',
+    '.avatar-upload-status',
+    '[id$="-upload-status"]'
+  ];
+
+  root.querySelectorAll?.(statusSelectors.join(',')).forEach((element) => {
+    if (!(element instanceof HTMLElement)) return;
+    element.setAttribute('role', 'status');
+    element.setAttribute('aria-live', 'polite');
+    element.setAttribute('aria-atomic', 'true');
+  });
+
+  const chatError = document.getElementById('chat-new-error');
+  if (chatError instanceof HTMLElement) {
+    chatError.setAttribute('role', 'alert');
+    chatError.setAttribute('aria-atomic', 'true');
   }
 
-  const reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
-  let userPaused = globalUserPaused;
-  let animationId = null;
-  let destroyed = false;
-  let lastFrameTime = performance.now();
+  const toastContainer = document.getElementById('toast-container');
+  if (toastContainer instanceof HTMLElement) {
+    toastContainer.setAttribute('role', 'status');
+    toastContainer.setAttribute('aria-live', 'polite');
+    toastContainer.setAttribute('aria-atomic', 'false');
 
-  function canAnimate() {
-    return shouldAnimateLiquidChrome({
-      documentHidden: document.hidden,
-      reducedMotion: Boolean(reducedMotionQuery?.matches),
-      userPaused
+    toastContainer.querySelectorAll('.toast').forEach((toast) => {
+      toast.removeAttribute('role');
+      toast.removeAttribute('aria-live');
     });
   }
-
-  function renderFrame(time) {
-    const safeTime = Number.isFinite(time) ? time : lastFrameTime;
-    lastFrameTime = safeTime;
-    program.uniforms.uTime.value = safeTime * 0.001 * speed;
-    renderer.render({ scene: mesh });
-  }
-
-  function update(time) {
-    animationId = null;
-    if (destroyed || !canAnimate()) return;
-    renderFrame(time);
-    scheduleAnimation();
-  }
-
-  function scheduleAnimation() {
-    if (destroyed || animationId !== null || !canAnimate()) return;
-    animationId = requestAnimationFrame(update);
-  }
-
-  function stopAnimation() {
-    if (animationId !== null) {
-      cancelAnimationFrame(animationId);
-      animationId = null;
-    }
-  }
-
-  function syncAnimationState({ renderStaticFrame = false } = {}) {
-    if (destroyed) return;
-    if (canAnimate()) {
-      scheduleAnimation();
-      return;
-    }
-
-    stopAnimation();
-    if (renderStaticFrame && !document.hidden) renderFrame(lastFrameTime);
-  }
-
-  function handleVisibilityChange() {
-    syncAnimationState({ renderStaticFrame:false });
-  }
-
-  function handleReducedMotionChange() {
-    syncAnimationState({ renderStaticFrame:true });
-    if (reducedMotionQuery?.matches && motionToggle instanceof HTMLElement) {
-      motionToggle.remove();
-      motionToggle = null;
-    } else {
-      ensureBackgroundMotionToggle();
-    }
-  }
-
-  const controller = {
-    setUserPaused(paused) {
-      userPaused = Boolean(paused);
-      syncAnimationState({ renderStaticFrame:true });
-    }
-  };
-  mountedControllers.add(controller);
-
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  reducedMotionQuery?.addEventListener?.('change', handleReducedMotionChange);
-
-  container.appendChild(gl.canvas);
-  renderFrame(lastFrameTime);
-  syncAnimationState();
-
-  return function destroy() {
-    destroyed = true;
-    mountedControllers.delete(controller);
-    stopAnimation();
-    window.removeEventListener('resize', resize);
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    reducedMotionQuery?.removeEventListener?.('change', handleReducedMotionChange);
-    if (resizeObserver) resizeObserver.disconnect();
-    if (interactive) {
-      container.removeEventListener('mousemove', handleMouseMove);
-      container.removeEventListener('touchmove', handleTouchMove);
-    }
-    if (gl.canvas.parentElement) {
-      gl.canvas.parentElement.removeChild(gl.canvas);
-    }
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-  };
 }
 
-/**
- * Auto-mounts LiquidChrome into every element with class "liquid-chrome-bg".
- * Reads optional overrides from data-* attributes:
- *   data-speed, data-amplitude, data-frequency-x, data-frequency-y,
- *   data-interactive="false", data-base-color="0.1,0.1,0.1"
- */
-function autoInit() {
-  document.querySelectorAll('.liquid-chrome-bg').forEach((el) => {
-    if (el.dataset.liquidChromeMounted) return;
-    el.dataset.liquidChromeMounted = 'true';
+function isRequiredControlInvalid(control) {
+  if (!(control instanceof HTMLElement)) return false;
+  if (!control.hasAttribute('required') || control.hasAttribute('disabled')) return false;
 
-    const opts = {};
-    if (el.dataset.speed) opts.speed = parseFloat(el.dataset.speed);
-    if (el.dataset.amplitude) opts.amplitude = parseFloat(el.dataset.amplitude);
-    if (el.dataset.frequencyX) opts.frequencyX = parseFloat(el.dataset.frequencyX);
-    if (el.dataset.frequencyY) opts.frequencyY = parseFloat(el.dataset.frequencyY);
-    if (el.dataset.interactive === 'false') opts.interactive = false;
-    if (el.dataset.baseColor) {
-      opts.baseColor = el.dataset.baseColor.split(',').map((n) => parseFloat(n));
+  if (control instanceof HTMLInputElement) {
+    if (control.type === 'checkbox') return !control.checked;
+    if (control.type === 'radio') {
+      if (!control.name) return !control.checked;
+      const form = control.form;
+      return !Array.from((form || document).querySelectorAll('input[type="radio"]'))
+        .some((radio) => radio instanceof HTMLInputElement && radio.name === control.name && radio.checked);
+    }
+    return !control.value.trim();
+  }
+
+  if (control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) {
+    return !control.value.trim();
+  }
+
+  return false;
+}
+
+function getFormErrorElement(form) {
+  if (!(form instanceof HTMLFormElement)) return null;
+  return form.querySelector('.error-message[id], [role="alert"][id]');
+}
+
+function markRequiredFields(event) {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement)) return;
+
+  const requiredControls = Array.from(form.querySelectorAll('[required]'));
+  const invalidControls = [];
+  const errorElement = getFormErrorElement(form);
+
+  for (const control of requiredControls) {
+    if (!(control instanceof HTMLElement)) continue;
+    const invalid = isRequiredControlInvalid(control);
+    control.setAttribute('aria-invalid', String(invalid));
+
+    if (invalid) {
+      invalidControls.push(control);
+      if (errorElement?.id) control.setAttribute('aria-describedby', errorElement.id);
+    } else if (control.getAttribute('aria-describedby') === errorElement?.id) {
+      control.removeAttribute('aria-describedby');
+    }
+  }
+
+  if (invalidControls.length) {
+    requestAnimationFrame(() => {
+      const first = invalidControls.find((control) => control.isConnected && !control.hasAttribute('disabled'));
+      first?.focus({ preventScroll: false });
+    });
+  }
+}
+
+function clearCorrectedInvalidState(event) {
+  const control = event.target;
+  if (!(control instanceof HTMLElement)) return;
+  if (!control.matches('input[required], select[required], textarea[required]')) return;
+  if (!isRequiredControlInvalid(control)) control.setAttribute('aria-invalid', 'false');
+}
+
+function enhanceAdminTabs() {
+  const tabList = document.querySelector('.admin-tabs');
+  if (!(tabList instanceof HTMLElement)) return;
+
+  tabList.setAttribute('role', 'tablist');
+  tabList.setAttribute('aria-label', 'Administration sections');
+
+  const tabs = Array.from(tabList.querySelectorAll('.admin-tab-btn'));
+  tabs.forEach((tab, index) => {
+    if (!(tab instanceof HTMLButtonElement)) return;
+    const name = tab.dataset.tab || `section-${index + 1}`;
+    const panel = document.getElementById(`admin-tab-${name}`);
+    const tabId = ensureUniqueId(tab, `admin-tab-button-${name}`);
+
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', tab.classList.contains('active') ? 'true' : 'false');
+    tab.tabIndex = tab.classList.contains('active') ? 0 : -1;
+
+    if (panel instanceof HTMLElement) {
+      tab.setAttribute('aria-controls', panel.id);
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tabId);
+      panel.tabIndex = 0;
+    }
+  });
+}
+
+function syncAdminTabs() {
+  const tabs = Array.from(document.querySelectorAll('.admin-tabs .admin-tab-btn'));
+  tabs.forEach((tab) => {
+    if (!(tab instanceof HTMLButtonElement)) return;
+    const selected = tab.classList.contains('active');
+    tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+    tab.tabIndex = selected ? 0 : -1;
+  });
+}
+
+function handleAdminTabKeydown(event) {
+  const tab = event.target.closest?.('.admin-tab-btn');
+  if (!(tab instanceof HTMLButtonElement)) return;
+
+  const tabs = Array.from(tab.closest('.admin-tabs')?.querySelectorAll('.admin-tab-btn') || [])
+    .filter((candidate) => candidate instanceof HTMLButtonElement);
+  if (!tabs.length) return;
+
+  const nextIndex = getNextTabIndex(tabs.indexOf(tab), event.key, tabs.length);
+  const navigationKey = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key);
+  if (!navigationKey || nextIndex < 0) return;
+
+  event.preventDefault();
+  const next = tabs[nextIndex];
+  tabs.forEach((item) => { item.tabIndex = -1; });
+  next.tabIndex = 0;
+  next.focus();
+}
+
+function enhanceZoomableImage(image) {
+  if (!(image instanceof HTMLImageElement)) return;
+  if (!image.classList.contains('zoomable-img')) return;
+
+  const interactiveAncestor = image.closest('button, a[href]');
+  if (!interactiveAncestor) {
+    image.setAttribute('role', 'button');
+    image.tabIndex = 0;
+    const alt = image.alt?.trim() || 'image';
+    image.setAttribute('aria-label', `Open ${alt} full size`);
+  }
+
+  const qrBox = image.closest('#gcash-qr-box');
+  if (qrBox instanceof HTMLElement && qrBox.getAttribute('aria-hidden') === 'true') {
+    qrBox.removeAttribute('aria-hidden');
+  }
+}
+
+function enhanceZoomableImages(root = document) {
+  root.querySelectorAll?.('img.zoomable-img').forEach(enhanceZoomableImage);
+}
+
+function handleZoomKeyboard(event) {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  if (!image.classList.contains('zoomable-img') || image.closest('button, a[href]')) return;
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+
+  event.preventDefault();
+  lastZoomTrigger = image;
+  image.click();
+}
+
+function trackZoomActivation(event) {
+  const image = event.target.closest?.('img.zoomable-img');
+  if (image instanceof HTMLImageElement) lastZoomTrigger = image;
+}
+
+function enhanceDynamicLightbox(overlay) {
+  if (!(overlay instanceof HTMLElement) || overlay.id !== 'image-lightbox-overlay') return;
+
+  ensureDialogSemantics(overlay);
+  const panel = overlay.querySelector('.image-lightbox-content');
+  const closeButton = overlay.querySelector('.image-lightbox-close');
+
+  if (panel instanceof HTMLElement) {
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', 'Image preview');
+    panel.setAttribute('tabindex', '-1');
+  }
+
+  requestAnimationFrame(() => {
+    if (closeButton instanceof HTMLElement) closeButton.focus({ preventScroll: true });
+    else if (panel instanceof HTMLElement) panel.focus({ preventScroll: true });
+  });
+}
+
+function restoreTrackedZoomFocus() {
+  requestAnimationFrame(() => {
+    if (lastZoomTrigger instanceof HTMLElement && lastZoomTrigger.isConnected) {
+      lastZoomTrigger.focus({ preventScroll: true });
+    }
+    lastZoomTrigger = null;
+  });
+}
+
+function restoreLightboxFocus(removedNode) {
+  if (!(removedNode instanceof HTMLElement)) return;
+  const removedLightbox = removedNode.id === 'image-lightbox-overlay'
+    ? removedNode
+    : removedNode.querySelector?.('#image-lightbox-overlay');
+  if (!removedLightbox) return;
+  restoreTrackedZoomFocus();
+}
+
+function cleanToastNode(node) {
+  if (!(node instanceof HTMLElement)) return;
+  const toasts = [];
+  if (node.classList.contains('toast')) toasts.push(node);
+  node.querySelectorAll?.('.toast').forEach((toast) => toasts.push(toast));
+  toasts.forEach((toast) => {
+    toast.removeAttribute('role');
+    toast.removeAttribute('aria-live');
+  });
+}
+
+function enhanceNode(node) {
+  if (!(node instanceof Element)) return;
+  enhanceSizeSelector(node);
+  enhanceInputLabels(node);
+  enhanceStatusMessages(node);
+  enhanceZoomableImages(node);
+  cleanToastNode(node);
+
+  if (node.id === 'image-lightbox-overlay') enhanceDynamicLightbox(node);
+  node.querySelectorAll?.('#image-lightbox-overlay').forEach(enhanceDynamicLightbox);
+}
+
+function installMutationObserver() {
+  const observer = new MutationObserver((mutations) => {
+    let modalStateMayHaveChanged = false;
+    let tabsMayHaveChanged = false;
+
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes') {
+        if (mutation.target instanceof HTMLElement && mutation.target.classList.contains('modal-overlay')) {
+          modalStateMayHaveChanged = true;
+        }
+        if (mutation.target instanceof HTMLElement && mutation.target.id === 'image-lightbox-overlay') {
+          modalStateMayHaveChanged = true;
+          if (mutation.target.classList.contains('hidden')) restoreTrackedZoomFocus();
+        }
+        if (mutation.target instanceof HTMLElement && mutation.target.classList.contains('admin-tab-btn')) {
+          tabsMayHaveChanged = true;
+        }
+      }
+
+      for (const node of mutation.addedNodes) {
+        enhanceNode(node);
+        if (node instanceof Element && (node.matches('.modal-overlay, #image-lightbox-overlay') || node.querySelector?.('.modal-overlay, #image-lightbox-overlay'))) {
+          modalStateMayHaveChanged = true;
+        }
+        if (node instanceof Element && (node.matches('.admin-tab-btn, .admin-tab-panel') || node.querySelector?.('.admin-tab-btn, .admin-tab-panel'))) {
+          tabsMayHaveChanged = true;
+        }
+      }
+
+      for (const node of mutation.removedNodes) {
+        restoreLightboxFocus(node);
+        if (node instanceof Element && (node.id === 'image-lightbox-overlay' || node.querySelector?.('#image-lightbox-overlay'))) {
+          modalStateMayHaveChanged = true;
+        }
+      }
     }
 
-    createLiquidChrome(el, opts);
+    if (tabsMayHaveChanged) {
+      enhanceAdminTabs();
+      syncAdminTabs();
+    }
+    if (modalStateMayHaveChanged) updateModalEnvironment();
   });
 
-  ensureBackgroundMotionToggle();
+  observer.observe(document.body, {
+    subtree:true,
+    childList:true,
+    attributes:true,
+    attributeFilter:['class']
+  });
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', autoInit, { once:true });
-} else {
-  autoInit();
+export function installPhase2Accessibility() {
+  if (window.__dagoldolPhase2AccessibilityInstalled) return;
+  window.__dagoldolPhase2AccessibilityInstalled = true;
+
+  enhanceStaticModals();
+  enhanceSizeSelector();
+  enhanceInputLabels();
+  enhanceStatusMessages();
+  enhanceAdminTabs();
+  enhanceZoomableImages();
+  updateModalEnvironment();
+
+  document.addEventListener('keydown', trapTopModalKeydown, true);
+  document.addEventListener('keydown', handleAdminTabKeydown, true);
+  document.addEventListener('keydown', handleZoomKeyboard, true);
+  document.addEventListener('change', restoreSizeRadioFocus, true);
+  document.addEventListener('submit', markRequiredFields, true);
+  document.addEventListener('input', clearCorrectedInvalidState, true);
+  document.addEventListener('change', clearCorrectedInvalidState, true);
+  document.addEventListener('click', trackZoomActivation, true);
+  document.addEventListener('click', (event) => {
+    if (event.target.closest?.('.admin-tab-btn')) queueMicrotask(syncAdminTabs);
+  }, true);
+
+  installMutationObserver();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installPhase2Accessibility, { once:true });
+  } else {
+    installPhase2Accessibility();
+  }
 }
