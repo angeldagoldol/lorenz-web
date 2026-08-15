@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>Frequently Asked Questions | Dagoldol Trading Co.</title>
+<meta name="description" content="Answers to common questions about browsing, checkout, payment, delivery, cancellation, and ratings at Dagoldol.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://lorenz-web-six.vercel.app/faq/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Dagoldol">
+<meta property="og:title" content="Frequently Asked Questions | Dagoldol Trading Co.">
+<meta property="og:description" content="Answers to common questions about browsing, checkout, payment, delivery, cancellation, and ratings at Dagoldol.">
+<meta property="og:url" content="https://lorenz-web-six.vercel.app/faq/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/phase2-fixes.css">
+<link rel="stylesheet" href="/phase3-fixes.css">
+<link rel="stylesheet" href="/info-page.css">
+</head>
+<body class="info-page-body">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<header class="info-page-header">
+  <a class="brand-mark" href="/" aria-label="Dagoldol home"><span>Dagoldol</span></a>
+  <nav aria-label="Shop information"><a href="/">Shop</a><a href="/products/">Products</a><a href="/faq/">FAQ</a><a href="/shipping-delivery/">Delivery</a><a href="/contact/">Contact</a></nav>
+</header>
+<main id="main-content" class="info-page-main">
+<p class="info-page-eyebrow">Help</p>
+<h1>Frequently Asked Questions</h1>
+<p class="info-page-lead">These answers describe the behavior implemented by the current Dagoldol application.</p>
+<section class="info-section">
+<h2>Shopping and accounts</h2>
+<div class="info-faq">
+<details><summary>Do I need an account to browse?</summary><p>No. The catalogue and product information are available to guests. Login is requested when you continue to checkout or use account features.</p></details>
+<details><summary>How are products measured?</summary><p>Products can be configured by feet, standard size labels, or square meters. The available options are shown before adding or ordering an item.</p></details>
+<details><summary>Can I keep items in my cart before logging in?</summary><p>Yes. The current guest cart is saved in your browser and is merged into your account cart after a successful login.</p></details>
+</div>
+</section>
+<section class="info-section">
+<h2>Orders and payment</h2>
+<div class="info-faq">
+<details><summary>What payment methods are shown in checkout?</summary><p>The current checkout supports GCash and bank transfer. It also includes an optional half-payment setting where the remaining balance is due on delivery.</p></details>
+<details><summary>Is a payment reference required?</summary><p>Yes. The current checkout requires a payment reference number before the order can be confirmed. A payment screenshot can also be uploaded.</p></details>
+<details><summary>Can I cancel an order?</summary><p>The current application allows customer cancellation while an order is still before the Shipped stage. Once it has reached Shipped or later, the cancellation control is no longer offered.</p></details>
+<details><summary>When can I rate a product?</summary><p>The rating control appears after the order is marked Delivered. Phase 3 also requires the rating to be tied to the authenticated customer, delivered order, and purchased product at the database-policy level.</p></details>
+</div>
+</section>
+<section class="info-section">
+<h2>Delivery</h2>
+<div class="info-faq">
+<details><summary>How is the delivery fee calculated?</summary><p>The checkout geocodes the entered address and requests road distance. The configured rule provides free delivery within the free-distance threshold and otherwise applies the configured per-kilometer rate. If the address cannot be pinpointed, the checkout uses the configured fallback fee.</p></details>
+</div>
+</section>
+<p class="info-meta">Effective August 15, 2026</p>
+</main>
+<footer class="shop-footer">
+  <nav class="shop-footer-nav" aria-label="Shop information"><a href="/products/">Products</a><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/shipping-delivery/">Shipping &amp; Delivery</a><a href="/returns/">Returns</a><a href="/contact/">Contact</a><a href="/terms/">Terms</a><a href="/privacy/">Privacy</a></nav>
+  <p>&copy; 2026 Dagoldol Trading Co.</p>
+</footer>
+</body>
+</html>
