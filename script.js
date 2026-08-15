@@ -63,8 +63,19 @@ const BULK_TIER_2_RATE = 0.02;
 const LOW_STOCK_THRESHOLD = 10;
 
 const DEFAULT_GCASH_NUMBER = "0963 202 0564";
+const DEFAULT_BANK_NAME = "BDO Unibank";
+const DEFAULT_BANK_ACCOUNT_NAME = "Dagoldol Trading Co.";
+const DEFAULT_BANK_ACCOUNT_NUMBER = "0012 3456 7890";
 
-let currentSettings = { gcash_number: DEFAULT_GCASH_NUMBER, gcash_qr_image: null, shop_logo_image: null };
+let currentSettings = {
+  gcash_number: DEFAULT_GCASH_NUMBER,
+  gcash_qr_image: null,
+  bank_name: DEFAULT_BANK_NAME,
+  bank_account_name: DEFAULT_BANK_ACCOUNT_NAME,
+  bank_account_number: DEFAULT_BANK_ACCOUNT_NUMBER,
+  bank_qr_image: null,
+  shop_logo_image: null
+};
 
 // Same-origin public catalogue snapshot generated at deploy time.
 // It is a resilience layer for browsers/networks that temporarily fail direct
@@ -132,6 +143,10 @@ function settingsFromRows(rows){
   return {
     gcash_number: map.gcash_number || DEFAULT_GCASH_NUMBER,
     gcash_qr_image: map.gcash_qr_image || null,
+    bank_name: map.bank_name || DEFAULT_BANK_NAME,
+    bank_account_name: map.bank_account_name || DEFAULT_BANK_ACCOUNT_NAME,
+    bank_account_number: map.bank_account_number || DEFAULT_BANK_ACCOUNT_NUMBER,
+    bank_qr_image: map.bank_qr_image || null,
     shop_logo_image: map.shop_logo_image || null
   };
 }
@@ -181,9 +196,33 @@ function applySettingsToDom(){
       imgEl.classList.add("zoomable-img");
       placeholderEl.classList.add("hidden");
     } else {
+      imgEl.removeAttribute("src");
       imgEl.classList.add("hidden");
       imgEl.classList.remove("zoomable-img");
       placeholderEl.classList.remove("hidden");
+    }
+  }
+
+  const bankNameEl = document.getElementById("bank-name-text");
+  const bankAccountNameEl = document.getElementById("bank-account-name-text");
+  const bankAccountNumberEl = document.getElementById("bank-account-number-text");
+  if (bankNameEl) bankNameEl.textContent = currentSettings.bank_name;
+  if (bankAccountNameEl) bankAccountNameEl.textContent = currentSettings.bank_account_name;
+  if (bankAccountNumberEl) bankAccountNumberEl.textContent = currentSettings.bank_account_number;
+
+  const bankQrImgEl = document.getElementById("bank-qr-img");
+  const bankQrPlaceholderEl = document.getElementById("bank-qr-placeholder");
+  if (bankQrImgEl && bankQrPlaceholderEl) {
+    if (currentSettings.bank_qr_image) {
+      bankQrImgEl.src = currentSettings.bank_qr_image;
+      bankQrImgEl.classList.remove("hidden");
+      bankQrImgEl.classList.add("zoomable-img");
+      bankQrPlaceholderEl.classList.add("hidden");
+    } else {
+      bankQrImgEl.removeAttribute("src");
+      bankQrImgEl.classList.add("hidden");
+      bankQrImgEl.classList.remove("zoomable-img");
+      bankQrPlaceholderEl.classList.remove("hidden");
     }
   }
 
@@ -316,6 +355,7 @@ let deliveryDebounceTimer = null;
 let appliedPromo = null;
 
 let pendingQrDataUrl = undefined;
+let pendingBankQrDataUrl = undefined;
 let pendingLogoDataUrl = undefined;
 
 let pendingPaymentProofPath = null;
@@ -5347,6 +5387,7 @@ async function renderAdminSettings(){
 function renderAdminSettingsTab(){
   const panel = adminTabPanels.settings;
   pendingQrDataUrl = undefined;
+  pendingBankQrDataUrl = undefined;
   pendingLogoDataUrl = undefined;
 
   panel.innerHTML = `
@@ -5369,6 +5410,39 @@ function renderAdminSettingsTab(){
             <input type="file" id="admin-qr-input" accept="image/*" class="hidden">
             <button type="button" class="link-btn avatar-remove-btn" id="admin-qr-remove">Remove QR photo</button>
             <span class="avatar-upload-status hidden" id="admin-qr-upload-status">Uploading…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-sizes-field" style="padding-top:18px; border-top:1px dashed var(--line);">
+        <p class="admin-form-title">Bank Transfer</p>
+        <p class="field-hint" style="margin:-6px 0 14px;">These are the single bank-account details customers see when they choose Bank Transfer at checkout.</p>
+
+        <label class="field">
+          <span>Bank name</span>
+          <input type="text" id="admin-bank-name" maxlength="80" value="${escapeHtml(currentSettings.bank_name)}" placeholder="e.g. BDO Unibank">
+        </label>
+
+        <label class="field">
+          <span>Account holder name</span>
+          <input type="text" id="admin-bank-account-name" maxlength="120" value="${escapeHtml(currentSettings.bank_account_name)}" placeholder="e.g. Dagoldol Trading Co.">
+        </label>
+
+        <label class="field">
+          <span>Account number</span>
+          <input type="text" id="admin-bank-account-number" maxlength="80" value="${escapeHtml(currentSettings.bank_account_number)}" placeholder="e.g. 0012 3456 7890" inputmode="numeric">
+        </label>
+
+        <span class="field-label-standalone">Bank payment QR code (upload the QR customers should scan for a quick bank payment)</span>
+        <div class="avatar-field" style="align-items:flex-start;">
+          <div class="size-thumb" id="admin-bank-qr-preview" style="width:120px; height:120px;">
+            ${currentSettings.bank_qr_image ? `<img src="${escapeHtml(currentSettings.bank_qr_image)}" alt="Bank transfer QR code" class="zoomable-img" loading="lazy" decoding="async">` : ""}
+          </div>
+          <div class="avatar-field-controls">
+            <label class="link-btn avatar-upload-label" for="admin-bank-qr-input">Choose bank QR photo</label>
+            <input type="file" id="admin-bank-qr-input" accept="image/*" class="hidden">
+            <button type="button" class="link-btn avatar-remove-btn" id="admin-bank-qr-remove">Remove bank QR photo</button>
+            <span class="avatar-upload-status hidden" id="admin-bank-qr-upload-status">Uploading…</span>
           </div>
         </div>
       </div>
@@ -5403,6 +5477,10 @@ function renderAdminSettingsTab(){
   const qrPreview = document.getElementById("admin-qr-preview");
   const qrRemoveBtn = document.getElementById("admin-qr-remove");
   const qrUploadStatus = document.getElementById("admin-qr-upload-status");
+  const bankQrInput = document.getElementById("admin-bank-qr-input");
+  const bankQrPreview = document.getElementById("admin-bank-qr-preview");
+  const bankQrRemoveBtn = document.getElementById("admin-bank-qr-remove");
+  const bankQrUploadStatus = document.getElementById("admin-bank-qr-upload-status");
   const saveBtn = document.getElementById("admin-settings-save");
   const errEl = document.getElementById("admin-settings-error");
   const successEl = document.getElementById("admin-settings-success");
@@ -5411,11 +5489,12 @@ function renderAdminSettingsTab(){
     const file = qrInput.files[0];
     if (!file) return;
     try {
+      errEl.textContent = "";
       if (qrUploadStatus) qrUploadStatus.classList.remove("hidden");
       pendingQrDataUrl = await uploadImageToStorage(file, "payment-settings", "qr", 600);
       qrPreview.innerHTML = `<img src="${escapeHtml(pendingQrDataUrl)}" alt="GCash QR code" class="zoomable-img" loading="lazy" decoding="async">`;
     } catch (err) {
-      errEl.textContent = "Could not upload that image. Try a different photo.";
+      errEl.textContent = "Could not upload that GCash QR image. Try a different photo.";
     } finally {
       if (qrUploadStatus) qrUploadStatus.classList.add("hidden");
     }
@@ -5426,10 +5505,38 @@ function renderAdminSettingsTab(){
     qrPreview.innerHTML = "";
   });
 
+  bankQrInput.addEventListener("change", async () => {
+    const file = bankQrInput.files[0];
+    if (!file) return;
+    try {
+      errEl.textContent = "";
+      if (bankQrUploadStatus) bankQrUploadStatus.classList.remove("hidden");
+      pendingBankQrDataUrl = await uploadImageToStorage(file, "payment-settings", "bank-qr", 600);
+      bankQrPreview.innerHTML = `<img src="${escapeHtml(pendingBankQrDataUrl)}" alt="Bank transfer QR code" class="zoomable-img" loading="lazy" decoding="async">`;
+    } catch (err) {
+      errEl.textContent = "Could not upload that bank QR image. Try a different photo.";
+    } finally {
+      if (bankQrUploadStatus) bankQrUploadStatus.classList.add("hidden");
+    }
+  });
+
+  bankQrRemoveBtn.addEventListener("click", () => {
+    pendingBankQrDataUrl = null;
+    bankQrPreview.innerHTML = "";
+  });
+
   saveBtn.addEventListener("click", async () => {
     const number = document.getElementById("admin-gcash-number").value.trim();
+    const bankName = document.getElementById("admin-bank-name").value.trim();
+    const bankAccountName = document.getElementById("admin-bank-account-name").value.trim();
+    const bankAccountNumber = document.getElementById("admin-bank-account-number").value.trim();
+
     if (!number) {
       errEl.textContent = "Please enter a GCash number.";
+      return;
+    }
+    if (!bankName || !bankAccountName || !bankAccountNumber) {
+      errEl.textContent = "Please complete the bank name, account holder name, and account number.";
       return;
     }
 
@@ -5438,20 +5545,36 @@ function renderAdminSettingsTab(){
     successEl.classList.add("hidden");
 
     const qrImage = pendingQrDataUrl === undefined ? currentSettings.gcash_qr_image : pendingQrDataUrl;
+    const bankQrImage = pendingBankQrDataUrl === undefined ? currentSettings.bank_qr_image : pendingBankQrDataUrl;
 
-    const numberError = await saveSetting("gcash_number", number);
-    const qrError = await saveSetting("gcash_qr_image", qrImage || "");
+    const saveErrors = await Promise.all([
+      saveSetting("gcash_number", number),
+      saveSetting("gcash_qr_image", qrImage || ""),
+      saveSetting("bank_name", bankName),
+      saveSetting("bank_account_name", bankAccountName),
+      saveSetting("bank_account_number", bankAccountNumber),
+      saveSetting("bank_qr_image", bankQrImage || "")
+    ]);
 
     saveBtn.disabled = false;
 
-    if (numberError || qrError) {
-      errEl.textContent = "Could not save settings. Make sure your Supabase project has a \"settings\" table with (key text primary key, value text), and that supabase_rls.sql has been run.";
+    if (saveErrors.some(Boolean)) {
+      errEl.textContent = "Could not save all payment settings. Check the settings-table permissions for the admin account and try again.";
+      await loadSettings();
       return;
     }
 
-    currentSettings = { ...currentSettings, gcash_number: number, gcash_qr_image: qrImage || null };
+    currentSettings = {
+      ...currentSettings,
+      gcash_number: number,
+      gcash_qr_image: qrImage || null,
+      bank_name: bankName,
+      bank_account_name: bankAccountName,
+      bank_account_number: bankAccountNumber,
+      bank_qr_image: bankQrImage || null
+    };
     applySettingsToDom();
-    successEl.textContent = "Payment settings saved. Customers will see this immediately.";
+    successEl.textContent = "Payment settings saved. Customers will see the updated GCash and bank details immediately.";
     successEl.classList.remove("hidden");
   });
 
