@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://lorenz-web-six.vercel.app/sitemap.xml
