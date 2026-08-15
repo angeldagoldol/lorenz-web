@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = resolve(ROOT, 'config.js');
 const PRODUCTS_DIR = resolve(ROOT, 'products');
+const GENERATED_PRODUCT_IMAGE_DIR = resolve(ROOT, 'assets', 'generated-product-images');
+const PUBLIC_SETTING_KEYS = new Set(['gcash_number', 'gcash_qr_image', 'shop_logo_image']);
 
 function normalizeSiteUrl(value) {
   return String(value || '').trim().replace(/\/+$/, '');
@@ -58,6 +60,57 @@ function jsonForHtml(value) {
 function routeToken(productId) {
   const digest = createHash('sha256').update(String(productId)).digest('hex').slice(0, 12);
   return `p-${digest}`;
+}
+
+function dataUriImageExtension(mimeType) {
+  const normalized = String(mimeType || '').toLowerCase();
+  if (normalized === 'image/png') return 'png';
+  if (normalized === 'image/webp') return 'webp';
+  if (normalized === 'image/gif') return 'gif';
+  if (normalized === 'image/jpeg' || normalized === 'image/jpg') return 'jpg';
+  return null;
+}
+
+async function materializeDataUriImages(products) {
+  await rm(GENERATED_PRODUCT_IMAGE_DIR, { recursive: true, force: true });
+  await mkdir(GENERATED_PRODUCT_IMAGE_DIR, { recursive: true });
+
+  const written = new Map();
+  const normalized = [];
+
+  for (const product of products || []) {
+    const clone = { ...product, sizes: Array.isArray(product?.sizes) ? product.sizes.map((size) => ({ ...size })) : [] };
+
+    for (const size of clone.sizes) {
+      const image = typeof size.image === 'string' ? size.image.trim() : '';
+      const match = image.match(/^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,([A-Za-z0-9+/=\r\n]+)$/i);
+      if (!match) continue;
+
+      const ext = dataUriImageExtension(match[1]);
+      if (!ext) continue;
+
+      let bytes;
+      try {
+        bytes = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
+      } catch {
+        continue;
+      }
+      if (!bytes.length) continue;
+
+      const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 24);
+      const fileName = `${digest}.${ext}`;
+      const outputPath = resolve(GENERATED_PRODUCT_IMAGE_DIR, fileName);
+      if (!written.has(fileName)) {
+        await writeFile(outputPath, bytes);
+        written.set(fileName, true);
+      }
+      size.image = `/assets/generated-product-images/${fileName}`;
+    }
+
+    normalized.push(clone);
+  }
+
+  return normalized;
 }
 
 function descriptionForMeta(value) {
@@ -412,13 +465,15 @@ async function writeSitemap(siteUrl, routes) {
 
 async function main() {
   const config = await loadBuildConfig();
-  const [products, brands, ratings, flashSales] = await Promise.all([
+  const [products, brands, ratings, flashSales, settings] = await Promise.all([
     fetchRest(config, 'products', 'select=id,name,description,accent,icon,sizes,brand_id,unit_type&order=name.asc'),
     fetchRest(config, 'brands', 'select=id,name,logo,description'),
     fetchRest(config, 'ratings', 'select=product_id,value'),
-    fetchRest(config, 'flash_sales', 'select=id,product_id,discount_percent,start_at,end_at,active,label')
+    fetchRest(config, 'flash_sales', 'select=id,product_id,discount_percent,start_at,end_at,active,label'),
+    fetchRest(config, 'settings', 'select=key,value')
   ]);
 
+  const normalizedProducts = await materializeDataUriImages(products || []);
   const brandMap = new Map((brands || []).map((brand) => [String(brand.id), brand]));
   const ratingMap = aggregateRatings(ratings);
   const routeMap = {};
@@ -427,7 +482,7 @@ async function main() {
   await rm(PRODUCTS_DIR, { recursive: true, force: true });
   await mkdir(PRODUCTS_DIR, { recursive: true });
 
-  for (const product of products || []) {
+  for (const product of normalizedProducts) {
     if (!product?.id || !product?.name) continue;
     const token = routeToken(product.id);
     const route = `/products/${token}/`;
@@ -447,16 +502,27 @@ async function main() {
   }
 
   await writeFile(resolve(PRODUCTS_DIR, 'index.html'), buildProductsIndexPage({
-    products: products || [],
+    products: normalizedProducts,
     brandMap,
     flashSales: flashSales || [],
     routeMap,
     siteUrl: config.siteUrl
   }), 'utf8');
   await writeFile(resolve(ROOT, 'product-routes.json'), `${JSON.stringify(routeMap, null, 2)}\n`, 'utf8');
+  const publicSettings = (settings || []).filter((row) => PUBLIC_SETTING_KEYS.has(String(row?.key || '')));
+
+  await writeFile(resolve(ROOT, 'catalogue-snapshot.json'), `${JSON.stringify({
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    products: normalizedProducts,
+    brands: brands || [],
+    ratings: ratings || [],
+    flashSales: flashSales || [],
+    settings: publicSettings
+  }, null, 2)}\n`, 'utf8');
   await writeSitemap(config.siteUrl, routes);
 
-  console.log(`[Dagoldol Phase 3] Generated ${routes.length} crawlable product page(s) plus the product index.`);
+  console.log(`[Dagoldol Phase 3] Generated ${routes.length} crawlable product page(s), the product index, and catalogue-snapshot.json.`);
 }
 
 main().catch((error) => {
