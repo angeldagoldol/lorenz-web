@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>Privacy Notice | Dagoldol Trading Co.</title>
+<meta name="description" content="What data the Dagoldol application currently collects, where it is used, and which browser and external services participate in the workflow.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://lorenz-web-six.vercel.app/privacy/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Dagoldol">
+<meta property="og:title" content="Privacy Notice | Dagoldol Trading Co.">
+<meta property="og:description" content="What data the Dagoldol application currently collects, where it is used, and which browser and external services participate in the workflow.">
+<meta property="og:url" content="https://lorenz-web-six.vercel.app/privacy/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/phase2-fixes.css">
+<link rel="stylesheet" href="/phase3-fixes.css">
+<link rel="stylesheet" href="/info-page.css">
+</head>
+<body class="info-page-body">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<header class="info-page-header">
+  <a class="brand-mark" href="/" aria-label="Dagoldol home"><span>Dagoldol</span></a>
+  <nav aria-label="Shop information"><a href="/">Shop</a><a href="/products/">Products</a><a href="/faq/">FAQ</a><a href="/shipping-delivery/">Delivery</a><a href="/contact/">Contact</a></nav>
+</header>
+<main id="main-content" class="info-page-main">
+<p class="info-page-eyebrow">Privacy</p>
+<h1>Privacy Notice</h1>
+<p class="info-page-lead">This notice is based on the data flows implemented in the supplied Dagoldol code. It avoids claiming retention periods or legal bases that are not defined in the application source.</p>
+<section class="info-section">
+<h2>Data used by the application</h2>
+<ul>
+<li>Authentication data handled through Supabase Auth, including account email and password credentials.</li>
+<li>Profile data such as display name, full name, contact email, phone, biography, and optional avatar.</li>
+<li>Saved delivery information including name, phone, street address, city, postal code, and landmark.</li>
+<li>Order information including items, quantities, prices recorded with the order, delivery fee, promotion, total, payment method, payment reference, optional payment proof, status, and rating state.</li>
+<li>Contact-form messages and direct-message content, thread metadata, reactions, typing/presence state, and unread status.</li>
+<li>Administrative activity records created by the application for events such as signup and login.</li>
+</ul>
+</section>
+<section class="info-section">
+<h2>Browser storage</h2>
+<ul>
+<li><strong>localStorage:</strong> guest cart data and a geocoding cache used to avoid repeatedly looking up the same address.</li>
+<li><strong>sessionStorage:</strong> the Phase 3 checkout draft, so item selections can survive navigation or a refresh within the same browser tab.</li>
+</ul>
+</section>
+<section class="info-section">
+<h2>External services</h2>
+<p>Dagoldol uses Supabase for authentication, database access, Realtime features, Edge Functions, and file storage. Address lookup is sent to OpenStreetMap Nominatim and route-distance lookup is sent to the public OSRM routing service when delivery is calculated.</p>
+</section>
+<section class="info-section">
+<h2>Payment-proof privacy</h2>
+<p>Under the Phase 3 storage migration, new payment screenshots are stored in a private <code>payment-proofs</code> bucket. The customer who owns the top-level storage folder and authorized administrators can receive time-limited signed access. The migration normalizes legacy Supabase public payment-proof URLs that match the earlier Dagoldol upload path; any nonmatching legacy records still require manual review.</p>
+</section>
+<section class="info-section">
+<h2>Retention and deletion</h2>
+<p>The supplied application does not define a complete retention schedule for every record type. Customers can edit profile information through the app, and administrators have account-management tools. For access, correction, or deletion requests that are not available in the interface, contact Dagoldol. Some order or transaction information may need to be retained where required for legitimate business or legal obligations.</p>
+</section>
+<section class="info-section">
+<h2>Contact</h2>
+<p>Privacy questions can be sent to <a class="info-link" href="mailto:angelmclorenzdagoldol@gmail.com">angelmclorenzdagoldol@gmail.com</a>.</p>
+</section>
+<p class="info-meta">Effective August 15, 2026</p>
+</main>
+<footer class="shop-footer">
+  <nav class="shop-footer-nav" aria-label="Shop information"><a href="/products/">Products</a><a href="/about/">About</a><a href="/faq/">FAQ</a><a href="/shipping-delivery/">Shipping &amp; Delivery</a><a href="/returns/">Returns</a><a href="/contact/">Contact</a><a href="/terms/">Terms</a><a href="/privacy/">Privacy</a></nav>
+  <p>&copy; 2026 Dagoldol Trading Co.</p>
+</footer>
+</body>
+</html>
