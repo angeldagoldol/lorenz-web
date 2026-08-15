@@ -1,60 +1,34 @@
-/**
- * DAGOLDOL CONFIGURATION BOOTSTRAP
- * Phase 2 Performance + Accessibility Integration
- *
- * IMPORTANT:
- * - Supabase variables remain owned by script.js
- * - This file only loads Phase 2 enhancements
- */
+// Dagoldol Phase 2 shared helpers.
+// This file contains browser-independent logic so the accessibility and
+// animation behavior can be regression-tested without a build system.
 
-window.DAGOLDOL_CONFIG = Object.freeze({
-    PHASE2_ENABLED: true,
-    VERSION: "2.0.0"
-});
+export function shouldAnimateLiquidChrome({
+  documentHidden = false,
+  reducedMotion = false,
+  userPaused = false
+} = {}) {
+  return !documentHidden && !reducedMotion && !userPaused;
+}
 
+export function getNextTabIndex(currentIndex, key, count) {
+  if (!Number.isInteger(count) || count <= 0) return -1;
 
-(function initializePhase2(){
+  const safeIndex = Number.isInteger(currentIndex)
+    ? Math.min(Math.max(currentIndex, 0), count - 1)
+    : 0;
 
-    if (!window.DAGOLDOL_CONFIG.PHASE2_ENABLED) {
-        return;
-    }
-
-
-    function loadCSS(href){
-
-        if (document.querySelector(`link[href="${href}"]`)) {
-            return;
-        }
-
-        const link = document.createElement("link");
-
-        link.rel = "stylesheet";
-        link.href = href;
-
-        document.head.appendChild(link);
-    }
-
-
-
-    function loadModule(src){
-
-        if (document.querySelector(`script[src="${src}"]`)) {
-            return;
-        }
-
-        const script = document.createElement("script");
-
-        script.type = "module";
-        script.src = src;
-
-        document.head.appendChild(script);
-    }
-
-
-
-    loadCSS("./phase2-fixes.css");
-
-    loadModule("./phase2-accessibility.js");
-
-
-})();
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return (safeIndex + 1) % count;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return (safeIndex - 1 + count) % count;
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+    default:
+      return safeIndex;
+  }
+}
