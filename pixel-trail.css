@@ -1,9 +1,9 @@
 /* =====================================================================
-   DAGOLDOL — SHARED PIXEL TRAIL
-   Reference-video tuning: dense, connected electric-indigo pixel ribbon.
-
-   This remains a visual-only overlay. It does not participate in layout
-   and cannot receive pointer input, so Dagoldol controls stay interactive.
+   DAGOLDOL — SHARED PIXEL SCRATCH TRAIL
+   Three compact claw/scar lines follow mouse movement as a short-lived,
+   pixelated visual effect. This layer never participates in page layout
+   and never receives pointer input, so every Dagoldol control remains
+   clickable underneath it.
    ===================================================================== */
 
 .pixel-trail-canvas {
