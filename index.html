@@ -61,7 +61,7 @@ upgrade-insecure-requests;
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=3.1.0">
-<link rel="stylesheet" href="pill-buttons.css?v=3.1.0">
+<link rel="stylesheet" href="pill-buttons.css?v=3.1.1">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -734,9 +734,27 @@ upgrade-insecure-requests;
         </div>
 
         <div class="payment-detail hidden" id="payment-detail-bank">
-          <p>Send a bank transfer to:<br>
-          <strong>BDO Unibank</strong> — Dagoldol Trading Co.<br>
-          Account number: <strong>0012 3456 7890</strong></p>
+          <div class="qr-box" id="bank-qr-box">
+            <img id="bank-qr-img" src="" alt="Owner's bank transfer QR code — tap to view it full size" class="hidden" width="88" height="88" loading="lazy" decoding="async">
+            <svg id="bank-qr-placeholder" viewBox="0 0 100 100" width="88" height="88" aria-hidden="true">
+              <rect x="4" y="4" width="92" height="92" fill="none" stroke="currentColor" stroke-width="2"/>
+              <rect x="12" y="12" width="24" height="24" fill="currentColor"/>
+              <rect x="64" y="12" width="24" height="24" fill="currentColor"/>
+              <rect x="12" y="64" width="24" height="24" fill="currentColor"/>
+              <rect x="42" y="12" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="26" width="8" height="8" fill="currentColor"/>
+              <rect x="56" y="42" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="42" width="8" height="8" fill="currentColor"/>
+              <rect x="42" y="56" width="8" height="8" fill="currentColor"/>
+              <rect x="56" y="70" width="8" height="8" fill="currentColor"/>
+              <rect x="70" y="56" width="8" height="8" fill="currentColor"/>
+              <rect x="84" y="70" width="8" height="8" fill="currentColor"/>
+              <rect x="70" y="84" width="8" height="8" fill="currentColor"/>
+            </svg>
+          </div>
+          <p>Scan the QR code, or send a bank transfer to <strong id="bank-name-text">BDO Unibank</strong>.<br>
+          Account name: <strong id="bank-account-name-text">Dagoldol Trading Co.</strong><br>
+          Account number: <strong id="bank-account-number-text">0012 3456 7890</strong>. Tap the QR code to view it full-size and crisp. Bring your reference number for delivery.</p>
         </div>
 
         <div class="payment-proof-block" id="payment-proof-block">
@@ -867,6 +885,6 @@ upgrade-insecure-requests;
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js?v=3.1.0"></script>
 <script type="module" src="liquid-chrome.js?v=3.1.0"></script>
-<script src="script.js?v=3.1.0"></script>
+<script src="script.js?v=3.1.1"></script>
 </body>
 </html>
