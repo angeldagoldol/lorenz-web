@@ -8,7 +8,243 @@
 
    Include this AFTER style.css:
      <link rel="stylesheet" href="style.css">
+     <link rel="stylesheet" href="pill-buttons.css">/* =====================================================================
+   PILL BUTTON HOVER ANIMATION
+   ---------------------------------------------------------------------
+   Recreates the PillNav circle-fill hover effect (a colored circle
+   grows from the bottom center of the pill, text color inverts) using
+   pure CSS — no GSAP, no markup changes. It attaches directly to the
+   button classes already used across the shop and admin dashboard.
+
+   Include this AFTER style.css:
+     <link rel="stylesheet" href="style.css">
      <link rel="stylesheet" href="pill-buttons.css">
+   ===================================================================== */
+
+:root{
+  /* Circle-fill timing — tweak these two to change the feel */
+  --pill-anim-duration: 0.5s;
+  --pill-anim-ease: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ---------------------------------------------------------------------
+   Base pill mechanics — applied to every button we want this effect on.
+   Each button keeps its existing background/border/color from style.css;
+   we only add the expanding-circle layer and the hover text-color swap.
+   --------------------------------------------------------------------- */
+.btn-primary,
+.btn-add,
+.btn-secondary,
+.btn-cart,
+.btn-ghost,
+.admin-btn-edit,
+.admin-btn-danger,
+.admin-status-btn,
+.password-toggle-btn,
+.promo-apply-btn{
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
+}
+
+.btn-primary::before,
+.btn-add::before,
+.btn-secondary::before,
+.btn-cart::before,
+.btn-ghost::before,
+.admin-btn-edit::before,
+.admin-btn-danger::before,
+.admin-status-btn::before,
+.password-toggle-btn::before,
+.promo-apply-btn::before{
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  bottom: -30%;
+  width: 200%;
+  height: 220%;
+  border-radius: 50%;
+  transform: translateX(-50%) scale(0);
+  transform-origin: 50% 100%;
+  transition: transform var(--pill-anim-duration) var(--pill-anim-ease);
+  pointer-events: none;
+}
+
+/* Every affected button's text needs a transition on color so the
+   inversion reads as a smooth flip rather than a snap. */
+.btn-primary,
+.btn-add,
+.btn-secondary,
+.btn-cart,
+.btn-ghost,
+.admin-btn-edit,
+.admin-btn-danger,
+.admin-status-btn,
+.password-toggle-btn,
+.promo-apply-btn{
+  transition: color var(--pill-anim-duration) var(--pill-anim-ease),
+              border-color 0.18s ease,
+              transform 0.18s ease,
+              box-shadow 0.18s ease;
+}
+
+/* Trigger the fill on hover/focus, keep it filled while :active so taps
+   on mobile still show the animation land. */
+.btn-primary:hover::before,   .btn-primary:focus-visible::before,
+.btn-add:hover::before,       .btn-add:focus-visible::before,
+.btn-secondary:hover::before, .btn-secondary:focus-visible::before,
+.btn-cart:hover::before,      .btn-cart:focus-visible::before,
+.btn-ghost:hover::before,     .btn-ghost:focus-visible::before,
+.admin-btn-edit:hover::before,   .admin-btn-edit:focus-visible::before,
+.admin-btn-danger:hover::before, .admin-btn-danger:focus-visible::before,
+.admin-status-btn:hover::before, .admin-status-btn:focus-visible::before,
+.password-toggle-btn:hover::before, .password-toggle-btn:focus-visible::before,
+.promo-apply-btn:hover::before,     .promo-apply-btn:focus-visible::before{
+  transform: translateX(-50%) scale(1);
+}
+
+/* ---------------------------------------------------------------------
+   Per-button color mapping — reuses the shop's existing palette
+   (var(--brass), var(--rust), var(--green), var(--charcoal-*)) so the
+   fill color always matches what that button already means.
+   --------------------------------------------------------------------- */
+
+/* Primary CTA — brass fill, cream text stays cream (already brass bg) */
+.btn-primary::before{ background: var(--brass-bright); }
+.btn-primary:hover,
+.btn-primary:focus-visible{ color: #fff; }
+
+/* "Place Order" / add buttons — same brass family */
+.btn-add::before{ background: var(--brass-bright); }
+.btn-add:hover,
+.btn-add:focus-visible{ color: #fff; }
+
+/* Secondary / outline buttons — fill with brass, text goes cream */
+.btn-secondary::before{ background: var(--brass); }
+.btn-secondary:hover,
+.btn-secondary:focus-visible{ color: #fff; border-color: var(--brass); }
+
+/* Header cart / account pill */
+.btn-cart::before{ background: var(--brass); }
+.btn-cart:hover,
+.btn-cart:focus-visible{ color: #fff; border-color: var(--brass); }
+
+/* Ghost / logout buttons */
+.btn-ghost::before{ background: var(--brass); }
+.btn-ghost:hover,
+.btn-ghost:focus-visible{ color: #fff; border-color: var(--brass); }
+
+/* Admin edit / status buttons */
+.admin-btn-edit::before,
+.admin-status-btn::before{ background: var(--brass); }
+.admin-btn-edit:hover,       .admin-btn-edit:focus-visible,
+.admin-status-btn:hover,     .admin-status-btn:focus-visible{
+  color: #fff;
+  border-color: var(--brass);
+}
+
+/* Danger / delete buttons — fill with rust instead of brass */
+.admin-btn-danger::before{ background: var(--rust); }
+.admin-btn-danger:hover,
+.admin-btn-danger:focus-visible{ color: #fff; border-color: var(--rust); }
+
+/* Small utility buttons (password show/hide, apply promo) */
+.password-toggle-btn::before,
+.promo-apply-btn::before{ background: var(--brass); }
+.password-toggle-btn:hover,   .password-toggle-btn:focus-visible,
+.promo-apply-btn:hover,       .promo-apply-btn:focus-visible{
+  color: #fff;
+  border-color: var(--brass);
+}
+
+/* Already-active admin status pill: keep it visibly "on" instead of
+   letting the hover fill fight with its solid background. */
+.admin-status-btn.current::before{ display: none; }
+
+/* Disabled buttons never get the hover treatment. */
+.btn-primary:disabled::before,
+.btn-add:disabled::before,
+.btn-secondary:disabled::before{
+  transform: translateX(-50%) scale(0) !important;
+}
+.btn-primary:disabled:hover,
+.btn-add:disabled:hover,
+.btn-secondary:disabled:hover{
+  color: inherit;
+}
+
+/* Respect reduced-motion preferences — snap instead of animate. */
+@media (prefers-reduced-motion: reduce){
+  .btn-primary::before,
+  .btn-add::before,
+  .btn-secondary::before,
+  .btn-cart::before,
+  .btn-ghost::before,
+  .admin-btn-edit::before,
+  .admin-btn-danger::before,
+  .admin-status-btn::before,
+  .password-toggle-btn::before,
+  .promo-apply-btn::before{
+    transition-duration: 0.001ms;
+  }
+}
+
+/* =====================================================================
+   PORTFOLIO PAGE (index1.html) — .btn--primary / .btn--ghost buttons
+   use style1.css's own --accent / --accent-2 tokens instead of the
+   shop's --brass/--rust, so the fill matches that page's teal/coral
+   palette instead of the shop's.
+   ===================================================================== */
+.btn--primary,
+.btn--ghost{
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
+  transition: color var(--pill-anim-duration) var(--pill-anim-ease),
+              border-color 0.18s ease,
+              transform 0.18s ease,
+              box-shadow 0.18s ease;
+}
+
+.btn--primary::before,
+.btn--ghost::before{
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  bottom: -30%;
+  width: 200%;
+  height: 220%;
+  border-radius: 50%;
+  transform: translateX(-50%) scale(0);
+  transform-origin: 50% 100%;
+  transition: transform var(--pill-anim-duration) var(--pill-anim-ease);
+  pointer-events: none;
+}
+
+.btn--primary::before{ background: var(--accent-2, #ff8a5b); }
+.btn--primary:hover,
+.btn--primary:focus-visible{ color: #08110f; }
+
+.btn--ghost::before{ background: var(--accent, #4fe3c1); }
+.btn--ghost:hover,
+.btn--ghost:focus-visible{ color: #08110f; border-color: var(--accent, #4fe3c1); }
+
+.btn--primary:hover::before, .btn--primary:focus-visible::before,
+.btn--ghost:hover::before,   .btn--ghost:focus-visible::before{
+  transform: translateX(-50%) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .btn--primary::before,
+  .btn--ghost::before{
+    transition-duration: 0.001ms;
+  }
+}
+
    ===================================================================== */
 
 :root{
