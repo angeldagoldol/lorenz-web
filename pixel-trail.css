@@ -1,0 +1,41 @@
+/* =====================================================================
+   DAGOLDOL — SHARED PIXEL TRAIL
+   ---------------------------------------------------------------------
+   Additive visual layer only. It never participates in layout and never
+   receives pointer input, so existing buttons, forms, menus, modals, and
+   admin controls remain fully interactive.
+   ===================================================================== */
+
+.pixel-trail-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9997;
+  display: block;
+  pointer-events: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  contain: strict;
+  opacity: 1;
+}
+
+@supports (height: 100dvh) {
+  .pixel-trail-canvas {
+    width: 100dvw;
+    height: 100dvh;
+  }
+}
+
+@media (pointer: coarse), (hover: none), (prefers-reduced-motion: reduce) {
+  .pixel-trail-canvas {
+    display: none !important;
+  }
+}
+
+@media print {
+  .pixel-trail-canvas {
+    display: none !important;
+  }
+}
