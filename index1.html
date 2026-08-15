@@ -16,62 +16,6 @@
 </head>
 <body>
 
-<!-- ================= INTRO ANIMATION (auto-plays, no login) ================= -->
-<div class="intro-overlay" id="introOverlay">
-  <button class="intro-skip" id="introSkip">Skip ▸</button>
-  <div class="intro-scene">
-    <div class="intro-walker" id="introWalker">
-      <svg viewBox="0 0 60 100" class="walker-svg" aria-hidden="true">
-        <g class="w-bob">
-          <g class="w-lean">
-            <!-- back arm (drawn first so it sits behind torso) -->
-            <g class="w-arm-r">
-              <line class="w-limb" x1="35" y1="26" x2="43" y2="35"/>
-              <g class="w-forearm-r">
-                <line class="w-limb w-limb-accent2" x1="43" y1="35" x2="48" y2="45"/>
-              </g>
-            </g>
-            <!-- back leg -->
-            <g class="w-thigh-r">
-              <line class="w-limb" x1="33" y1="52" x2="36" y2="67"/>
-              <g class="w-shin-r">
-                <line class="w-limb w-limb-muted" x1="36" y1="67" x2="40" y2="82"/>
-                <line class="w-foot" x1="40" y1="82" x2="33" y2="83.5"/>
-              </g>
-            </g>
-            <!-- front leg -->
-            <g class="w-thigh-l">
-              <line class="w-limb" x1="27" y1="52" x2="24" y2="67"/>
-              <g class="w-shin-l">
-                <line class="w-limb" x1="24" y1="67" x2="20" y2="82"/>
-                <line class="w-foot" x1="20" y1="82" x2="27" y2="83.5"/>
-              </g>
-            </g>
-            <circle class="w-head" cx="30" cy="14" r="9"/>
-            <rect class="w-torso" x="23" y="22" width="14" height="30" rx="7"/>
-            <!-- front arm -->
-            <g class="w-arm-l">
-              <line class="w-limb" x1="25" y1="26" x2="17" y2="36"/>
-              <g class="w-forearm-l">
-                <line class="w-limb" x1="17" y1="36" x2="12" y2="46"/>
-              </g>
-            </g>
-          </g>
-        </g>
-      </svg>
-      <div class="intro-case" id="introCase" aria-hidden="true">
-        <svg viewBox="0 0 32 26" width="30" height="24">
-          <rect x="1" y="7" width="30" height="18" rx="3" class="case-body"/>
-          <rect x="11" y="2" width="10" height="7" rx="2" class="case-handle"/>
-          <line x1="1" y1="16" x2="31" y2="16" class="case-strap"/>
-        </svg>
-      </div>
-    </div>
-    <div class="intro-ground"></div>
-    <div class="intro-text" id="introText"><span id="introTextInner"></span><span class="intro-cursor">▌</span></div>
-  </div>
-</div>
-
 <!-- LiquidChrome WebGL Background -->
 <div id="liquid-chrome-bg" class="liquid-chrome-bg" data-speed="0.97" data-amplitude="0.3" aria-hidden="true"></div>
 
