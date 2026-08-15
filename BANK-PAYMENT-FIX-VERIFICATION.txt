@@ -1,0 +1,16 @@
+DAGOLDOL BANK PAYMENT FIX — VERIFICATION RECORD
+
+TDD RED phase witnessed before implementation:
+- payment-settings-contract.mjs: 5/5 tests failed because bank keys/DOM/admin controls/allowlist were absent and password toggle was still positioned relative by pill-buttons.css.
+- payment-settings-runtime.spec.py: failed with password toggle position=relative and missing customer/admin bank controls.
+
+GREEN verification performed after implementation:
+- npm run verify: PASS
+- payment-settings-runtime.spec.py: PASS
+- mobile-resilience.spec.py: PASS
+- mobile-matrix.spec.py: PASS at 320/360/390/414/430 widths
+- desktop-regression.spec.py: PASS; 1440px shop screenshot byte-identical to the preserved baseline
+- generator-fixture.spec.py: PASS; public settings allowlist includes approved bank-payment keys while excluding an internal secret
+- CSS parse: 0 top-level parse errors across the shipped CSS files checked
+
+Live npm run build was attempted but could not complete in this sandbox because DNS resolution for the Supabase project returned EAI_AGAIN. This is an environment/network limitation, not reported as a successful build. The generator fixture test validates the modified build logic without using the external network.
