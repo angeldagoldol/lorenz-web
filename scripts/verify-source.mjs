@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,7 +35,10 @@ const REQUIRED_FILES = [
   'contact/index.html',
   'products/index.html',
   'tests/payment-settings-contract.mjs',
-  'tests/payment-settings-runtime.spec.py'
+  'tests/payment-settings-runtime.spec.py',
+  'tests/mobile-fast-bootstrap.test.mjs',
+  'tests/runtime_mobile_fast.py',
+  'assets/mobile-liquid-chrome.webp'
 ];
 
 const REQUIRED_INDEX_IDS = [
@@ -71,7 +74,7 @@ async function main() {
   for (const relativePath of REQUIRED_FILES) await access(resolve(ROOT, relativePath));
 
   const indexHtml = await verifyHtmlFile('index.html');
-  await verifyHtmlFile('index1.html');
+  const index1Html = await verifyHtmlFile('index1.html');
 
   const publicDirectories = ['about', 'faq', 'shipping-delivery', 'returns', 'terms', 'privacy', 'contact', 'products'];
   for (const directory of publicDirectories) await verifyHtmlFile(`${directory}/index.html`);
@@ -82,10 +85,39 @@ async function main() {
   for (const id of ['bank-name-text', 'bank-account-name-text', 'bank-account-number-text', 'bank-qr-img', 'bank-qr-placeholder']) {
     if (!indexHtml.includes(`id="${id}"`)) throw new Error(`index.html is missing Bank Transfer checkout id="${id}".`);
   }
+  if (!indexHtml.includes('viewport-fit=cover') || !index1Html.includes('viewport-fit=cover')) {
+    throw new Error('Mobile safe-area viewport metadata is missing from index.html or index1.html.');
+  }
+  if (!indexHtml.includes('rel="preconnect" href="https://rvrjkfbenramappteuae.supabase.co"')) {
+    throw new Error('index.html is missing the Supabase preconnect performance hint.');
+  }
+  if (!indexHtml.includes('rel="dns-prefetch" href="//rvrjkfbenramappteuae.supabase.co"')) {
+    throw new Error('index.html is missing the Supabase DNS prefetch hint.');
+  }
+  for (const href of ['./phase2-fixes.css?v=3.2.0', './phase3-fixes.css?v=3.2.0']) {
+    if (!indexHtml.includes(`href="${href}"`)) {
+      throw new Error(`index.html does not direct-load critical mobile stylesheet: ${href}`);
+    }
+  }
+  if (!indexHtml.includes('src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer')) {
+    throw new Error('index.html does not start the Supabase runtime early with defer.');
+  }
+  if (!indexHtml.includes('src="script.js?v=3.2.0" defer')) {
+    throw new Error('index.html is missing the deferred Phase 3.2 application runtime.');
+  }
+  for (const [name, html] of [['index.html', indexHtml], ['index1.html', index1Html]]) {
+    if (!html.includes('href="./assets/mobile-liquid-chrome.webp"')) {
+      throw new Error(`${name} is missing the mobile LiquidChrome image preload.`);
+    }
+  }
+  if (!indexHtml.includes('rel="preload" as="fetch" href="/catalogue-snapshot.json"')) {
+    throw new Error('index.html is missing the catalogue snapshot preload.');
+  }
 
   const configSource = await readFile(resolve(ROOT, 'config.js'), 'utf8');
   if (!configSource.includes('PHASE3_ENABLED: true')) throw new Error('config.js does not enable Phase 3.');
   if (!configSource.includes('./phase3-fixes.css')) throw new Error('config.js does not load phase3-fixes.css.');
+  if (!configSource.includes('ASSET_VERSION: "3.2.0"')) throw new Error('config.js does not expose the mobile performance asset version.');
 
   const scriptSource = await readFile(resolve(ROOT, 'script.js'), 'utf8');
   for (const route of ['CHECKOUT: "/checkout"', 'ORDERS: "/account/orders"', 'ADMIN: "/admin"']) {
@@ -94,6 +126,21 @@ async function main() {
   if (!scriptSource.includes('get_public_recommendation_signals')) throw new Error('script.js is missing the privacy-preserving recommendation RPC integration.');
   if (!scriptSource.includes('status_override: 0')) throw new Error('script.js is missing the persisted initial order status.');
   if (!scriptSource.includes('createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)')) throw new Error('script.js must consume the window-scoped Supabase bootstrap variables.');
+  for (const marker of [
+    'function shouldUseFastMobileBootstrap()',
+    'function renderCatalogueFromSnapshotFast()',
+    'function hydrateCatalogueLiveAfterFastRender()',
+    'function primeSettingsFromSnapshot()',
+    'function refreshSettingsLive('
+  ]) {
+    if (!scriptSource.includes(marker)) throw new Error(`script.js is missing mobile performance contract: ${marker}`);
+  }
+  if (!scriptSource.includes('scheduleNonCriticalShopWork(hydrateCatalogueLiveAfterFastRender, 300)')) {
+    throw new Error('script.js does not defer live catalogue hydration after the snapshot-first render.');
+  }
+  if (!scriptSource.includes('fetchpriority="high"') || !scriptSource.includes('index === 0')) {
+    throw new Error('script.js does not prioritize only the first catalogue product image.');
+  }
   if (!scriptSource.includes('DELIVERY_ESTIMATE_MIN_DAYS = 3') || !scriptSource.includes('DELIVERY_ESTIMATE_MAX_DAYS = 6')) {
     throw new Error('script.js is missing the deterministic 3–6 day delivery-estimate contract.');
   }
@@ -124,6 +171,39 @@ async function main() {
     if (!generatorSource.includes(`'${key}'`) && !generatorSource.includes(`"${key}"`)) {
       throw new Error(`Public catalogue settings allowlist is missing: ${key}`);
     }
+  }
+
+  const phase3Source = await readFile(resolve(ROOT, 'phase3-fixes.css'), 'utf8');
+  const style1Source = await readFile(resolve(ROOT, 'style1.css'), 'utf8');
+  for (const [name, css] of [['phase3-fixes.css', phase3Source], ['style1.css', style1Source]]) {
+    if (!css.includes('DAGOLDOL STATIC LIQUID CHROME')) {
+      throw new Error(`${name} is missing the static LiquidChrome fallback.`);
+    }
+    if (!css.includes('url("./assets/mobile-liquid-chrome.webp")')) {
+      throw new Error(`${name} is missing the optimized mobile LiquidChrome asset.`);
+    }
+    if (!css.includes('radial-gradient(') || !css.includes('linear-gradient(')) {
+      throw new Error(`${name} is missing the no-image CSS fallback layers.`);
+    }
+  }
+  const mobileBackgroundStat = await stat(resolve(ROOT, 'assets/mobile-liquid-chrome.webp'));
+  if (mobileBackgroundStat.size < 10_000 || mobileBackgroundStat.size > 350_000) {
+    throw new Error(`assets/mobile-liquid-chrome.webp has unexpected size ${mobileBackgroundStat.size} bytes.`);
+  }
+  if (!style1Source.includes('.contact-card__value') || !style1Source.includes('overflow-wrap:anywhere')) {
+    throw new Error('style1.css is missing the 320px My Info contact-value overflow fix.');
+  }
+
+  const liquidSource = await readFile(resolve(ROOT, 'liquid-chrome.js'), 'utf8');
+  const staticDecision = liquidSource.indexOf('if (shouldUseStaticBackground())');
+  const oglLoad = liquidSource.indexOf('loadOglModule()', staticDecision);
+  if (staticDecision < 0 || oglLoad <= staticDecision) {
+    throw new Error('liquid-chrome.js must decide the mobile static path before loading OGL.');
+  }
+
+  const pixelTrailSource = await readFile(resolve(ROOT, 'pixel-trail.js'), 'utf8');
+  if (!pixelTrailSource.includes('scratchCount: 3') || !pixelTrailSource.includes("maxAge: 220")) {
+    throw new Error('The approved three-scratch PixelTrail variant is not preserved.');
   }
 
   const phase2AccessibilitySource = await readFile(resolve(ROOT, 'phase2-accessibility.js'), 'utf8');
