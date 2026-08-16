@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
 <title>Dagoldol Trading Co. | Fine Everyday Goods</title>
 <meta name="description" content="Browse Dagoldol's catalogue of fine everyday goods by length, size, or square meter. View prices, availability, bundles, and current offers.">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -57,11 +57,19 @@ upgrade-insecure-requests;
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Dagoldol Trading Co. | Fine Everyday Goods">
 <meta name="twitter:description" content="Browse fine everyday goods by length, size, or square meter, with live prices, availability, bundles, and current offers.">
+<link rel="preconnect" href="https://rvrjkfbenramappteuae.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="//rvrjkfbenramappteuae.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+<link rel="preload" as="image" href="./assets/mobile-liquid-chrome.webp" type="image/webp" media="(max-width: 1024px)">
+<link rel="preload" as="fetch" href="/catalogue-snapshot.json" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=3.1.0">
 <link rel="stylesheet" href="pill-buttons.css?v=3.1.1">
+<link rel="stylesheet" href="./phase2-fixes.css?v=3.2.0">
+<link rel="stylesheet" href="./phase3-fixes.css?v=3.2.0">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -74,6 +82,10 @@ upgrade-insecure-requests;
 
 <link rel="stylesheet" href="pixel-trail.css?v=1.0.0">
 <script src="pixel-trail.js?v=1.0.0" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+<script src="config.js?v=3.2.0" defer></script>
+<script type="module" src="liquid-chrome.js?v=3.2.0"></script>
+<script src="script.js?v=3.2.0" defer></script>
 </head>
 <body>
 
@@ -882,9 +894,5 @@ upgrade-insecure-requests;
 
 <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js?v=3.1.0"></script>
-<script type="module" src="liquid-chrome.js?v=3.1.0"></script>
-<script src="script.js?v=3.1.1"></script>
 </body>
 </html>
