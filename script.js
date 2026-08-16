@@ -82,6 +82,20 @@ let currentSettings = {
 // Supabase REST reads. Checkout stock verification never trusts this snapshot.
 let catalogueSnapshotPromise = null;
 let catalogueUsingSnapshot = false;
+let catalogueHydrationPromise = null;
+
+function shouldUseFastMobileBootstrap(){
+  const viewportWidth = Number(window.innerWidth) || Number(document.documentElement?.clientWidth) || 1024;
+  const touchCapable = (Number(navigator.maxTouchPoints) || 0) > 0;
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches === true;
+  const noHover = window.matchMedia?.("(hover: none)")?.matches === true;
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
+  const saveData = connection?.saveData === true;
+  const effectiveType = String(connection?.effectiveType || "").toLowerCase();
+  const slowNetwork = saveData || effectiveType === "slow-2g" || effectiveType === "2g" || effectiveType === "3g";
+
+  return slowNetwork || (viewportWidth <= 720 && (touchCapable || coarsePointer || noHover));
+}
 
 async function loadCatalogueSnapshot(){
   if (catalogueSnapshotPromise) return catalogueSnapshotPromise;
@@ -89,7 +103,7 @@ async function loadCatalogueSnapshot(){
   catalogueSnapshotPromise = (async () => {
     try {
       const response = await fetch("/catalogue-snapshot.json", {
-        cache: "no-store",
+        cache: "default",
         credentials: "same-origin"
       });
       if (!response.ok) throw new Error(`Snapshot HTTP ${response.status}`);
@@ -151,30 +165,40 @@ function settingsFromRows(rows){
   };
 }
 
-async function loadSettings(){
-  let liveError = null;
+async function primeSettingsFromSnapshot(){
+  const snapshot = await loadCatalogueSnapshot();
+  if (!Array.isArray(snapshot?.settings)) {
+    applySettingsToDom();
+    return false;
+  }
 
+  currentSettings = settingsFromRows(snapshot.settings);
+  applySettingsToDom();
+  return true;
+}
+
+async function refreshSettingsLive({ reportError = false } = {}){
   try {
     const { data, error } = await supabase.from("settings").select("*");
     if (error) throw error;
     currentSettings = settingsFromRows(data || []);
     applySettingsToDom();
-    return;
-  } catch (err) {
-    liveError = err;
-    console.warn("[Dagoldol] Live settings read failed; trying same-origin snapshot:", err);
+    return true;
+  } catch (error) {
+    console.warn("[Dagoldol] Live settings read failed:", error);
+    if (reportError) reportLoadError("Settings", error);
+    return false;
   }
+}
 
-  const snapshot = await loadCatalogueSnapshot();
-  if (Array.isArray(snapshot?.settings)) {
-    currentSettings = settingsFromRows(snapshot.settings);
-    catalogueUsingSnapshot = true;
-    applySettingsToDom();
-    return;
+async function loadSettings(){
+  const liveLoaded = await refreshSettingsLive();
+  if (liveLoaded) return;
+
+  const snapshotLoaded = await primeSettingsFromSnapshot();
+  if (!snapshotLoaded) {
+    console.error("[Dagoldol] Settings are unavailable from both live Supabase and the deploy snapshot.");
   }
-
-  console.error("[Dagoldol] loadSettings failed:", liveError);
-  applySettingsToDom();
 }
 
 async function saveSetting(key, value){
@@ -1756,18 +1780,27 @@ if (orderPaymentProofRemoveBtn) {
 }
 
 // ===================== Products =====================
-async function loadProducts({ allowSnapshotFallback = true, showLoadError = true } = {}){
-  let liveError = null;
-
+async function fetchLiveProducts(){
   try {
     const { data, error } = await supabase.from("products").select("*").order("name");
     if (error) throw error;
-    catalogueUsingSnapshot = false;
     const mappedProducts = (data || []).map(mapProductRow);
-    return await replaceEmbeddedProductImagesFromSnapshot(mappedProducts);
+    return {
+      ok: true,
+      products: await replaceEmbeddedProductImagesFromSnapshot(mappedProducts),
+      error: null
+    };
   } catch (error) {
-    liveError = error;
     console.warn("[Dagoldol] Live products read failed:", error);
+    return { ok: false, products: [], error };
+  }
+}
+
+async function loadProducts({ allowSnapshotFallback = true, showLoadError = true } = {}){
+  const liveResult = await fetchLiveProducts();
+  if (liveResult.ok) {
+    catalogueUsingSnapshot = false;
+    return liveResult.products;
   }
 
   if (allowSnapshotFallback) {
@@ -1779,7 +1812,7 @@ async function loadProducts({ allowSnapshotFallback = true, showLoadError = true
     }
   }
 
-  if (showLoadError) reportLoadError("Products", liveError);
+  if (showLoadError) reportLoadError("Products", liveResult.error);
   return [];
 }
 
@@ -1845,7 +1878,10 @@ function getProductDisplayImage(product){
 function buildProductCardPhoto(product, index){
   const image = getProductDisplayImage(product);
   if (image) {
-    return `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" class="zoomable-img" loading="lazy" decoding="async">`;
+    const priorityAttrs = index === 0
+      ? 'loading="eager" fetchpriority="high"'
+      : 'loading="lazy"';
+    return `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" class="zoomable-img" ${priorityAttrs} decoding="async">`;
   }
   return buildProductPhoto(product, index);
 }
@@ -1853,8 +1889,18 @@ function buildProductCardPhoto(product, index){
 // ===================== Ratings =====================
 let ratingsMap = {};
 
-async function loadRatingsMap(){
+function buildRatingsMapFromRows(rows){
   const map = {};
+  (rows || []).forEach(r => {
+    if (!r || r.product_id == null) return;
+    if (!map[r.product_id]) map[r.product_id] = { sum: 0, count: 0 };
+    map[r.product_id].sum += Number(r.value) || 0;
+    map[r.product_id].count += 1;
+  });
+  return map;
+}
+
+async function loadRatingsMap(){
   let rows = null;
   let liveError = null;
 
@@ -1870,17 +1916,11 @@ async function loadRatingsMap(){
     }
   }
 
-  if (rows) {
-    rows.forEach(r => {
-      if (!map[r.product_id]) map[r.product_id] = { sum: 0, count: 0 };
-      map[r.product_id].sum += Number(r.value) || 0;
-      map[r.product_id].count += 1;
-    });
-  } else if (liveError) {
+  if (!rows && liveError) {
     reportLoadError("Ratings", liveError);
   }
 
-  ratingsMap = map;
+  ratingsMap = buildRatingsMapFromRows(rows || []);
 }
 
 function getAverageRating(productId){
@@ -2112,8 +2152,81 @@ function renderCatalogueList(){
   wireProductActionButtons(catalogue);
 }
 
+function scheduleNonCriticalShopWork(task, timeout = 900){
+  if (typeof task !== "function") return;
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => { void task(); }, { timeout });
+    return;
+  }
+  window.setTimeout(() => { void task(); }, Math.min(timeout, 350));
+}
+
+async function renderCatalogueFromSnapshotFast(){
+  const snapshot = await loadCatalogueSnapshot();
+  if (!Array.isArray(snapshot?.products) || snapshot.products.length === 0) return false;
+
+  catalogueUsingSnapshot = true;
+  products = snapshot.products.map(mapProductRow);
+  brands = Array.isArray(snapshot.brands) ? snapshot.brands.map(mapBrandRow) : [];
+  flashSales = Array.isArray(snapshot.flashSales) ? snapshot.flashSales.map(mapFlashSaleRow) : [];
+  ratingsMap = buildRatingsMapFromRows(Array.isArray(snapshot.ratings) ? snapshot.ratings : []);
+
+  catalogueVisibleCount = CATALOGUE_PAGE_SIZE;
+  populateBrandFilterOptions();
+  renderCatalogueList();
+  return true;
+}
+
+async function hydrateCatalogueLiveAfterFastRender(){
+  if (catalogueHydrationPromise) return catalogueHydrationPromise;
+
+  catalogueHydrationPromise = (async () => {
+    const liveProductsPromise = fetchLiveProducts();
+
+    const [, , , , liveProductsResult] = await Promise.all([
+      loadRatingsMap(),
+      loadBrands(),
+      loadFlashSales(),
+      loadBundles(),
+      liveProductsPromise
+    ]);
+
+    if (liveProductsResult?.ok) {
+      products = liveProductsResult.products;
+      catalogueUsingSnapshot = false;
+    }
+
+    await loadProductRoutesMap();
+    await renderBundlesSection();
+    populateBrandFilterOptions();
+    catalogueVisibleCount = Math.max(CATALOGUE_PAGE_SIZE, catalogueVisibleCount);
+    renderCatalogueList();
+
+    scheduleNonCriticalShopWork(async () => {
+      await loadRecommendationData();
+      await renderTrendingSection();
+      await renderRecommendedSection();
+    }, 1200);
+  })();
+
+  try {
+    await catalogueHydrationPromise;
+  } finally {
+    catalogueHydrationPromise = null;
+  }
+}
+
 async function renderCatalogue(){
   catalogue.innerHTML = buildSkeletonCards(CATALOGUE_PAGE_SIZE);
+
+  if (shouldUseFastMobileBootstrap()) {
+    const renderedSnapshot = await renderCatalogueFromSnapshotFast();
+    if (renderedSnapshot) {
+      scheduleNonCriticalShopWork(hydrateCatalogueLiveAfterFastRender, 300);
+      return;
+    }
+  }
+
   products = await loadProducts();
   await Promise.all([loadRatingsMap(), loadBrands(), loadFlashSales(), loadBundles(), loadProductRoutesMap()]);
   await renderBundlesSection();
@@ -5713,7 +5826,16 @@ window.addEventListener("popstate", () => {
 
 // ===================== Restore session on page load =====================
 async function initSession(){
-  await loadSettings();
+  if (shouldUseFastMobileBootstrap()) {
+    applySettingsToDom();
+    void (async () => {
+      await primeSettingsFromSnapshot();
+      await refreshSettingsLive();
+    })();
+  } else {
+    await loadSettings();
+  }
+
   updateDocumentTitleUnread(0);
 
   const { data } = await supabase.auth.getSession();
