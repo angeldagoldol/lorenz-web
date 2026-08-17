@@ -1154,7 +1154,7 @@ function renderPinnedLocationCard(cardEl, location, fields, isStale = false){
 
 function loadDeliveryMapModule(){
   if (!deliveryMapModulePromise){
-    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.1");
+    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.2");
     deliveryMapModulePromise = import(`./delivery-map.js?v=${version}`);
   }
   return deliveryMapModulePromise;
@@ -3951,7 +3951,9 @@ if (deliveryMapModal) deliveryMapModal.addEventListener("click", (event) => {
 });
 if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.addEventListener("click", async () => {
   if (!deliveryMapController) return;
+  const originalLabel = deliveryMapCurrentLocationBtn.textContent;
   deliveryMapCurrentLocationBtn.disabled = true;
+  deliveryMapCurrentLocationBtn.textContent = "Locating…";
   try {
     pendingDeliveryMapSelection = await deliveryMapController.useCurrentLocation();
     if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
@@ -3962,6 +3964,7 @@ if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.addEventListene
     }
   } finally {
     deliveryMapCurrentLocationBtn.disabled = false;
+    deliveryMapCurrentLocationBtn.textContent = originalLabel || "Use my current location";
   }
 });
 if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.addEventListener("click", () => {
