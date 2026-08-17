@@ -103,12 +103,13 @@ def prepared_source():
     ))
     config = (ROOT / 'config.js').read_text(encoding='utf-8')
     config = config.replace('PHASE2_ENABLED: true', 'PHASE2_ENABLED: false').replace('PHASE3_ENABLED: true', 'PHASE3_ENABLED: false')
+    auth = (ROOT / 'auth-resilience.js').read_text(encoding='utf-8')
     app = (ROOT / 'script.js').read_text(encoding='utf-8')
-    return html, css, config, app
+    return html, css, config, auth, app
 
 
 async def main():
-    html, css, config, app = prepared_source()
+    html, css, config, auth, app = prepared_source()
     failures = []
 
     async with async_playwright() as p:
@@ -123,6 +124,7 @@ async def main():
         await page.evaluate('history.replaceState=()=>{};history.pushState=()=>{};')
         await page.add_script_tag(content=MOCK_SUPABASE)
         await page.add_script_tag(content=config)
+        await page.add_script_tag(content=auth)
         await page.add_script_tag(content=app)
         await page.wait_for_timeout(700)
 
@@ -215,6 +217,7 @@ async def main():
         await mobile_page.evaluate('history.replaceState=()=>{};history.pushState=()=>{};')
         await mobile_page.add_script_tag(content=MOCK_SUPABASE)
         await mobile_page.add_script_tag(content=config)
+        await mobile_page.add_script_tag(content=auth)
         await mobile_page.add_script_tag(content=app)
         await mobile_page.wait_for_timeout(700)
         await mobile_page.evaluate("""() => {
