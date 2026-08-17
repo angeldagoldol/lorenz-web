@@ -337,26 +337,32 @@ async function getShopOriginCoords(){
   return shopOriginCoords;
 }
 
-async function calculateDeliveryFee(addressStr){
-  const origin = await getShopOriginCoords();
-  const destCoords = await geocodeAddress(addressStr);
-  if (!destCoords) return { fee: DELIVERY_FALLBACK_FEE, km: null };
+async function calculateDeliveryFeeForCoords(destCoords){
+  if (!destCoords || !Number.isFinite(Number(destCoords.lat)) || !Number.isFinite(Number(destCoords.lon))) {
+    return { fee: DELIVERY_FALLBACK_FEE, km: null };
+  }
 
-  const km = await getRoadDistanceKm(origin, destCoords);
+  const origin = await getShopOriginCoords();
+  const km = await getRoadDistanceKm(origin, { lat: Number(destCoords.lat), lon: Number(destCoords.lon) });
   if (km == null) return { fee: DELIVERY_FALLBACK_FEE, km: null };
 
   if (km <= DELIVERY_FREE_KM_THRESHOLD) return { fee: 0, km };
 
   const freeZones = await getFreeZoneCoords();
   for (const fz of freeZones) {
-    const fzKm = await getRoadDistanceKm(fz, destCoords);
+    const fzKm = await getRoadDistanceKm(fz, { lat: Number(destCoords.lat), lon: Number(destCoords.lon) });
     if (fzKm != null && fzKm <= DELIVERY_FREE_KM_THRESHOLD) {
       return { fee: 0, km };
     }
   }
 
-  const fee = DELIVERY_RATE_PER_KM * km;
-  return { fee, km };
+  return { fee: DELIVERY_RATE_PER_KM * km, km };
+}
+
+async function calculateDeliveryFee(addressStr){
+  const destCoords = await geocodeAddress(addressStr);
+  if (!destCoords) return { fee: DELIVERY_FALLBACK_FEE, km: null };
+  return calculateDeliveryFeeForCoords(destCoords);
 }
 
 // ===================== Measurement types (feet / size / sqm) =====================
@@ -907,6 +913,8 @@ const orderSaveCheckbox = document.getElementById("order-save");
 const orderHalfPaymentCheckbox = document.getElementById("order-half-payment");
 const orderError = document.getElementById("order-error");
 const deliveryStatusEl = document.getElementById("delivery-distance-status");
+const checkoutLocationOpenBtn = document.getElementById("checkout-location-open");
+const checkoutLocationCurrentEl = document.getElementById("checkout-location-current");
 
 const orderPromoCodeInput = document.getElementById("order-promo-code");
 const orderPromoApplyBtn = document.getElementById("order-promo-apply");
@@ -967,6 +975,23 @@ const profileAvatarPreview = document.getElementById("profile-avatar-preview");
 const profileAvatarRemoveBtn = document.getElementById("profile-avatar-remove");
 const profileAvatarUploadStatus = document.getElementById("profile-avatar-upload-status");
 const headerAvatar = document.getElementById("header-avatar");
+const profileAddressInput = document.getElementById("profile-address");
+const profileCityInput = document.getElementById("profile-city");
+const profilePostalInput = document.getElementById("profile-postal");
+const profileLandmarkInput = document.getElementById("profile-landmark");
+const profileLocationOpenBtn = document.getElementById("profile-location-open");
+const profileLocationCurrentEl = document.getElementById("profile-location-current");
+
+// ===================== Elements: delivery location map =====================
+const deliveryMapModal = document.getElementById("delivery-map-modal");
+const deliveryMapCloseBtn = document.getElementById("delivery-map-close");
+const deliveryMapCancelBtn = document.getElementById("delivery-map-cancel");
+const deliveryMapConfirmBtn = document.getElementById("delivery-map-confirm");
+const deliveryMapCurrentLocationBtn = document.getElementById("delivery-map-current-location");
+const deliveryMapCanvas = document.getElementById("delivery-map-canvas");
+const deliveryMapLoading = document.getElementById("delivery-map-loading");
+const deliveryMapStatus = document.getElementById("delivery-map-status");
+const deliveryMapSummary = document.getElementById("delivery-map-summary");
 
 // ===================== Elements: contact =====================
 const contactBtn = document.getElementById("contact-btn");
@@ -981,6 +1006,127 @@ const contactError = document.getElementById("contact-error");
 let orderItems = [];
 let orderItems_isCartCheckout = false;
 let pendingAvatarUrl = undefined;
+
+// ===================== Delivery location state =====================
+let checkoutPinnedLocation = null;
+let checkoutPinnedLocationStale = false;
+let profilePinnedLocation = null;
+let profilePinnedLocationStale = false;
+let deliveryMapTarget = null;
+let deliveryMapController = null;
+let pendingDeliveryMapSelection = null;
+let deliveryMapModulePromise = null;
+
+function cleanAddressValue(value){
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function getCheckoutAddressFields(){
+  return {
+    address: cleanAddressValue(orderAddressInput?.value),
+    city: cleanAddressValue(orderCityInput?.value),
+    postal: cleanAddressValue(orderPostalInput?.value)
+  };
+}
+
+function getProfileAddressFields(){
+  return {
+    address: cleanAddressValue(profileAddressInput?.value),
+    city: cleanAddressValue(profileCityInput?.value),
+    postal: cleanAddressValue(profilePostalInput?.value)
+  };
+}
+
+function normalizePinnedLocationValue(value, fallbackAddress = null){
+  if (!value || typeof value !== "object") return null;
+  const latitude = Number(value.latitude ?? value.lat);
+  const longitude = Number(value.longitude ?? value.lon ?? value.lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < 4 || latitude > 21.5 || longitude < 116 || longitude > 127.5) return null;
+
+  const rawSnapshot = value.addressSnapshot || value.address_snapshot || fallbackAddress;
+  const addressSnapshot = rawSnapshot ? {
+    address: cleanAddressValue(rawSnapshot.address ?? rawSnapshot.street),
+    city: cleanAddressValue(rawSnapshot.city),
+    postal: cleanAddressValue(rawSnapshot.postal ?? rawSnapshot.postcode)
+  } : null;
+
+  return {
+    latitude,
+    longitude,
+    source: cleanAddressValue(value.source) || "pin",
+    pinnedAt: cleanAddressValue(value.pinnedAt ?? value.pinned_at) || null,
+    addressSnapshot,
+    address: value.address && typeof value.address === "object" ? {
+      address: cleanAddressValue(value.address.address ?? value.address.street),
+      city: cleanAddressValue(value.address.city),
+      postal: cleanAddressValue(value.address.postal ?? value.address.postcode)
+    } : null,
+    displayName: cleanAddressValue(value.displayName)
+  };
+}
+
+function pinnedLocationMatchesFields(location, fields){
+  const normalized = normalizePinnedLocationValue(location, fields);
+  if (!normalized || !normalized.addressSnapshot) return false;
+  const normalize = (value) => cleanAddressValue(value).toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ");
+  return normalize(normalized.addressSnapshot.address) === normalize(fields.address) &&
+    normalize(normalized.addressSnapshot.city) === normalize(fields.city) &&
+    normalize(normalized.addressSnapshot.postal) === normalize(fields.postal);
+}
+
+function serializePinnedLocation(location, fields, isStale = false){
+  if (isStale) return null;
+  const normalized = normalizePinnedLocationValue(location, fields);
+  if (!normalized) return null;
+  return {
+    latitude: normalized.latitude,
+    longitude: normalized.longitude,
+    source: normalized.source || "pin",
+    pinned_at: normalized.pinnedAt || new Date().toISOString(),
+    address_snapshot: {
+      address: cleanAddressValue(fields.address),
+      city: cleanAddressValue(fields.city),
+      postal: cleanAddressValue(fields.postal)
+    }
+  };
+}
+
+function renderPinnedLocationCard(cardEl, location, fields, isStale = false){
+  if (!cardEl) return;
+  const normalized = normalizePinnedLocationValue(location, fields);
+  const title = cardEl.querySelector(".delivery-location-card-title");
+  const copy = cardEl.querySelector(".delivery-location-card-copy");
+
+  if (!normalized){
+    cardEl.dataset.state = "empty";
+    if (title) title.textContent = "No map pin selected";
+    if (copy) copy.textContent = "You can still type the address manually.";
+    return;
+  }
+
+  if (isStale){
+    cardEl.dataset.state = "stale";
+    if (title) title.textContent = "Address changed after pinning";
+    if (copy) copy.textContent = "Open the map and confirm the pin again before we use it for routing.";
+    return;
+  }
+
+  cardEl.dataset.state = "saved";
+  if (title) title.textContent = "Exact delivery pin saved";
+  if (copy) {
+    const readable = [fields.address, fields.city, fields.postal].filter(Boolean).join(", ");
+    copy.textContent = readable || `${normalized.latitude.toFixed(5)}, ${normalized.longitude.toFixed(5)}`;
+  }
+}
+
+function loadDeliveryMapModule(){
+  if (!deliveryMapModulePromise){
+    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.0");
+    deliveryMapModulePromise = import(`./delivery-map.js?v=${version}`);
+  }
+  return deliveryMapModulePromise;
+}
 
 function hideCustomerRouteScreens(){
   if (checkoutScreen) checkoutScreen.classList.add("hidden");
@@ -2740,9 +2886,10 @@ async function recalcDeliveryFee(){
   const address = orderAddressInput.value.trim();
   const city = orderCityInput.value.trim();
   const postal = orderPostalInput.value.trim();
+  const hasCurrentPin = Boolean(checkoutPinnedLocation && !checkoutPinnedLocationStale);
 
-  if (!address || !city) {
-    deliveryStatusEl.textContent = "Enter your address to calculate the delivery fee.";
+  if ((!address || !city) && !hasCurrentPin) {
+    deliveryStatusEl.textContent = "Enter your address or pin your delivery location to calculate the delivery fee.";
     deliveryStatusEl.classList.remove("delivery-status-error");
     currentDeliveryFee = DELIVERY_FALLBACK_FEE;
     currentDeliveryKm = null;
@@ -2753,10 +2900,17 @@ async function recalcDeliveryFee(){
   const fullAddress = `${address}, ${city}${postal ? ", " + postal : ""}, Philippines`;
   const myToken = ++deliveryRecalcToken;
 
-  deliveryStatusEl.textContent = "Calculating delivery distance…";
+  deliveryStatusEl.textContent = hasCurrentPin
+    ? "Calculating delivery distance from your exact map pin…"
+    : "Calculating delivery distance…";
   deliveryStatusEl.classList.remove("delivery-status-error");
 
-  const result = await calculateDeliveryFee(fullAddress);
+  const result = hasCurrentPin
+    ? await calculateDeliveryFeeForCoords({
+        lat: checkoutPinnedLocation.latitude,
+        lon: checkoutPinnedLocation.longitude
+      })
+    : await calculateDeliveryFee(fullAddress);
 
   if (myToken !== deliveryRecalcToken) return;
 
@@ -2764,14 +2918,17 @@ async function recalcDeliveryFee(){
   currentDeliveryKm = result.km;
 
   if (result.km != null) {
+    const pinNote = hasCurrentPin ? " · exact map pin" : "";
     if (result.fee === 0) {
-      deliveryStatusEl.textContent = `${result.km.toFixed(1)} km from the shop · Free delivery`;
+      deliveryStatusEl.textContent = `${result.km.toFixed(1)} km from the shop${pinNote} · Free delivery`;
     } else {
-      deliveryStatusEl.textContent = `${result.km.toFixed(1)} km from the shop · ${formatPrice(result.fee)} delivery fee`;
+      deliveryStatusEl.textContent = `${result.km.toFixed(1)} km from the shop${pinNote} · ${formatPrice(result.fee)} delivery fee`;
     }
     deliveryStatusEl.classList.remove("delivery-status-error");
   } else {
-    deliveryStatusEl.textContent = `Couldn't pinpoint that address — using the standard delivery fee of ${formatPrice(DELIVERY_FALLBACK_FEE)}.`;
+    deliveryStatusEl.textContent = hasCurrentPin
+      ? `Couldn't route from the pinned location — using the standard delivery fee of ${formatPrice(DELIVERY_FALLBACK_FEE)}.`
+      : `Couldn't pinpoint that address — using the standard delivery fee of ${formatPrice(DELIVERY_FALLBACK_FEE)}.`;
     deliveryStatusEl.classList.add("delivery-status-error");
   }
 
@@ -2784,7 +2941,21 @@ function scheduleDeliveryRecalc(){
 }
 
 [orderAddressInput, orderCityInput, orderPostalInput].forEach(input => {
-  input.addEventListener("input", scheduleDeliveryRecalc);
+  input.addEventListener("input", () => {
+    if (checkoutPinnedLocation) {
+      checkoutPinnedLocationStale = !pinnedLocationMatchesFields(checkoutPinnedLocation, getCheckoutAddressFields());
+      renderPinnedLocationCard(checkoutLocationCurrentEl, checkoutPinnedLocation, getCheckoutAddressFields(), checkoutPinnedLocationStale);
+    }
+    scheduleDeliveryRecalc();
+  });
+});
+
+[profileAddressInput, profileCityInput, profilePostalInput].filter(Boolean).forEach(input => {
+  input.addEventListener("input", () => {
+    if (!profilePinnedLocation) return;
+    profilePinnedLocationStale = !pinnedLocationMatchesFields(profilePinnedLocation, getProfileAddressFields());
+    renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), profilePinnedLocationStale);
+  });
 });
 
 // ===================== Routed checkout =====================
@@ -2826,6 +2997,12 @@ function openOrderModal(items, isCartCheckout, { replaceRoute = false } = {}){
   orderLandmarkInput.value = saved ? (saved.landmark || "") : "";
   orderSaveCheckbox.checked = true;
 
+  checkoutPinnedLocation = normalizePinnedLocationValue(saved?.location, getCheckoutAddressFields());
+  checkoutPinnedLocationStale = checkoutPinnedLocation
+    ? !pinnedLocationMatchesFields(checkoutPinnedLocation, getCheckoutAddressFields())
+    : false;
+  renderPinnedLocationCard(checkoutLocationCurrentEl, checkoutPinnedLocation, getCheckoutAddressFields(), checkoutPinnedLocationStale);
+
   currentDeliveryFee = DELIVERY_FALLBACK_FEE;
   currentDeliveryKm = null;
   updateOrderCostBreakdown();
@@ -2848,6 +3025,9 @@ function resetCheckoutUiState(){
   orderForm.reset();
   orderItems = [];
   orderItems_isCartCheckout = false;
+  checkoutPinnedLocation = null;
+  checkoutPinnedLocationStale = false;
+  renderPinnedLocationCard(checkoutLocationCurrentEl, null, {}, false);
   resetPaymentProofField();
   resetPromoField();
 }
@@ -2923,10 +3103,20 @@ orderForm.addEventListener("submit", async (e) => {
     clearTimeout(deliveryDebounceTimer);
     await recalcDeliveryFee();
 
+    const serializedLocation = serializePinnedLocation(
+      checkoutPinnedLocation,
+      { address, city, postal },
+      checkoutPinnedLocationStale
+    );
+
     if (orderSaveCheckbox.checked) {
-      const newAddress = { name, phone, address, city, postal, landmark };
+      const newAddress = { name, phone, address, city, postal, landmark, location: serializedLocation };
       currentUserProfile.address = newAddress;
-      await supabase.from("profiles").update({ address: newAddress }).eq("id", currentUserId);
+      const { error: addressSaveError } = await supabase.from("profiles").update({ address: newAddress }).eq("id", currentUserId);
+      if (addressSaveError) {
+        console.error("[Dagoldol] Could not save delivery address:", addressSaveError);
+        showToast("Your order can continue, but the saved address could not be updated on this account.");
+      }
     }
 
     const paymentMethod = getSelectedPaymentMethod();
@@ -2963,7 +3153,7 @@ orderForm.addEventListener("submit", async (e) => {
       half_payment: halfPayment,
       amount_due_now: amountDueNow,
       amount_due_later: amountDueLater,
-      address: { name, phone, address, city, postal, landmark },
+      address: { name, phone, address, city, postal, landmark, location: serializedLocation },
       placed_at: placedAt,
       delivery_days: deliveryDays,
       status_override: 0,
@@ -3323,13 +3513,24 @@ if (ordersBackBtn) ordersBackBtn.addEventListener("click", () => closeOrdersModa
 // ===================== Profile =====================
 function openProfileModal(){
   const profile = (currentUserProfile && currentUserProfile.profile) || {};
+  const savedAddress = (currentUserProfile && currentUserProfile.address) || {};
   pendingAvatarUrl = undefined;
 
   profileUsernameDisplay.value = currentUser;
   profileNameInput.value = profile.name || "";
   profileEmailInput.value = profile.email || "";
-  profilePhoneInput.value = profile.phone || "";
+  profilePhoneInput.value = profile.phone || savedAddress.phone || "";
   profileBioInput.value = profile.bio || "";
+  profileAddressInput.value = savedAddress.address || "";
+  profileCityInput.value = savedAddress.city || "";
+  profilePostalInput.value = savedAddress.postal || "";
+  profileLandmarkInput.value = savedAddress.landmark || "";
+  profilePinnedLocation = normalizePinnedLocationValue(savedAddress.location, getProfileAddressFields());
+  profilePinnedLocationStale = profilePinnedLocation
+    ? !pinnedLocationMatchesFields(profilePinnedLocation, getProfileAddressFields())
+    : false;
+  renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), profilePinnedLocationStale);
+
   profileError.textContent = "";
   profileSuccess.classList.add("hidden");
   renderAvatar(profileAvatarPreview, profile.avatar || null, currentUser);
@@ -3354,12 +3555,34 @@ profileForm.addEventListener("submit", async (e) => {
   const email = profileEmailInput.value.trim();
   const phone = profilePhoneInput.value.trim();
   const bio = profileBioInput.value.trim();
+  const address = profileAddressInput.value.trim();
+  const city = profileCityInput.value.trim();
+  const postal = profilePostalInput.value.trim();
+  const landmark = profileLandmarkInput.value.trim();
 
   const existingAvatar = (currentUserProfile.profile && currentUserProfile.profile.avatar) || null;
   const avatar = pendingAvatarUrl === undefined ? existingAvatar : pendingAvatarUrl;
 
   const newProfile = { name, email, phone, bio, avatar };
-  const { error } = await supabase.from("profiles").update({ profile: newProfile }).eq("id", currentUserId);
+  const hasDeliveryAddress = Boolean(address || city || postal || landmark || profilePinnedLocation);
+  const newAddress = hasDeliveryAddress ? {
+    name: name || currentUserProfile.address?.name || currentUser,
+    phone: phone || currentUserProfile.address?.phone || "",
+    address,
+    city,
+    postal,
+    landmark,
+    location: serializePinnedLocation(
+      profilePinnedLocation,
+      { address, city, postal },
+      profilePinnedLocationStale
+    )
+  } : null;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ profile: newProfile, address: newAddress })
+    .eq("id", currentUserId);
 
   if (error) {
     profileError.textContent = "Could not save your profile. Please try again.";
@@ -3367,10 +3590,14 @@ profileForm.addEventListener("submit", async (e) => {
   }
 
   currentUserProfile.profile = newProfile;
+  currentUserProfile.address = newAddress;
+  profilePinnedLocation = normalizePinnedLocationValue(newAddress?.location, getProfileAddressFields());
+  profilePinnedLocationStale = false;
+  renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), false);
   accountMenuLabel.textContent = name || currentUser;
   renderAvatar(headerAvatar, avatar, currentUser);
   profileError.textContent = "";
-  profileSuccess.textContent = "Profile saved.";
+  profileSuccess.textContent = "Profile and delivery address saved.";
   profileSuccess.classList.remove("hidden");
 });
 
@@ -3428,8 +3655,8 @@ contactForm.addEventListener("submit", async (e) => {
 });
 
 // ===================== Modal accessibility: focus trap + Escape =====================
-let lastFocusedBeforeModal = null;
 let activeModalEl = null;
+const modalFocusStack = [];
 
 function getFocusableEls(container){
   return Array.from(container.querySelectorAll(
@@ -3458,9 +3685,16 @@ function trapFocusKeydown(e){
 }
 
 function openModalAccessible(modalEl, preferredFocusEl){
-  lastFocusedBeforeModal = document.activeElement;
+  const existingIndex = modalFocusStack.findIndex(entry => entry.modalEl === modalEl);
+  if (existingIndex !== -1) modalFocusStack.splice(existingIndex, 1);
+
+  modalFocusStack.push({
+    modalEl,
+    returnFocusEl: document.activeElement
+  });
   modalEl.classList.remove("hidden");
   activeModalEl = modalEl;
+  document.removeEventListener("keydown", trapFocusKeydown);
   document.addEventListener("keydown", trapFocusKeydown);
   const toFocus = (preferredFocusEl && !preferredFocusEl.disabled) ? preferredFocusEl : getFocusableEls(modalEl)[0];
   if (toFocus) toFocus.focus();
@@ -3468,21 +3702,155 @@ function openModalAccessible(modalEl, preferredFocusEl){
 
 function closeModalAccessible(modalEl){
   modalEl.classList.add("hidden");
-  if (activeModalEl === modalEl) {
-    activeModalEl = null;
+  const index = modalFocusStack.map(entry => entry.modalEl).lastIndexOf(modalEl);
+  const entry = index >= 0 ? modalFocusStack.splice(index, 1)[0] : null;
+  const top = modalFocusStack[modalFocusStack.length - 1] || null;
+  activeModalEl = top ? top.modalEl : null;
+
+  if (!activeModalEl) {
     document.removeEventListener("keydown", trapFocusKeydown);
   }
-  if (lastFocusedBeforeModal && document.body.contains(lastFocusedBeforeModal)) {
-    lastFocusedBeforeModal.focus();
+
+  if (entry?.returnFocusEl && document.body.contains(entry.returnFocusEl)) {
+    entry.returnFocusEl.focus({ preventScroll: true });
+  } else if (activeModalEl) {
+    const fallback = getFocusableEls(activeModalEl)[0];
+    if (fallback) fallback.focus({ preventScroll: true });
   }
-  lastFocusedBeforeModal = null;
 }
+
+function closeDeliveryMapModal(){
+  if (deliveryMapController){
+    deliveryMapController.destroy();
+    deliveryMapController = null;
+  }
+  pendingDeliveryMapSelection = null;
+  deliveryMapTarget = null;
+  if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = true;
+  if (deliveryMapLoading) deliveryMapLoading.textContent = "Loading map…";
+  if (deliveryMapCanvas?.parentElement) deliveryMapCanvas.parentElement.classList.remove("is-ready");
+  if (deliveryMapModal) closeModalAccessible(deliveryMapModal);
+}
+
+function addressForDeliveryMapTarget(target){
+  if (target === "profile") return getProfileAddressFields();
+  return getCheckoutAddressFields();
+}
+
+function locationForDeliveryMapTarget(target){
+  return target === "profile" ? profilePinnedLocation : checkoutPinnedLocation;
+}
+
+async function openDeliveryMapPicker(target){
+  if (!deliveryMapModal || !deliveryMapCanvas) return;
+  deliveryMapTarget = target;
+  pendingDeliveryMapSelection = locationForDeliveryMapTarget(target);
+  if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
+  if (deliveryMapStatus) deliveryMapStatus.textContent = "Loading the delivery map…";
+  if (deliveryMapSummary) deliveryMapSummary.textContent = "Preparing map…";
+  if (deliveryMapLoading) deliveryMapLoading.textContent = "Loading map…";
+
+  openModalAccessible(deliveryMapModal, deliveryMapCurrentLocationBtn || deliveryMapCloseBtn);
+
+  try {
+    const mapModule = await loadDeliveryMapModule();
+    if (deliveryMapTarget !== target || deliveryMapModal.classList.contains("hidden")) return;
+
+    deliveryMapController = await mapModule.openDeliveryMap({
+      container: deliveryMapCanvas,
+      statusElement: deliveryMapStatus,
+      summaryElement: deliveryMapSummary,
+      initialLocation: locationForDeliveryMapTarget(target),
+      initialAddress: addressForDeliveryMapTarget(target),
+      onSelectionChange(selection){
+        pendingDeliveryMapSelection = selection;
+        if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !selection;
+      }
+    });
+  } catch (error) {
+    console.error("[Dagoldol] Could not initialize delivery map:", error);
+    if (deliveryMapLoading) deliveryMapLoading.textContent = "Map unavailable";
+    if (deliveryMapStatus){
+      deliveryMapStatus.textContent = "The interactive map could not load. You can close it and type the delivery address manually.";
+      deliveryMapStatus.classList.add("delivery-map-status-error");
+    }
+  }
+}
+
+function applyMapSelectionToTarget(target, selection){
+  const normalized = normalizePinnedLocationValue(selection, addressForDeliveryMapTarget(target));
+  if (!normalized) return false;
+  const reverseAddress = selection?.address || {};
+
+  if (target === "profile") {
+    if (reverseAddress.address) profileAddressInput.value = reverseAddress.address;
+    if (reverseAddress.city) profileCityInput.value = reverseAddress.city;
+    if (reverseAddress.postal) profilePostalInput.value = reverseAddress.postal;
+    profilePinnedLocation = normalizePinnedLocationValue({
+      ...selection,
+      addressSnapshot: getProfileAddressFields()
+    }, getProfileAddressFields());
+    profilePinnedLocationStale = false;
+    renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), false);
+    return true;
+  }
+
+  if (reverseAddress.address) orderAddressInput.value = reverseAddress.address;
+  if (reverseAddress.city) orderCityInput.value = reverseAddress.city;
+  if (reverseAddress.postal) orderPostalInput.value = reverseAddress.postal;
+  checkoutPinnedLocation = normalizePinnedLocationValue({
+    ...selection,
+    addressSnapshot: getCheckoutAddressFields()
+  }, getCheckoutAddressFields());
+  checkoutPinnedLocationStale = false;
+  renderPinnedLocationCard(checkoutLocationCurrentEl, checkoutPinnedLocation, getCheckoutAddressFields(), false);
+  void recalcDeliveryFee();
+  return true;
+}
+
+async function openDeliveryMapForCheckout(){
+  await openDeliveryMapPicker("checkout");
+}
+
+async function openDeliveryMapForProfile(){
+  await openDeliveryMapPicker("profile");
+}
+
+if (checkoutLocationOpenBtn) checkoutLocationOpenBtn.addEventListener("click", () => { void openDeliveryMapForCheckout(); });
+if (profileLocationOpenBtn) profileLocationOpenBtn.addEventListener("click", () => { void openDeliveryMapForProfile(); });
+if (deliveryMapCloseBtn) deliveryMapCloseBtn.addEventListener("click", closeDeliveryMapModal);
+if (deliveryMapCancelBtn) deliveryMapCancelBtn.addEventListener("click", closeDeliveryMapModal);
+if (deliveryMapModal) deliveryMapModal.addEventListener("click", (event) => {
+  if (event.target === deliveryMapModal) closeDeliveryMapModal();
+});
+if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.addEventListener("click", async () => {
+  if (!deliveryMapController) return;
+  deliveryMapCurrentLocationBtn.disabled = true;
+  try {
+    pendingDeliveryMapSelection = await deliveryMapController.useCurrentLocation();
+    if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
+  } catch (error) {
+    if (deliveryMapStatus){
+      deliveryMapStatus.textContent = error?.message || "Current location is unavailable. Tap the map to choose manually.";
+      deliveryMapStatus.classList.add("delivery-map-status-error");
+    }
+  } finally {
+    deliveryMapCurrentLocationBtn.disabled = false;
+  }
+});
+if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.addEventListener("click", () => {
+  const selection = deliveryMapController?.getSelection?.() || pendingDeliveryMapSelection;
+  if (!selection || !deliveryMapTarget) return;
+  const target = deliveryMapTarget;
+  if (applyMapSelectionToTarget(target, selection)) closeDeliveryMapModal();
+});
 
 function closeTopModal(){
   if (!activeModalEl) return;
   const map = {
     "size-modal": closeSizeModal,
     "profile-modal": closeProfileModal,
+    "delivery-map-modal": closeDeliveryMapModal,
     "cart-modal": closeCartModal,
     "contact-modal": closeContactModal,
     "chat-modal": () => closeModalAccessible(chatModal)
