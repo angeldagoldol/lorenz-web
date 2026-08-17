@@ -3,7 +3,7 @@
  *
  * The module is intentionally lazy: importing it does not load MapLibre or
  * create a WebGL context. MapLibre is fetched only when openDeliveryMap() is
- * called from an explicit customer action.
+ * called from an explicit user action.
  */
 
 const MAPLIBRE_VERSION = "5.12.0";
@@ -14,6 +14,8 @@ const NOMINATIM_EMAIL_IDENTIFIER = "dagoldol-trading-co-shop";
 const REVERSE_CACHE_KEY = "dagoldol_reverse_geocode_cache_v1";
 const REVERSE_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const NOMINATIM_MIN_INTERVAL_MS = 1100;
+const MAP_LIBRARY_LOAD_TIMEOUT_MS = 10000;
+const MAP_RENDER_LOAD_TIMEOUT_MS = 14000;
 
 // Broad Philippine geographic envelope. It intentionally includes outlying
 // islands while excluding clearly accidental pins in other countries.
@@ -53,6 +55,20 @@ function uniqueParts(parts) {
     output.push(value);
   }
   return output;
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 export function isPhilippinesCoordinate(lat, lon) {
@@ -151,6 +167,72 @@ export function locationMatchesAddress(location, addressFields) {
     current.postal === snapshot.postal;
 }
 
+/**
+ * Capability probe used before MapLibre creates a WebGL context. This keeps a
+ * device that cannot create a usable context from getting stuck on "Loading".
+ */
+export function isWebGLSupported(canvasFactory = null) {
+  const makeCanvas = canvasFactory || (() => {
+    if (typeof document === "undefined") return null;
+    return document.createElement("canvas");
+  });
+
+  try {
+    const canvas = makeCanvas();
+    if (!canvas || typeof canvas.getContext !== "function") return false;
+    const context = canvas.getContext("webgl2", {
+      antialias: false,
+      failIfMajorPerformanceCaveat: false,
+      powerPreference: "low-power"
+    }) || canvas.getContext("webgl", {
+      antialias: false,
+      failIfMajorPerformanceCaveat: false,
+      powerPreference: "low-power"
+    });
+    return Boolean(context && typeof context.getParameter === "function");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pure device policy so mobile rendering budgets can be regression-tested.
+ */
+export function getMapRuntimeProfile({
+  viewportWidth = 1024,
+  devicePixelRatio = 1,
+  touchCapable = false,
+  coarsePointer = false,
+  reducedMotion = false
+} = {}) {
+  const width = Number.isFinite(Number(viewportWidth)) ? Math.max(0, Number(viewportWidth)) : 1024;
+  const dpr = Number.isFinite(Number(devicePixelRatio)) ? Math.max(1, Number(devicePixelRatio)) : 1;
+  const constrained = width <= 720 && (Boolean(touchCapable) || Boolean(coarsePointer));
+
+  return Object.freeze({
+    constrained,
+    pixelRatio: Math.min(dpr, constrained ? 1.5 : 2),
+    maxTileCacheSize: constrained ? 24 : 64,
+    maxTileCacheZoomLevels: constrained ? 2 : 4,
+    fadeDuration: constrained || reducedMotion ? 0 : 200,
+    dragRotate: false,
+    touchPitch: false,
+    reducedMotion: Boolean(reducedMotion),
+    powerPreference: constrained ? "low-power" : "high-performance"
+  });
+}
+
+function readRuntimeProfile() {
+  if (typeof window === "undefined") return getMapRuntimeProfile();
+  return getMapRuntimeProfile({
+    viewportWidth: Number(window.innerWidth) || Number(document.documentElement?.clientWidth) || 1024,
+    devicePixelRatio: Number(window.devicePixelRatio) || 1,
+    touchCapable: (Number(navigator.maxTouchPoints) || 0) > 0,
+    coarsePointer: window.matchMedia?.("(pointer: coarse)")?.matches === true,
+    reducedMotion: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true
+  });
+}
+
 function loadReverseCache() {
   try {
     const storage = globalThis.localStorage;
@@ -174,10 +256,6 @@ function saveReverseCache(cache) {
 
 function reverseCacheKey(lat, lon) {
   return `${Number(lat).toFixed(5)},${Number(lon).toFixed(5)}`;
-}
-
-function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function scheduleNominatimRequest(requestFn) {
@@ -249,6 +327,36 @@ function ensureMapLibreCss() {
   document.head.appendChild(link);
 }
 
+function cleanupFailedMapLibreScript(script) {
+  if (!script || window.maplibregl) return;
+  try { script.remove(); } catch { /* noop */ }
+}
+
+async function waitForMapLibreScript(script) {
+  if (window.maplibregl) return window.maplibregl;
+
+  const promise = new Promise((resolve, reject) => {
+    const onLoad = () => {
+      script.dataset.loadState = "loaded";
+      if (window.maplibregl) resolve(window.maplibregl);
+      else reject(new Error("The map library loaded without initializing."));
+    };
+    const onError = () => {
+      script.dataset.loadState = "error";
+      reject(new Error("Could not load the map library."));
+    };
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+  });
+
+  try {
+    return await withTimeout(promise, MAP_LIBRARY_LOAD_TIMEOUT_MS, "The map library took too long to load. Check your connection and try again.");
+  } catch (error) {
+    cleanupFailedMapLibreScript(script);
+    throw error;
+  }
+}
+
 async function loadMapLibre() {
   if (typeof window === "undefined" || typeof document === "undefined") {
     throw new Error("The interactive map is only available in a browser.");
@@ -256,26 +364,35 @@ async function loadMapLibre() {
   if (window.maplibregl) return window.maplibregl;
   if (mapLibreLoadPromise) return mapLibreLoadPromise;
 
+  if (!isWebGLSupported()) {
+    throw new Error("This device cannot start the interactive map. You can still enter the address manually or try another browser.");
+  }
+
   ensureMapLibreCss();
-  mapLibreLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-dagoldol-maplibre="true"]');
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.maplibregl), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Could not load the map library.")), { once: true });
-      return;
+  mapLibreLoadPromise = (async () => {
+    let existing = document.querySelector('script[data-dagoldol-maplibre="true"]');
+    if (existing && existing.dataset.loadState === "error") {
+      cleanupFailedMapLibreScript(existing);
+      existing = null;
+    }
+    if (existing && existing.dataset.loadState === "loaded" && !window.maplibregl) {
+      cleanupFailedMapLibreScript(existing);
+      existing = null;
     }
 
-    const script = document.createElement("script");
-    script.src = MAPLIBRE_JS_URL;
-    script.async = true;
-    script.dataset.dagoldolMaplibre = "true";
-    script.addEventListener("load", () => {
-      if (window.maplibregl) resolve(window.maplibregl);
-      else reject(new Error("The map library loaded without initializing."));
-    }, { once: true });
-    script.addEventListener("error", () => reject(new Error("Could not load the map library.")), { once: true });
-    document.head.appendChild(script);
-  }).catch(error => {
+    if (!existing) {
+      existing = document.createElement("script");
+      existing.src = MAPLIBRE_JS_URL;
+      existing.async = true;
+      existing.dataset.dagoldolMaplibre = "true";
+      existing.dataset.loadState = "loading";
+      const loadPromise = waitForMapLibreScript(existing);
+      document.head.appendChild(existing);
+      return loadPromise;
+    }
+
+    return waitForMapLibreScript(existing);
+  })().catch(error => {
     mapLibreLoadPromise = null;
     throw error;
   });
@@ -305,6 +422,78 @@ function toSelection(location, address, source) {
   };
 }
 
+function scheduleResizePasses(map, container) {
+  const timers = [];
+  let raf1 = null;
+  let raf2 = null;
+  let destroyed = false;
+
+  const resize = () => {
+    if (destroyed) return;
+    if (!container?.isConnected || container.clientWidth <= 0 || container.clientHeight <= 0) return;
+    try { map.resize(); } catch { /* noop */ }
+  };
+
+  if (typeof requestAnimationFrame === "function") {
+    raf1 = requestAnimationFrame(() => {
+      resize();
+      raf2 = requestAnimationFrame(resize);
+    });
+  }
+  timers.push(setTimeout(resize, 120));
+  timers.push(setTimeout(resize, 360));
+  timers.push(setTimeout(resize, 900));
+
+  const visualViewport = typeof window !== "undefined" ? window.visualViewport : null;
+  visualViewport?.addEventListener("resize", resize, { passive: true });
+  window.addEventListener("orientationchange", resize, { passive: true });
+  window.addEventListener("resize", resize, { passive: true });
+
+  return () => {
+    destroyed = true;
+    if (raf1 != null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf1);
+    if (raf2 != null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf2);
+    timers.forEach(timer => clearTimeout(timer));
+    visualViewport?.removeEventListener("resize", resize);
+    window.removeEventListener("orientationchange", resize);
+    window.removeEventListener("resize", resize);
+  };
+}
+
+function getCurrentPosition(options) {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+async function getReliableCurrentPosition() {
+  const fastOptions = {
+    enableHighAccuracy: false,
+    timeout: 6000,
+    maximumAge: 60000
+  };
+  const accurateOptions = {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 15000
+  };
+
+  let fastPosition = null;
+  try {
+    fastPosition = await getCurrentPosition(fastOptions);
+    if (Number(fastPosition?.coords?.accuracy) <= 80) return fastPosition;
+  } catch (error) {
+    if (error?.code === 1) throw error;
+  }
+
+  try {
+    return await getCurrentPosition(accurateOptions);
+  } catch (error) {
+    if (fastPosition) return fastPosition;
+    throw error;
+  }
+}
+
 /**
  * Initialize the reusable delivery map in an already-visible modal.
  * Returns a controller. Call destroy() when the modal closes to release the
@@ -319,8 +508,12 @@ export async function openDeliveryMap({
   onSelectionChange
 } = {}) {
   if (!container) throw new Error("Map container is missing.");
+  if (!isWebGLSupported()) {
+    throw new Error("The interactive map cannot start on this device. You can still type the address manually.");
+  }
 
   const maplibregl = await loadMapLibre();
+  const runtimeProfile = readRuntimeProfile();
   const normalizedInitial = normalizeSavedLocation(initialLocation);
   const startLngLat = normalizedInitial
     ? [normalizedInitial.longitude, normalizedInitial.latitude]
@@ -331,6 +524,8 @@ export async function openDeliveryMap({
     : null;
   let reverseLookupToken = 0;
   let destroyed = false;
+  let mapReady = false;
+  let cleanupResize = () => {};
 
   const setStatus = (message, isError = false) => {
     if (!statusElement) return;
@@ -357,8 +552,73 @@ export async function openDeliveryMap({
     maxBounds: PH_MAP_BOUNDS,
     attributionControl: true,
     cooperativeGestures: false,
-    renderWorldCopies: false
+    renderWorldCopies: false,
+    dragRotate: runtimeProfile.dragRotate,
+    pitchWithRotate: false,
+    touchPitch: runtimeProfile.touchPitch,
+    pixelRatio: runtimeProfile.pixelRatio,
+    maxTileCacheSize: runtimeProfile.maxTileCacheSize,
+    maxTileCacheZoomLevels: runtimeProfile.maxTileCacheZoomLevels,
+    fadeDuration: runtimeProfile.fadeDuration,
+    reduceMotion: runtimeProfile.reducedMotion,
+    cancelPendingTileRequestsWhileZooming: true,
+    canvasContextAttributes: {
+      antialias: false,
+      powerPreference: runtimeProfile.powerPreference,
+      preserveDrawingBuffer: false,
+      failIfMajorPerformanceCaveat: false,
+      desynchronized: runtimeProfile.constrained
+    }
   });
+
+  cleanupResize = scheduleResizePasses(map, container);
+
+  const mapLoadPromise = new Promise((resolve, reject) => {
+    map.once("load", () => {
+      mapReady = true;
+      resolve(true);
+    });
+    map.on("error", event => {
+      const message = cleanText(event?.error?.message || event?.message);
+      console.warn("[Dagoldol] MapLibre map resource error:", event?.error || event);
+      if (!mapReady && message) {
+        setStatus("The map is still loading some data. If it does not appear, close it and try again.", true);
+      }
+    });
+    map.on("webglcontextlost", () => {
+      setStatus("The map graphics were interrupted by this device. Close the map and reopen it, or enter the address manually.", true);
+    });
+    map.on("webglcontextrestored", () => {
+      setStatus("Map graphics restored. You can continue choosing the location.");
+      try { map.resize(); } catch { /* noop */ }
+    });
+  });
+
+  try {
+    await withTimeout(
+      mapLoadPromise,
+      MAP_RENDER_LOAD_TIMEOUT_MS,
+      "The map took too long to render on this device. Close it and try again, or enter the address manually."
+    );
+  } catch (error) {
+    cleanupResize();
+    try { map.remove(); } catch { /* noop */ }
+    container.replaceChildren();
+    throw error;
+  }
+
+  if (destroyed) {
+    cleanupResize();
+    try { map.remove(); } catch { /* noop */ }
+    throw new Error("The map was closed before it finished loading.");
+  }
+
+  container.parentElement?.classList.add("is-ready");
+  try { map.resize(); } catch { /* noop */ }
+  setSummary(selected);
+  setStatus(selected
+    ? "Move the pin if needed, or confirm this delivery location."
+    : "Tap the map, drag the pin, or use your current location.");
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
@@ -386,7 +646,7 @@ export async function openDeliveryMap({
       if (destroyed || token !== reverseLookupToken) return null;
       selected = toSelection({ latitude: lat, longitude: lng, source }, address, source);
       setSummary(selected);
-      setStatus("Address found. Confirm the pin when it matches your delivery entrance.");
+      setStatus("Address found. Confirm the pin when it matches the delivery entrance.");
       if (typeof onSelectionChange === "function") onSelectionChange(selected);
       return selected;
     } catch (error) {
@@ -408,16 +668,6 @@ export async function openDeliveryMap({
     void selectAt(lngLat.lng, lngLat.lat, "drag");
   });
 
-  map.once("load", () => {
-    if (destroyed) return;
-    container.parentElement?.classList.add("is-ready");
-    map.resize();
-    setSummary(selected);
-    setStatus(selected
-      ? "Move the pin if needed, or confirm this delivery location."
-      : "Tap the map, drag the pin, or use your current location.");
-  });
-
   return {
     getSelection() {
       return selected;
@@ -428,23 +678,18 @@ export async function openDeliveryMap({
         throw new Error("This browser does not provide location access.");
       }
       setStatus("Getting your current location…");
-      const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 12000,
-          maximumAge: 30000
-        });
-      }).catch(error => {
-        if (error && error.code === 1) throw new Error("Location permission was denied. You can still tap the map to choose your address.");
+
+      const position = await getReliableCurrentPosition().catch(error => {
+        if (error && error.code === 1) throw new Error("Location permission was denied. You can still tap the map to choose the address.");
         if (error && error.code === 3) throw new Error("Location timed out. Try again or tap the map manually.");
-        throw new Error("Current location is unavailable. Tap the map to choose your address.");
+        throw new Error("Current location is unavailable. Tap the map to choose manually.");
       });
 
       const { latitude, longitude } = position.coords;
       if (!isPhilippinesCoordinate(latitude, longitude)) {
         throw new Error("Your current location appears to be outside the Philippines.");
       }
-      map.flyTo({ center: [longitude, latitude], zoom: 17, essential: true });
+      map.flyTo({ center: [longitude, latitude], zoom: 17, essential: false });
       return selectAt(longitude, latitude, "geolocation");
     },
 
@@ -452,6 +697,7 @@ export async function openDeliveryMap({
       if (destroyed) return;
       destroyed = true;
       reverseLookupToken += 1;
+      cleanupResize();
       try { marker.remove(); } catch { /* noop */ }
       try { map.remove(); } catch { /* noop */ }
       container.parentElement?.classList.remove("is-ready");
