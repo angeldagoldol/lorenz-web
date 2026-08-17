@@ -100,7 +100,7 @@ async function main() {
   if (!indexHtml.includes('rel="dns-prefetch" href="//rvrjkfbenramappteuae.supabase.co"')) {
     throw new Error('index.html is missing the Supabase DNS prefetch hint.');
   }
-  for (const href of ['./phase2-fixes.css?v=3.3.3', './phase3-fixes.css?v=3.3.3']) {
+  for (const href of ['./phase2-fixes.css?v=3.3.4', './phase3-fixes.css?v=3.3.4']) {
     if (!indexHtml.includes(`href="${href}"`)) {
       throw new Error(`index.html does not direct-load critical mobile stylesheet: ${href}`);
     }
@@ -108,14 +108,26 @@ async function main() {
   if (!indexHtml.includes('src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer')) {
     throw new Error('index.html does not start the Supabase runtime early with defer.');
   }
-  if (!indexHtml.includes('src="script.js?v=3.3.3" defer')) {
-    throw new Error('index.html is missing the deferred Phase 3.3.3 application runtime.');
+  if (!indexHtml.includes('src="script.js?v=3.3.4" defer')) {
+    throw new Error('index.html is missing the deferred Phase 3.3.4 application runtime.');
   }
+
+
+  for (const id of [
+    'profile-landmark-suggestion',
+    'profile-landmark-use-suggestion',
+    'order-landmark-suggestion',
+    'order-landmark-use-suggestion',
+    'delivery-map-center-location'
+  ]) {
+    if (!indexHtml.includes(`id="${id}"`)) throw new Error(`index.html is missing delivery landmark/map control id="${id}".`);
+  }
+  if (!indexHtml.includes('✓ Use this location')) throw new Error('Delivery map confirmation CTA is missing.');
 
   const configSource = await readFile(resolve(ROOT, 'config.js'), 'utf8');
   if (!configSource.includes('PHASE3_ENABLED: true')) throw new Error('config.js does not enable Phase 3.');
   if (!configSource.includes('./phase3-fixes.css')) throw new Error('config.js does not load phase3-fixes.css.');
-  if (!configSource.includes('ASSET_VERSION: "3.3.3"')) throw new Error('config.js does not expose the mobile performance asset version.');
+  if (!configSource.includes('ASSET_VERSION: "3.3.4"')) throw new Error('config.js does not expose the mobile performance asset version.');
 
   const vercelConfig = JSON.parse(await readFile(resolve(ROOT, 'vercel.json'), 'utf8'));
   const supabaseProxy = (vercelConfig.rewrites || []).find(rule => rule.source === '/api/supabase/:path*');
@@ -135,7 +147,7 @@ async function main() {
   if (!scriptSource.includes('persistSession: true') || !scriptSource.includes('autoRefreshToken: true')) {
     throw new Error('script.js must explicitly persist and refresh independent browser sessions.');
   }
-  if (!indexHtml.includes('src="auth-resilience.js?v=3.3.3" defer')) {
+  if (!indexHtml.includes('src="auth-resilience.js?v=3.3.4" defer')) {
     throw new Error('index.html is missing the resilient Supabase transport runtime.');
   }
   if (!scriptSource.includes('DAGOLDOL_AUTH_RESILIENCE') || !scriptSource.includes('fetch: resilientSupabaseFetch')) {
@@ -150,6 +162,13 @@ async function main() {
   if (!scriptSource.includes('signOut({ scope: "local" })')) {
     throw new Error('script.js is missing current-device-only Supabase sign out.');
   }
+  if (!scriptSource.includes('applyLandmarkSuggestionToTarget') || !scriptSource.includes('setCurrentLocationButtonState')) {
+    throw new Error('script.js is missing the landmark suggestion or map-control state integration.');
+  }
+  if (!scriptSource.includes('deliveryMapCenterLocationBtn') || !scriptSource.includes('Center on my location')) {
+    throw new Error('script.js is missing center-on-current-location behavior.');
+  }
+
   if (!scriptSource.includes('const DELIVERY_FREE_KM_THRESHOLD = 5;') ||
       !scriptSource.includes('const DELIVERY_RATE_PER_KM = 60;') ||
       !scriptSource.includes('const DELIVERY_FALLBACK_FEE = 600;')) {
@@ -190,7 +209,7 @@ async function main() {
   if (!indexHtml.includes('The pin moves as soon as your device reports a position')) {
     throw new Error('index.html is missing current-location acquisition guidance.');
   }
-  if (!scriptSource.includes('deliveryMapCurrentLocationBtn.textContent = "Locating…"')) {
+  if (!scriptSource.includes('setCurrentLocationButtonState("locating")') || !scriptSource.includes('locating: "◌ Locating…"')) {
     throw new Error('script.js is missing current-location progress feedback.');
   }
   const permissionsPolicy = (vercelConfig.headers || []).flatMap(rule => rule.headers || []).find(header => header.key === 'Permissions-Policy');
