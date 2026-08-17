@@ -15,8 +15,8 @@ window.SUPABASE_ANON_KEY =
 window.DAGOLDOL_CONFIG = Object.freeze({
   PHASE2_ENABLED: true,
   PHASE3_ENABLED: true,
-  VERSION: "3.2.2",
-  ASSET_VERSION: "3.2.2",
+  VERSION: "3.3.0",
+  ASSET_VERSION: "3.3.0",
   SITE_URL: "https://lorenz-web-six.vercel.app"
 });
 
