@@ -19,7 +19,8 @@ https://cdn.jsdelivr.net;
 style-src
 'self'
 'unsafe-inline'
-https://fonts.googleapis.com;
+https://fonts.googleapis.com
+https://cdn.jsdelivr.net;
 
 font-src
 'self'
@@ -38,7 +39,12 @@ https://*.supabase.co
 wss://*.supabase.co
 https://cdn.jsdelivr.net
 https://nominatim.openstreetmap.org
-https://router.project-osrm.org;
+https://router.project-osrm.org
+https://tiles.openfreemap.org;
+
+worker-src blob:;
+
+child-src blob:;
 
 object-src 'none';
 
@@ -66,8 +72,8 @@ upgrade-insecure-requests;
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=3.1.0">
 <link rel="stylesheet" href="pill-buttons.css?v=3.1.1">
-<link rel="stylesheet" href="./phase2-fixes.css?v=3.2.2">
-<link rel="stylesheet" href="./phase3-fixes.css?v=3.2.2">
+<link rel="stylesheet" href="./phase2-fixes.css?v=3.3.0">
+<link rel="stylesheet" href="./phase3-fixes.css?v=3.3.0">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -81,10 +87,10 @@ upgrade-insecure-requests;
 <link rel="stylesheet" href="pixel-trail.css?v=1.0.0">
 <script src="pixel-trail.js?v=1.0.0" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-<script src="config.js?v=3.2.2" defer></script>
-<script src="auth-resilience.js?v=3.2.2" defer></script>
+<script src="config.js?v=3.3.0" defer></script>
+<script src="auth-resilience.js?v=3.3.0" defer></script>
 <script type="module" src="liquid-chrome.js?v=3.2.2"></script>
-<script src="script.js?v=3.2.2" defer></script>
+<script src="script.js?v=3.3.0" defer></script>
 </head>
 <body>
 
@@ -602,6 +608,41 @@ upgrade-insecure-requests;
         <input type="tel" id="profile-phone" placeholder="Phone number">
       </label>
 
+      <section class="delivery-location-section profile-delivery-location" aria-labelledby="profile-delivery-location-title">
+        <div class="delivery-location-heading-row">
+          <div>
+            <span class="field-label-standalone" id="profile-delivery-location-title">Saved delivery address</span>
+            <p class="field-hint">Pin your exact delivery entrance once and the same location can be reused on phone, laptop, or desktop.</p>
+          </div>
+          <button type="button" class="btn-secondary delivery-location-open-btn" id="profile-location-open">Pin on map</button>
+        </div>
+        <div class="delivery-location-card" id="profile-location-current" data-state="empty" aria-live="polite">
+          <span class="delivery-location-card-title">No map pin saved</span>
+          <span class="delivery-location-card-copy">You can still type the address manually.</span>
+        </div>
+
+        <label class="field">
+          <span>Street address</span>
+          <input type="text" id="profile-address" placeholder="House no., street">
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>City / Municipality</span>
+            <input type="text" id="profile-city" placeholder="City or municipality">
+          </label>
+          <label class="field">
+            <span>Postal code</span>
+            <input type="text" id="profile-postal" placeholder="Postal code">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Landmark / rider instructions</span>
+          <textarea id="profile-landmark" rows="2" placeholder="Gate color, nearby store, building name, floor, or other rider instructions"></textarea>
+        </label>
+      </section>
+
       <label class="field">
         <span>About you (optional)</span>
         <textarea id="profile-bio" rows="3" placeholder="Anything you'd like the owner to know — favorite items, sizing notes, etc."></textarea>
@@ -664,6 +705,20 @@ upgrade-insecure-requests;
         <span>Phone number</span>
         <input type="tel" id="order-phone" placeholder="Phone number" required>
       </label>
+
+      <section class="delivery-location-section checkout-delivery-location" aria-labelledby="checkout-delivery-location-title">
+        <div class="delivery-location-heading-row">
+          <div>
+            <span class="field-label-standalone" id="checkout-delivery-location-title">Exact delivery location</span>
+            <p class="field-hint">Pin the rider entrance for more accurate routing and delivery distance.</p>
+          </div>
+          <button type="button" class="btn-secondary delivery-location-open-btn" id="checkout-location-open">Pin delivery location</button>
+        </div>
+        <div class="delivery-location-card" id="checkout-location-current" data-state="empty" aria-live="polite">
+          <span class="delivery-location-card-title">No map pin selected</span>
+          <span class="delivery-location-card-copy">Address-only checkout still works.</span>
+        </div>
+      </section>
 
       <label class="field">
         <span>Street address</span>
@@ -828,6 +883,34 @@ upgrade-insecure-requests;
     </div>
   </main>
 </section>
+
+<!-- ===================== DELIVERY LOCATION MAP MODAL ===================== -->
+<div id="delivery-map-modal" class="modal-overlay hidden" data-nosnippet>
+  <div class="modal-panel modal-panel-wide delivery-map-panel" role="dialog" aria-modal="true" aria-labelledby="delivery-map-title">
+    <button type="button" class="modal-close" id="delivery-map-close" aria-label="Close delivery map">&times;</button>
+    <p class="eyebrow">Delivery Location</p>
+    <h2 class="modal-item-name" id="delivery-map-title">Pin the exact rider entrance</h2>
+    <p class="modal-sub">Tap the map or drag the pin. The address fields will be filled automatically when map data is available.</p>
+
+    <div class="delivery-map-toolbar">
+      <button type="button" class="btn-secondary" id="delivery-map-current-location">Use my current location</button>
+      <span class="delivery-map-privacy-note">Location permission is requested only when you press this button.</span>
+    </div>
+
+    <div class="delivery-map-canvas-wrap">
+      <div id="delivery-map-canvas" class="delivery-map-canvas" aria-label="Interactive delivery location map"></div>
+      <div class="delivery-map-loading" id="delivery-map-loading">Loading map…</div>
+    </div>
+
+    <p id="delivery-map-status" class="delivery-map-status" role="status" aria-live="polite">Tap the map, drag the pin, or use your current location.</p>
+    <div id="delivery-map-summary" class="delivery-map-summary">No pin selected yet.</div>
+
+    <div class="delivery-map-actions">
+      <button type="button" class="btn-secondary" id="delivery-map-cancel">Cancel</button>
+      <button type="button" class="btn-primary" id="delivery-map-confirm" disabled>Confirm delivery pin</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===================== CONTACT MODAL ===================== -->
 <div id="contact-modal" class="modal-overlay hidden">
