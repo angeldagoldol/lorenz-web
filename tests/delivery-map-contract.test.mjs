@@ -58,6 +58,7 @@ test('Nominatim reverse result becomes Dagoldol address fields', async () => {
     address: '123 Example Road, Barangay 1',
     city: 'Davao City',
     postal: '8000',
+    landmarkSuggestion: 'Barangay 1',
     displayName: '123 Example Road, Barangay 1, Davao City, 8000, Philippines'
   });
 });
