@@ -684,3 +684,227 @@
     margin:auto;
   }
 }
+
+/* =====================================================================
+   DAGOLDOL 3.3 — DELIVERY MAP / SAVED LOCATION
+   Additive only: map engine is lazy-loaded after explicit customer action.
+   ===================================================================== */
+.delivery-location-section{
+  margin:18px 0;
+  padding:16px;
+  border:1px solid var(--line, #2a2f3d);
+  border-radius:14px;
+  background:rgba(23,26,35,.82);
+  min-width:0;
+  max-width:100%;
+}
+
+.delivery-location-heading-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:12px;
+}
+
+.delivery-location-heading-row > div{
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.delivery-location-heading-row .field-hint{
+  margin:5px 0 0;
+}
+
+.delivery-location-open-btn{
+  flex:0 0 auto;
+  min-height:44px;
+  white-space:nowrap;
+}
+
+.delivery-location-card{
+  display:grid;
+  gap:4px;
+  padding:12px 14px;
+  margin:0 0 14px;
+  border:1px solid #3c4457;
+  border-radius:12px;
+  background:#171a23;
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.delivery-location-card[data-state="saved"]{
+  border-color:rgba(79,227,193,.68);
+  background:rgba(79,227,193,.07);
+}
+
+.delivery-location-card[data-state="stale"]{
+  border-color:rgba(255,184,92,.7);
+  background:rgba(255,184,92,.07);
+}
+
+.delivery-location-card-title{
+  color:var(--cream, #fff);
+  font-weight:650;
+  line-height:1.35;
+}
+
+.delivery-location-card-copy{
+  color:var(--faint, #a4acbf);
+  font-size:.88rem;
+  line-height:1.45;
+}
+
+.delivery-map-panel{
+  width:min(920px, calc(100vw - 32px));
+  max-width:920px;
+}
+
+.delivery-map-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  margin:14px 0 12px;
+}
+
+.delivery-map-privacy-note{
+  color:var(--faint, #a4acbf);
+  font-size:.82rem;
+  line-height:1.4;
+  text-align:right;
+}
+
+.delivery-map-canvas-wrap{
+  position:relative;
+  width:100%;
+  height:clamp(320px, 56vh, 560px);
+  min-height:320px;
+  overflow:hidden;
+  border:1px solid #3c4457;
+  border-radius:14px;
+  background:#10131a;
+  isolation:isolate;
+}
+
+.delivery-map-canvas{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  min-width:0;
+}
+
+.delivery-map-loading{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  padding:20px;
+  background:linear-gradient(135deg, #11151d, #191e29);
+  color:var(--faint, #a4acbf);
+  font-weight:600;
+  pointer-events:none;
+  z-index:2;
+}
+
+.delivery-map-canvas-wrap.is-ready .delivery-map-loading{
+  display:none;
+}
+
+.delivery-map-status{
+  margin:12px 0 6px;
+  color:var(--faint, #a4acbf);
+  line-height:1.45;
+}
+
+.delivery-map-status-error{
+  color:var(--rust, #ff8a5b);
+}
+
+.delivery-map-summary{
+  padding:12px 14px;
+  border-left:3px solid var(--brass, #4fe3c1);
+  border-radius:8px;
+  background:#171a23;
+  color:var(--cream, #fff);
+  overflow-wrap:anywhere;
+}
+
+.delivery-map-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:16px;
+}
+
+.delivery-map-actions .btn-primary,
+.delivery-map-actions .btn-secondary{
+  min-height:44px;
+}
+
+/* Keep map controls above map content but below Dagoldol modal chrome. */
+.delivery-map-canvas .maplibregl-ctrl-top-right,
+.delivery-map-canvas .maplibregl-ctrl-bottom-right,
+.delivery-map-canvas .maplibregl-ctrl-bottom-left{
+  z-index:3;
+}
+
+.delivery-map-canvas .maplibregl-ctrl-attrib{
+  font-size:10px;
+}
+
+@media (max-width:720px){
+  .delivery-location-section{
+    margin:14px 0;
+    padding:14px;
+    border-radius:12px;
+  }
+
+  .delivery-location-heading-row{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .delivery-location-open-btn{
+    width:100%;
+  }
+
+  .delivery-map-panel{
+    width:min(100%, calc(100vw - 16px));
+    max-height:calc(100dvh - 16px);
+    padding-left:max(14px, env(safe-area-inset-left));
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:max(14px, env(safe-area-inset-bottom));
+  }
+
+  .delivery-map-toolbar{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .delivery-map-toolbar .btn-secondary{
+    width:100%;
+  }
+
+  .delivery-map-privacy-note{
+    text-align:left;
+  }
+
+  .delivery-map-canvas-wrap{
+    height:min(50dvh, 430px);
+    min-height:280px;
+  }
+
+  .delivery-map-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media (max-width:420px){
+  .delivery-map-actions{
+    grid-template-columns:minmax(0,1fr);
+  }
+}
