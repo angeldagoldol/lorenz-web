@@ -78,8 +78,8 @@ upgrade-insecure-requests;
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=3.1.0">
 <link rel="stylesheet" href="pill-buttons.css?v=3.1.1">
-<link rel="stylesheet" href="./phase2-fixes.css?v=3.3.3">
-<link rel="stylesheet" href="./phase3-fixes.css?v=3.3.3">
+<link rel="stylesheet" href="./phase2-fixes.css?v=3.3.4">
+<link rel="stylesheet" href="./phase3-fixes.css?v=3.3.4">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -93,10 +93,10 @@ upgrade-insecure-requests;
 <link rel="stylesheet" href="pixel-trail.css?v=1.0.0">
 <script src="pixel-trail.js?v=1.0.0" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-<script src="config.js?v=3.3.3" defer></script>
-<script src="auth-resilience.js?v=3.3.3" defer></script>
+<script src="config.js?v=3.3.4" defer></script>
+<script src="auth-resilience.js?v=3.3.4" defer></script>
 <script type="module" src="liquid-chrome.js?v=3.2.2"></script>
-<script src="script.js?v=3.3.3" defer></script>
+<script src="script.js?v=3.3.4" defer></script>
 </head>
 <body>
 
@@ -647,6 +647,13 @@ upgrade-insecure-requests;
           <span>Landmark / rider instructions</span>
           <textarea id="profile-landmark" rows="2" placeholder="Gate color, nearby store, building name, floor, or other rider instructions"></textarea>
         </label>
+        <div class="landmark-suggestion-row hidden" id="profile-landmark-suggestion" role="status" aria-live="polite">
+          <div class="landmark-suggestion-copy">
+            <span class="landmark-suggestion-label">Map suggestion</span>
+            <span class="landmark-suggestion-text" id="profile-landmark-suggestion-text"></span>
+          </div>
+          <button type="button" class="btn-secondary landmark-suggestion-btn" id="profile-landmark-use-suggestion">Use suggested landmark</button>
+        </div>
       </section>
 
       <label class="field">
@@ -746,7 +753,14 @@ upgrade-insecure-requests;
         <span>Landmark / how to find your place</span>
         <textarea id="order-landmark" rows="3" placeholder="e.g. Blue gate beside Mang Tomas store, 2nd house after the chapel, white house with a mango tree out front..." required></textarea>
       </label>
-      <p class="field-hint">Maps can only get us to your street — this helps the rider actually find your door.</p>
+      <div class="landmark-suggestion-row hidden" id="order-landmark-suggestion" role="status" aria-live="polite">
+        <div class="landmark-suggestion-copy">
+          <span class="landmark-suggestion-label">Map suggestion</span>
+          <span class="landmark-suggestion-text" id="order-landmark-suggestion-text"></span>
+        </div>
+        <button type="button" class="btn-secondary landmark-suggestion-btn" id="order-landmark-use-suggestion">Use suggested landmark</button>
+      </div>
+      <p class="field-hint">Maps can suggest a nearby landmark, but you can always replace it with the exact gate, building, store, or rider instruction.</p>
 
       <p id="delivery-distance-status" class="delivery-status">Enter your address to calculate the delivery fee.</p>
 
@@ -899,7 +913,10 @@ upgrade-insecure-requests;
     <p class="modal-sub">Tap the map or drag the pin. The address fields will be filled automatically when map data is available.</p>
 
     <div class="delivery-map-toolbar">
-      <button type="button" class="btn-secondary" id="delivery-map-current-location">Use my current location</button>
+      <div class="delivery-map-location-actions">
+        <button type="button" class="btn-secondary delivery-map-location-btn" id="delivery-map-current-location">◎ Use my current location</button>
+        <button type="button" class="btn-secondary delivery-map-center-btn hidden" id="delivery-map-center-location">Center on my location</button>
+      </div>
       <span class="delivery-map-privacy-note">Location is requested only when you press this button. The pin moves as soon as your device reports a position; GPS may refine it for a few seconds.</span>
     </div>
 
@@ -912,8 +929,8 @@ upgrade-insecure-requests;
     <div id="delivery-map-summary" class="delivery-map-summary">No pin selected yet.</div>
 
     <div class="delivery-map-actions">
-      <button type="button" class="btn-secondary" id="delivery-map-cancel">Cancel</button>
-      <button type="button" class="btn-primary" id="delivery-map-confirm" disabled>Confirm delivery pin</button>
+      <button type="button" class="btn-secondary delivery-map-cancel-btn" id="delivery-map-cancel">Cancel</button>
+      <button type="button" class="btn-primary delivery-map-confirm-btn" id="delivery-map-confirm" disabled>✓ Use this location</button>
     </div>
   </div>
 </div>
