@@ -1,7 +1,7 @@
 /**
  * Dagoldol delivery location picker.
  *
- * Version 3.3.3 moves the interactive picker away from a WebGL-only map path
+ * Version 3.3.4 keeps the interactive picker away from a WebGL-only map path
  * and uses Leaflet 1.9.4 with raster tiles. This keeps the picker usable on
  * iPhone Safari, low-memory phones, and Windows machines whose browser/driver
  * cannot keep a stable WebGL map context.
@@ -103,7 +103,8 @@ export function normalizeSavedLocation(value) {
     addressSnapshot = {
       address: cleanText(rawSnapshot.address ?? rawSnapshot.street),
       city: cleanText(rawSnapshot.city),
-      postal: cleanText(rawSnapshot.postal ?? rawSnapshot.postcode)
+      postal: cleanText(rawSnapshot.postal ?? rawSnapshot.postcode),
+      landmarkSuggestion: cleanText(rawSnapshot.landmarkSuggestion ?? rawSnapshot.landmark_suggestion)
     };
   }
 
@@ -114,6 +115,32 @@ export function normalizeSavedLocation(value) {
     pinnedAt: cleanText(value.pinnedAt ?? value.pinned_at) || null,
     addressSnapshot
   };
+}
+
+function pickLandmarkSuggestion(payload, address, { streetAddress, roadLine, neighbourhood, city }) {
+  const blocked = [streetAddress, roadLine, city]
+    .map(normalizeComparable)
+    .filter(Boolean);
+
+  const candidates = uniqueParts([
+    payload?.name,
+    address.house_name,
+    address.building,
+    address.shop,
+    address.tourism,
+    address.office,
+    address.attraction,
+    neighbourhood
+  ]);
+
+  for (const candidate of candidates) {
+    const normalized = normalizeComparable(candidate);
+    if (!normalized) continue;
+    if (blocked.some(value => value === normalized)) continue;
+    if (blocked.some(value => value.length > 4 && normalized === value.split(",")[0])) continue;
+    return candidate;
+  }
+  return "";
 }
 
 export function buildAddressFromNominatim(payload) {
@@ -149,11 +176,18 @@ export function buildAddressFromNominatim(payload) {
     address.state_district ||
     address.state
   );
+  const landmarkSuggestion = pickLandmarkSuggestion(payload, address, {
+    streetAddress,
+    roadLine,
+    neighbourhood,
+    city
+  });
 
   return {
     address: streetAddress,
     city,
     postal: cleanText(address.postcode),
+    landmarkSuggestion,
     displayName: cleanText(payload?.display_name) || uniqueParts([streetAddress, city, address.postcode, "Philippines"]).join(", ")
   };
 }
@@ -266,7 +300,8 @@ function createSnapshot(address) {
   return {
     address: cleanText(address?.address ?? address?.street),
     city: cleanText(address?.city),
-    postal: cleanText(address?.postal ?? address?.postcode)
+    postal: cleanText(address?.postal ?? address?.postcode),
+    landmarkSuggestion: cleanText(address?.landmarkSuggestion ?? address?.landmark_suggestion)
   };
 }
 
@@ -760,7 +795,9 @@ export async function openDeliveryMap({
     }
     const addr = selection.address || {};
     const readable = uniqueParts([addr.address, addr.city, addr.postal]).join(", ");
-    summaryElement.textContent = readable || `${selection.latitude.toFixed(5)}, ${selection.longitude.toFixed(5)}`;
+    const landmark = cleanText(addr.landmarkSuggestion);
+    const primary = readable || `${selection.latitude.toFixed(5)}, ${selection.longitude.toFixed(5)}`;
+    summaryElement.textContent = landmark ? `${primary} · Nearby: ${landmark}` : primary;
   };
 
   const map = L.map(container, {
