@@ -460,38 +460,241 @@ function scheduleResizePasses(map, container) {
   };
 }
 
-function getCurrentPosition(options) {
+function getCurrentPositionFrom(geolocation, options) {
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    if (!geolocation || typeof geolocation.getCurrentPosition !== "function") {
+      reject(createLocationError("unsupported", 2, "Geolocation is unavailable."));
+      return;
+    }
+    geolocation.getCurrentPosition(resolve, reject, options);
   });
 }
 
-async function getReliableCurrentPosition() {
-  const fastOptions = {
-    enableHighAccuracy: false,
-    timeout: 6000,
-    maximumAge: 60000
-  };
-  const accurateOptions = {
-    enableHighAccuracy: true,
-    timeout: 10000,
-    maximumAge: 15000
-  };
+function createLocationError(reason, code, message, cause = null) {
+  const error = new Error(message || "Location is unavailable.");
+  error.name = "DagoldolLocationError";
+  error.reason = reason;
+  error.code = Number(code) || 0;
+  if (cause) error.cause = cause;
+  return error;
+}
 
-  let fastPosition = null;
+function isUsablePosition(position) {
+  return Number.isFinite(Number(position?.coords?.latitude)) &&
+    Number.isFinite(Number(position?.coords?.longitude));
+}
+
+function readAccuracy(position) {
+  const accuracy = Number(position?.coords?.accuracy);
+  return Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : Number.POSITIVE_INFINITY;
+}
+
+function pickBetterPosition(current, candidate) {
+  if (!isUsablePosition(candidate)) return current || null;
+  if (!isUsablePosition(current)) return candidate;
+  return readAccuracy(candidate) < readAccuracy(current) ? candidate : current;
+}
+
+export async function getGeolocationPermissionState(permissions = (typeof navigator !== "undefined" ? navigator.permissions : null)) {
+  if (!permissions || typeof permissions.query !== "function") return "unknown";
   try {
-    fastPosition = await getCurrentPosition(fastOptions);
-    if (Number(fastPosition?.coords?.accuracy) <= 80) return fastPosition;
+    const result = await permissions.query({ name: "geolocation" });
+    const state = cleanText(result?.state).toLowerCase();
+    return ["granted", "prompt", "denied"].includes(state) ? state : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function watchForBestPosition(geolocation, {
+  seedPosition = null,
+  targetAccuracyMeters = 100,
+  acceptableAccuracyMeters = 1500,
+  settleMs = 4000,
+  watchTimeoutMs = 35000
+} = {}) {
+  return new Promise((resolve, reject) => {
+    if (!geolocation || typeof geolocation.watchPosition !== "function") {
+      if (seedPosition) resolve(seedPosition);
+      else reject(createLocationError("unsupported", 2, "Continuous geolocation is unavailable."));
+      return;
+    }
+
+    let bestPosition = isUsablePosition(seedPosition) ? seedPosition : null;
+    let lastError = null;
+    let watchId = null;
+    let finished = false;
+    let needsClearAfterRegistration = false;
+    let settleTimer = null;
+
+    const clearWatch = () => {
+      if (watchId != null && typeof geolocation.clearWatch === "function") {
+        try { geolocation.clearWatch(watchId); } catch { /* noop */ }
+      } else if (watchId == null) {
+        needsClearAfterRegistration = true;
+      }
+    };
+
+    const finish = (error = null) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(deadlineTimer);
+      if (settleTimer) clearTimeout(settleTimer);
+      clearWatch();
+      if (bestPosition) {
+        resolve(bestPosition);
+        return;
+      }
+      reject(error || lastError || createLocationError("timeout", 3, "Location request timed out."));
+    };
+
+    const deadlineTimer = setTimeout(() => finish(lastError), Math.max(1, Number(watchTimeoutMs) || 35000));
+
+    try {
+      watchId = geolocation.watchPosition(
+        position => {
+          if (finished) return;
+          const previousAccuracy = readAccuracy(bestPosition);
+          bestPosition = pickBetterPosition(bestPosition, position);
+          const bestAccuracy = readAccuracy(bestPosition);
+          if (bestAccuracy <= targetAccuracyMeters) {
+            finish();
+            return;
+          }
+          if (bestAccuracy <= acceptableAccuracyMeters && bestAccuracy <= previousAccuracy) {
+            if (settleTimer) clearTimeout(settleTimer);
+            settleTimer = setTimeout(() => finish(), Math.max(1, Number(settleMs) || 4000));
+          }
+        },
+        error => {
+          if (finished) return;
+          lastError = error;
+          if (error?.code === 1) {
+            finish(createLocationError("permission_denied", 1, "Location permission was denied.", error));
+          }
+          // POSITION_UNAVAILABLE and TIMEOUT can be transient while a device is
+          // still acquiring Wi-Fi/cell/GPS data. Keep the watch alive until our
+          // own bounded deadline and return the best fix received, if any.
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: Math.min(Math.max(10000, Number(watchTimeoutMs) || 35000), 20000),
+          maximumAge: 0
+        }
+      );
+      if (needsClearAfterRegistration && watchId != null && typeof geolocation.clearWatch === "function") {
+        try { geolocation.clearWatch(watchId); } catch { /* noop */ }
+      }
+    } catch (error) {
+      lastError = error;
+      finish(error);
+    }
+  });
+}
+
+export async function getReliableCurrentPosition({
+  geolocation = (typeof navigator !== "undefined" ? navigator.geolocation : null),
+  permissions = (typeof navigator !== "undefined" ? navigator.permissions : null),
+  secureContext = (typeof window === "undefined" ? true : window.isSecureContext),
+  targetAccuracyMeters = 100,
+  acceptableFastAccuracyMeters = 1200,
+  acceptableWatchAccuracyMeters = 1500,
+  watchSettleMs = 4000,
+  fastTimeoutMs = 12000,
+  watchTimeoutMs = 35000,
+  fastMaximumAgeMs = 5 * 60 * 1000
+} = {}) {
+  if (!secureContext) {
+    throw createLocationError("insecure_context", 1, "Location requires a secure HTTPS page.");
+  }
+  if (!geolocation || typeof geolocation.getCurrentPosition !== "function") {
+    throw createLocationError("unsupported", 2, "This browser does not provide location access.");
+  }
+
+  const permissionState = await getGeolocationPermissionState(permissions);
+  if (permissionState === "denied") {
+    const denied = createLocationError("permission_denied", 1, "Location permission is blocked.");
+    denied.permissionState = permissionState;
+    throw denied;
+  }
+
+  let bestPosition = null;
+  let fastError = null;
+  try {
+    const fastPosition = await getCurrentPositionFrom(geolocation, {
+      enableHighAccuracy: false,
+      timeout: Math.max(1, Number(fastTimeoutMs) || 12000),
+      maximumAge: Math.max(0, Number(fastMaximumAgeMs) || 0)
+    });
+    bestPosition = pickBetterPosition(bestPosition, fastPosition);
+    if (bestPosition && readAccuracy(bestPosition) <= acceptableFastAccuracyMeters) return bestPosition;
   } catch (error) {
-    if (error?.code === 1) throw error;
+    fastError = error;
+    if (error?.code === 1) {
+      const denied = createLocationError("permission_denied", 1, "Location permission was denied.", error);
+      denied.permissionState = permissionState;
+      throw denied;
+    }
   }
 
   try {
-    return await getCurrentPosition(accurateOptions);
+    return await watchForBestPosition(geolocation, {
+      seedPosition: bestPosition,
+      targetAccuracyMeters,
+      acceptableAccuracyMeters: acceptableWatchAccuracyMeters,
+      settleMs: watchSettleMs,
+      watchTimeoutMs
+    });
   } catch (error) {
-    if (fastPosition) return fastPosition;
-    throw error;
+    if (bestPosition) return bestPosition;
+    const code = Number(error?.code || fastError?.code || 0);
+    const reason = code === 1 ? "permission_denied" : code === 3 ? "timeout" : "unavailable";
+    const normalized = createLocationError(reason, code, error?.message || fastError?.message || "Current location is unavailable.", error || fastError);
+    normalized.permissionState = permissionState;
+    throw normalized;
   }
+}
+
+export function getLocationFailureMessage(error, {
+  userAgent = (typeof navigator !== "undefined" ? navigator.userAgent : ""),
+  permissionState = error?.permissionState || "unknown",
+  secureContext = (typeof window === "undefined" ? true : window.isSecureContext)
+} = {}) {
+  const ua = String(userAgent || "");
+  const isWindows = /Windows/i.test(ua);
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  const reason = cleanText(error?.reason).toLowerCase();
+  const code = Number(error?.code || 0);
+
+  if (!secureContext || reason === "insecure_context") {
+    return "Current location requires HTTPS. Open the deployed Dagoldol site over https:// and try again.";
+  }
+
+  if (reason === "permission_denied" || permissionState === "denied" || code === 1) {
+    if (isWindows) {
+      return "Location access is blocked. In Windows open Settings → Privacy & security → Location, turn on Location services and allow desktop apps/browser access, then allow location for this Dagoldol site and try again.";
+    }
+    if (isIOS) {
+      return "Location access is blocked. On iPhone/iPad open Settings → Privacy & Security → Location Services, turn it on, allow Safari/Chrome to use location, then allow this website and try again.";
+    }
+    return "Location permission is blocked. Enable Location Services for your browser and allow this Dagoldol site to use your location, then try again.";
+  }
+
+  if (reason === "timeout" || code === 3) {
+    return "Your device is taking longer to get a location fix. Keep Wi-Fi/GPS and Location Services on, leave this map open, then press Use my current location again. You can still tap the map manually.";
+  }
+
+  if (reason === "unsupported") {
+    return "This browser cannot provide device location. Use a current Chrome, Edge, or Safari browser, or tap the map manually.";
+  }
+
+  if (isWindows) {
+    return "Windows could not determine your location. Check Settings → Privacy & security → Location, keep Wi-Fi on, allow your browser to use location, then try again.";
+  }
+  if (isIOS) {
+    return "Your iPhone/iPad could not determine the location yet. Check Location Services and this website's location permission, keep Wi-Fi or mobile data on, then try again.";
+  }
+  return "Current location is unavailable right now. Check Location Services and browser permission, then try again or tap the map manually.";
 }
 
 /**
@@ -675,22 +878,58 @@ export async function openDeliveryMap({
 
     async useCurrentLocation() {
       if (!navigator.geolocation) {
-        throw new Error("This browser does not provide location access.");
+        throw new Error(getLocationFailureMessage(
+          createLocationError("unsupported", 2, "Geolocation is unavailable."),
+          { userAgent: navigator.userAgent, permissionState: "unknown", secureContext: window.isSecureContext }
+        ));
       }
-      setStatus("Getting your current location…");
 
-      const position = await getReliableCurrentPosition().catch(error => {
-        if (error && error.code === 1) throw new Error("Location permission was denied. You can still tap the map to choose the address.");
-        if (error && error.code === 3) throw new Error("Location timed out. Try again or tap the map manually.");
-        throw new Error("Current location is unavailable. Tap the map to choose manually.");
-      });
+      const permissionState = await getGeolocationPermissionState(navigator.permissions);
+      setStatus(permissionState === "prompt"
+        ? "Allow location access if your browser asks. The first location fix can take up to about 35 seconds."
+        : "Getting your current location… The first location fix can take up to about 35 seconds.");
+
+      let position;
+      try {
+        position = await getReliableCurrentPosition({
+          geolocation: navigator.geolocation,
+          permissions: navigator.permissions,
+          secureContext: window.isSecureContext
+        });
+      } catch (error) {
+        throw new Error(getLocationFailureMessage(error, {
+          userAgent: navigator.userAgent,
+          permissionState,
+          secureContext: window.isSecureContext
+        }));
+      }
 
       const { latitude, longitude } = position.coords;
       if (!isPhilippinesCoordinate(latitude, longitude)) {
-        throw new Error("Your current location appears to be outside the Philippines.");
+        throw new Error("Your current location appears to be outside the Philippines. Tap the map manually if this is incorrect.");
       }
-      map.flyTo({ center: [longitude, latitude], zoom: 17, essential: false });
-      return selectAt(longitude, latitude, "geolocation");
+
+      const accuracy = readAccuracy(position);
+      const zoom = accuracy <= 100 ? 17 : accuracy <= 500 ? 15.5 : accuracy <= 1500 ? 14 : 12.5;
+      try {
+        if (runtimeProfile.constrained) map.jumpTo({ center: [longitude, latitude], zoom });
+        else map.easeTo({ center: [longitude, latitude], zoom, duration: 500, essential: false });
+      } catch {
+        try { map.jumpTo({ center: [longitude, latitude], zoom }); } catch { /* noop */ }
+      }
+
+      const selection = await selectAt(longitude, latitude, "geolocation");
+      if (selection) {
+        const accuracyText = Number.isFinite(accuracy)
+          ? accuracy < 1000
+            ? `±${Math.max(1, Math.round(accuracy))} m`
+            : `±${(accuracy / 1000).toFixed(1)} km`
+          : "an estimated accuracy";
+        setStatus(accuracy <= 250
+          ? `Current location found (${accuracyText}). Confirm the pin or drag it to the exact rider entrance.`
+          : `Approximate current location found (${accuracyText}). Drag the pin to the exact rider entrance before confirming.`);
+      }
+      return selection;
     },
 
     destroy() {
