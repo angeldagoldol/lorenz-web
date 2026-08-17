@@ -1,0 +1,68 @@
+DAGOLDOL 3.2.2 — DEVICE AUTH / MOBILE UI VERIFICATION
+====================================================
+
+Fresh verification performed against the exact release tree.
+
+1. npm run verify
+   PASS
+   - JavaScript syntax checks: PASS
+   - Multi-device auth contract: 4/4 PASS
+   - Device auth resilience contract: 9/9 PASS
+   - Payment regression contract: 5/5 PASS
+   - Mobile-fast contract: 8/8 PASS
+   - Source verifier: PASS
+
+2. Controlled desktop regression
+   Command: python tests/desktop-regression.spec.py
+   PASS
+   1440px controlled screenshot remained byte-identical to the established
+   desktop baseline (hash prefix 8c17dc19eae58adf...).
+
+3. Mobile matrix
+   Command: python tests/mobile-matrix.spec.py
+   PASS
+   Widths: 320, 360, 390, 414, 430
+   Snapshot products visible, header bounded/aligned, horizontal overflow: 0.
+
+4. Mobile resilience
+   Command: python tests/mobile-resilience.spec.py
+   PASS
+
+5. Payment/admin regression
+   Command: python tests/payment-settings-runtime.spec.py
+   PASS
+
+6. Mobile fast runtime
+   Command: python tests/runtime_mobile_fast.py
+   PASS
+   320: first cards 89.0 ms; 3 cards; overflow 0; no page errors
+   360: first cards 166.1 ms; 3 cards; overflow 0; no page errors
+   390: first cards 86.0 ms; 3 cards; overflow 0; no page errors
+   414: first cards 178.0 ms; 3 cards; overflow 0; no page errors
+   430: first cards 118.1 ms; 3 cards; overflow 0; no page errors
+   These are controlled local-fixture timings, not live-network claims.
+
+7. Device-auth browser runtime
+   Command: python tests/device-auth-runtime.spec.py
+   PASS
+   Widths: 320, 390, 430, 1280
+   Verified:
+   - login card stays within viewport
+   - normal touch/non-keyboard state keeps skip link hidden
+   - direct project-Supabase fetch is intentionally forced to throw
+     TypeError("Load failed")
+   - request retries through /api/supabase same-origin fallback
+   - controlled profile loads and customer session enters
+   - no uncaught page errors
+
+8. CSS parse
+   tinycss2 checked 8 CSS files.
+   Top-level parse errors: 0.
+
+What is NOT claimed
+-------------------
+- No claim that the user's real iPhone + production Supabase login has already
+  passed; deployment is required for that test.
+- No claim that Vercel's live reverse proxy has been exercised from this
+  sandbox.
+- No server-side Supabase session policy was modified by this code package.
