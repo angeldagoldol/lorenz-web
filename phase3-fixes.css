@@ -965,3 +965,158 @@
     grid-template-columns:minmax(0,1fr);
   }
 }
+
+/* =====================================================================
+   DAGOLDOL 3.3.4 — MAP LANDMARK + DELIVERY CONTROL POLISH
+   Additive only: map-derived landmark suggestions and resilient controls.
+   ===================================================================== */
+.map-autofilled{
+  border-color:rgba(79,227,193,.82) !important;
+  box-shadow:0 0 0 1px rgba(79,227,193,.18) inset;
+  background-image:linear-gradient(90deg, rgba(79,227,193,.055), transparent 38%);
+}
+
+.landmark-suggestion-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:-2px 0 12px;
+  padding:10px 12px;
+  border:1px solid rgba(79,227,193,.34);
+  border-radius:10px;
+  background:rgba(79,227,193,.055);
+  min-width:0;
+}
+
+.landmark-suggestion-row.hidden{
+  display:none !important;
+}
+
+.landmark-suggestion-row.is-applied{
+  border-color:rgba(79,227,193,.58);
+  background:rgba(79,227,193,.085);
+}
+
+.landmark-suggestion-copy{
+  display:grid;
+  gap:2px;
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.landmark-suggestion-label{
+  color:var(--brass, #4fe3c1);
+  font-size:.72rem;
+  font-weight:750;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.landmark-suggestion-text{
+  color:var(--cream, #fff);
+  font-size:.9rem;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+
+.landmark-suggestion-btn{
+  flex:0 0 auto;
+  min-height:38px;
+  padding:8px 12px;
+  font-size:.82rem;
+  white-space:nowrap;
+}
+
+.delivery-map-location-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.delivery-map-location-btn,
+.delivery-map-center-btn{
+  min-height:46px;
+  line-height:1.2;
+}
+
+.delivery-map-location-btn{
+  min-width:220px;
+}
+
+.delivery-map-location-btn[data-state="locating"]{
+  cursor:progress;
+  opacity:.82;
+}
+
+.delivery-map-location-btn[data-state="found"]{
+  border-color:rgba(79,227,193,.72);
+  color:var(--brass, #4fe3c1);
+}
+
+.delivery-map-center-btn{
+  white-space:nowrap;
+}
+
+.delivery-map-confirm-btn:disabled{
+  opacity:.48;
+  cursor:not-allowed;
+  transform:none !important;
+}
+
+@media (max-width:720px){
+  .landmark-suggestion-row{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    align-items:stretch;
+  }
+
+  .landmark-suggestion-btn{
+    width:100%;
+    white-space:normal;
+  }
+
+  .delivery-map-location-actions{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:8px;
+  }
+
+  .delivery-map-location-btn,
+  .delivery-map-center-btn{
+    width:100%;
+    min-width:0;
+    white-space:normal;
+  }
+
+  .delivery-map-actions{
+    position:sticky;
+    bottom:0;
+    z-index:12;
+    grid-template-columns:minmax(0,.72fr) minmax(0,1.28fr);
+    margin:16px -14px -14px;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    border-top:1px solid rgba(98,107,128,.38);
+    background:linear-gradient(180deg, rgba(23,26,35,.94), #171a23 34%);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+  }
+
+  .delivery-map-actions .btn-primary,
+  .delivery-map-actions .btn-secondary{
+    width:100%;
+    min-width:0;
+  }
+}
+
+@media (max-width:420px){
+  .delivery-map-actions{
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .delivery-map-confirm-btn{
+    order:-1;
+  }
+}
