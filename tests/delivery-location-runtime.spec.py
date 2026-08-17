@@ -113,6 +113,15 @@ async def boot(page):
     await page.route('https://dagoldol.test/catalogue-snapshot.json*', lambda route: route.fulfill(status=200, content_type='application/json', body=SNAPSHOT))
     await page.route('https://dagoldol.test/product-routes.json*', lambda route: route.fulfill(status=200, content_type='application/json', body='{}'))
     await page.set_content(HTML, wait_until='domcontentloaded')
+    await page.evaluate("""() => {
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+        if (type === 'webgl2' || type === 'webgl') {
+          return { getParameter() { return 1; } };
+        }
+        return originalGetContext.call(this, type, ...args);
+      };
+    }""")
     await page.add_style_tag(content=CSS)
     await page.evaluate('history.replaceState=()=>{};history.pushState=()=>{};')
     await page.add_script_tag(content=MOCK)
