@@ -606,20 +606,19 @@
 /* =====================================================================
    DAGOLDOL STATIC LIQUID CHROME
    ---------------------------------------------------------------------
-   Phone/touch devices render a compressed frame generated from the same
-   black/silver LiquidChrome shader instead of creating a WebGL context.
-   The gradients remain as a no-network/no-image fallback. Nothing here
-   animates or participates in pointer handling.
+   Phone/touch devices keep the visual depth of the desktop background
+   without creating a WebGL canvas. This is deliberately static: no
+   animation, filters, or pointer work is performed on the mobile path.
    ===================================================================== */
 .liquid-chrome-bg.liquid-chrome-static{
-  background-color:#0e1016;
+  background-color:#061410;
   background-image:
-    linear-gradient(180deg, rgba(8,9,12,0.34) 0%, rgba(8,9,12,0.24) 42%, rgba(8,9,12,0.40) 100%),
-    url("./assets/mobile-liquid-chrome.webp"),
-    radial-gradient(120% 86% at 10% 8%, rgba(255,255,255,0.16) 0%, rgba(74,78,86,0.12) 30%, transparent 60%),
-    radial-gradient(100% 78% at 92% 92%, rgba(255,255,255,0.10) 0%, rgba(42,45,52,0.12) 34%, transparent 66%),
-    linear-gradient(140deg, #22252c 0%, #111319 42%, #08090d 100%);
-  background-position:center, center, center, center, center;
+    radial-gradient(125% 88% at 6% -2%, rgba(79,227,193,0.30) 0%, rgba(31,112,91,0.17) 28%, transparent 57%),
+    radial-gradient(92% 72% at 96% 8%, rgba(183,224,208,0.18) 0%, rgba(49,122,101,0.15) 31%, transparent 62%),
+    radial-gradient(76% 58% at 53% 42%, rgba(35,104,86,0.36) 0%, rgba(9,40,33,0.12) 48%, transparent 72%),
+    radial-gradient(95% 76% at 22% 92%, rgba(24,76,62,0.42) 0%, rgba(5,26,21,0.36) 48%, transparent 75%),
+    radial-gradient(105% 82% at 92% 100%, rgba(2,19,16,0.90) 0%, rgba(3,15,13,0.48) 52%, transparent 78%),
+    linear-gradient(138deg, #183b32 0%, #0c261f 28%, #071b16 58%, #04110e 100%);
   background-repeat:no-repeat;
   background-size:cover;
   isolation:isolate;
@@ -634,9 +633,54 @@
 }
 
 .liquid-chrome-bg.liquid-chrome-static::before{
-  background:linear-gradient(118deg, transparent 0 24%, rgba(255,255,255,0.045) 34%, transparent 46%);
+  background:
+    linear-gradient(116deg, transparent 0 24%, rgba(226,255,244,0.075) 33%, rgba(126,213,183,0.035) 39%, transparent 49%),
+    radial-gradient(58% 34% at 68% 22%, rgba(214,255,240,0.085) 0%, transparent 69%);
+  opacity:0.95;
 }
 
 .liquid-chrome-bg.liquid-chrome-static::after{
-  background:linear-gradient(180deg, rgba(14,16,22,0.02), transparent 45%, rgba(14,16,22,0.18));
+  background:
+    radial-gradient(82% 48% at 38% 70%, transparent 0 40%, rgba(1,13,11,0.28) 72%, rgba(1,10,8,0.50) 100%),
+    linear-gradient(180deg, rgba(255,255,255,0.018), transparent 26%, rgba(0,0,0,0.12) 100%);
+}
+
+
+/* =====================================================================
+   DAGOLDOL 3.2.2 — MOBILE AUTH / ACCESSIBILITY STABILITY
+   ---------------------------------------------------------------------
+   iOS may keep ordinary :focus on a link after touch navigation. The skip
+   link must only become visible for keyboard-style focus-visible.
+   ===================================================================== */
+.skip-link{
+  top:calc(env(safe-area-inset-top, 0px) + 10px);
+  transform:translateY(-180%);
+}
+
+.skip-link:focus,
+.skip-link:focus:not(:focus-visible){
+  transform:translateY(-180%);
+}
+
+.skip-link:focus-visible{
+  transform:translateY(0);
+}
+
+@media (max-width:720px){
+  #login-screen{
+    min-height:100svh;
+    padding-top:calc(env(safe-area-inset-top, 0px) + 18px);
+    padding-right:max(14px, env(safe-area-inset-right));
+    padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 28px);
+    padding-left:max(14px, env(safe-area-inset-left));
+  }
+
+  @supports (min-height:100dvh){
+    #login-screen{ min-height:100dvh; }
+  }
+
+  .login-card{
+    max-width:min(100%, 430px);
+    margin:auto;
+  }
 }
