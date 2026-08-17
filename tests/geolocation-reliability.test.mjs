@@ -32,7 +32,7 @@ test('permission state is read when the Permissions API supports geolocation', a
   assert.equal(await getGeolocationPermissionState(null), 'unknown');
 });
 
-test('a usable cached/network position returns immediately without starting an accuracy watch', async () => {
+test('a usable cached/network position is accepted while a refinement watch also starts', async () => {
   const { getReliableCurrentPosition } = await importMapModule();
   let watchCalls = 0;
   const geolocation = {
@@ -46,12 +46,13 @@ test('a usable cached/network position returns immediately without starting an a
     permissions: { query: async () => ({ state: 'granted' }) },
     secureContext: true,
     acceptableFastAccuracyMeters: 1000,
+    watchSettleMs: 5,
     fastTimeoutMs: 20,
     watchTimeoutMs: 40
   });
 
   assert.equal(result.coords.latitude, 7.0731);
-  assert.equal(watchCalls, 0);
+  assert.equal(watchCalls, 1);
 });
 
 test('after a fast timeout, watchPosition can deliver a slower GPS fix and is always cleared', async () => {
