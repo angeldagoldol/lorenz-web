@@ -78,10 +78,10 @@ test('mobile critical CSS, safe-area viewport, and connection warm-up hints ship
   assert.match(index, /rel="preconnect"\s+href="https:\/\/rvrjkfbenramappteuae\.supabase\.co"/);
   assert.match(index, /rel="dns-prefetch"\s+href="\/\/rvrjkfbenramappteuae\.supabase\.co"/);
   assert.match(index, /rel="preconnect"\s+href="https:\/\/cdn\.jsdelivr\.net"/);
-  assert.match(index, /href="\.\/phase2-fixes\.css\?v=3\.3\.3"/);
-  assert.match(index, /href="\.\/phase3-fixes\.css\?v=3\.3\.3"/);
+  assert.match(index, /href="\.\/phase2-fixes\.css\?v=3\.3\.4"/);
+  assert.match(index, /href="\.\/phase3-fixes\.css\?v=3\.3\.4"/);
   assert.match(index, /src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2"\s+defer/);
-  assert.match(index, /src="script\.js\?v=3\.3\.3"\s+defer/);
+  assert.match(index, /src="script\.js\?v=3\.3\.4"\s+defer/);
 });
 
 test('mobile static path still exits before OGL module download', () => {
