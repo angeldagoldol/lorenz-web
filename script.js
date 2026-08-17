@@ -19,7 +19,17 @@ if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
   return;
 }
 
-const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+const supabase = window.supabase.createClient(
+  window.SUPABASE_URL,
+  window.SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  }
+);
 
 window.addEventListener("error", (e) => {
   console.error("[Dagoldol] Uncaught script error:", e.message, "at", (e.filename || "?") + ":" + e.lineno);
@@ -1878,10 +1888,7 @@ function getProductDisplayImage(product){
 function buildProductCardPhoto(product, index){
   const image = getProductDisplayImage(product);
   if (image) {
-    const priorityAttrs = index === 0
-      ? 'loading="eager" fetchpriority="high"'
-      : 'loading="lazy"';
-    return `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" class="zoomable-img" ${priorityAttrs} decoding="async">`;
+    return `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.name)}" class="zoomable-img" loading="lazy" decoding="async">`;
   }
   return buildProductPhoto(product, index);
 }
@@ -5848,7 +5855,7 @@ async function initSession(){
 
   const profile = await fetchProfile(session.user.id);
   if (!profile) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     currentUserId = null;
     currentUser = null;
     currentUserProfile = null;
@@ -5934,7 +5941,7 @@ async function enterGuestShop({ applyRoute = true } = {}){
 }
 
 async function backToLogin(){
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   teardownChatRealtime();
   teardownRecommendationsRealtime();
   currentUser = null;
@@ -5997,7 +6004,7 @@ loginForm.addEventListener("submit", async (e) => {
 
   if (!profile) {
     errorMessage.textContent = "Your account isn't fully set up yet. Please contact the shop owner.";
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return;
   }
 
