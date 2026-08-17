@@ -104,11 +104,11 @@ test('main HTML contains reusable location map UI for profile and checkout', () 
 test('map integration remains lazy and security policy permits only required map capabilities', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const vercel = fs.readFileSync(path.join(root, 'vercel.json'), 'utf8');
-  assert.doesNotMatch(html, /maplibre-gl\.js/i, 'MapLibre must not be eagerly loaded by index.html');
+  assert.doesNotMatch(html, /leaflet(?:\.js|@)/i, 'Leaflet must remain lazy-loaded and must not be included directly in index.html');
   assert.match(vercel, /geolocation=\(self\)/);
-  assert.match(vercel, /worker-src blob:/);
-  assert.match(vercel, /tiles\.openfreemap\.org/);
   assert.match(vercel, /cdn\.jsdelivr\.net/);
+  assert.match(vercel, /unpkg\.com/);
+  assert.match(vercel, /tile\.openstreetmap\.org/);
 });
 
 test('checkout script persists location and routes by pin when available', () => {
