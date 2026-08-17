@@ -1,16 +1,18 @@
 {
   "name": "dagoldol-phase3",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/generate-public-catalogue.mjs",
     "check": "node --check script.js && node --check delivery-map.js && node --check auth-resilience.js && node --check config.js && node --check liquid-chrome.js && node --check phase2-accessibility.js && node --check phase2-core.js && node --check script1.js && node --check scripts/generate-public-catalogue.mjs && node --check scripts/verify-source.mjs",
-    "verify": "npm run check && npm run test:auth && npm run test:device-auth && npm run test:payment && npm run test:mobile-fast && npm run test:delivery-map && node scripts/verify-source.mjs",
+    "verify": "npm run check && npm run test:auth && npm run test:device-auth && npm run test:payment && npm run test:mobile-fast && npm run test:delivery-map && npm run test:delivery-origin && npm run test:mobile-map && node scripts/verify-source.mjs",
     "test:payment": "node --test tests/payment-settings-contract.mjs",
     "test:mobile-fast": "node --test tests/mobile-fast-bootstrap.test.mjs",
     "test:auth": "node --test tests/multidevice-auth-contract.test.mjs",
     "test:device-auth": "node --test tests/device-auth-resilience.test.mjs",
-    "test:delivery-map": "node --test tests/delivery-map-contract.test.mjs"
+    "test:delivery-map": "node --test tests/delivery-map-contract.test.mjs",
+    "test:delivery-origin": "node --test tests/delivery-origin-contract.test.mjs",
+    "test:mobile-map": "node --test tests/mobile-map-reliability.test.mjs"
   }
 }
