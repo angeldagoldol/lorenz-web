@@ -2,87 +2,59 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const modulePath = path.join(root, 'delivery-map.js');
-const source = fs.readFileSync(modulePath, 'utf8');
+const source = fs.readFileSync(path.join(root, 'delivery-map.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'phase3-fixes.css'), 'utf8');
+const vercel = fs.readFileSync(path.join(root, 'vercel.json'), 'utf8');
 
-async function importMapModule() {
-  return import(`${pathToFileURL(modulePath).href}?t=${Date.now()}`);
-}
-
-test('map module exposes mobile runtime policy and WebGL capability helper', async () => {
-  const mod = await importMapModule();
-  assert.equal(typeof mod.isWebGLSupported, 'function');
-  assert.equal(typeof mod.getMapRuntimeProfile, 'function');
+test('map renderer is Leaflet 1.9.4 and no longer depends on a WebGL context', () => {
+  assert.match(source, /LEAFLET_VERSION\s*=\s*["']1\.9\.4["']/);
+  assert.match(source, /L\.map\(/);
+  assert.match(source, /L\.tileLayer\(/);
+  assert.doesNotMatch(source, /maplibregl/i);
+  assert.doesNotMatch(source, /webglcontextlost/i);
 });
 
-test('phone runtime caps pixel ratio and tile cache pressure', async () => {
-  const { getMapRuntimeProfile } = await importMapModule();
-  const profile = getMapRuntimeProfile({
-    viewportWidth: 390,
-    devicePixelRatio: 3,
-    touchCapable: true,
-    coarsePointer: true,
-    reducedMotion: false
-  });
-  assert.equal(profile.constrained, true);
-  assert.ok(profile.pixelRatio <= 1.5);
-  assert.ok(profile.maxTileCacheSize <= 32);
-  assert.ok(profile.maxTileCacheZoomLevels <= 2);
-  assert.equal(profile.fadeDuration, 0);
-  assert.equal(profile.dragRotate, false);
-  assert.equal(profile.touchPitch, false);
-});
-
-test('desktop runtime keeps higher visual budget without changing interaction model', async () => {
-  const { getMapRuntimeProfile } = await importMapModule();
-  const profile = getMapRuntimeProfile({
-    viewportWidth: 1440,
-    devicePixelRatio: 2,
-    touchCapable: false,
-    coarsePointer: false,
-    reducedMotion: false
-  });
-  assert.equal(profile.constrained, false);
-  assert.ok(profile.pixelRatio <= 2);
-  assert.equal(profile.dragRotate, false, 'delivery picker does not need map rotation');
-});
-
-test('map loader has bounded timeouts and failed loads can be retried', () => {
+test('Leaflet loader retries a second CDN and clears failed scripts', () => {
+  assert.match(source, /LEAFLET_JS_URLS/);
+  assert.match(source, /cdn\.jsdelivr\.net/);
+  assert.match(source, /unpkg\.com/);
   assert.match(source, /MAP_LIBRARY_LOAD_TIMEOUT_MS/);
-  assert.match(source, /MAP_RENDER_LOAD_TIMEOUT_MS/);
-  assert.match(source, /Promise\.race|withTimeout/);
-  assert.match(source, /mapLibreLoadPromise\s*=\s*null/);
-  assert.match(source, /remove\(\)/);
+  assert.match(source, /failed\.remove\(\)/);
 });
 
-test('map checks WebGL before initialization and handles lost/restored contexts', () => {
-  assert.match(source, /isWebGLSupported\(/);
-  assert.match(source, /webglcontextlost/);
-  assert.match(source, /webglcontextrestored/);
-  assert.match(source, /map\.on\(["']error["']/);
+test('map becomes ready before remote raster tiles finish', () => {
+  assert.match(source, /classList\.add\(["']is-ready["']\)/);
+  assert.match(source, /invalidateSize/);
+  assert.match(source, /tileerror/);
+  assert.doesNotMatch(source, /map\.once\(["']load["']/);
 });
 
-test('map resizes after modal visibility settles on mobile', () => {
-  assert.match(source, /requestAnimationFrame/);
-  assert.match(source, /visualViewport/);
-  assert.match(source, /orientationchange/);
-  assert.match(source, /map\.resize\(\)/);
+test('current location draws an accuracy circle and recenters the map', () => {
+  assert.match(source, /L\.circle\(/);
+  assert.match(source, /accuracy/);
+  assert.match(source, /setView\(/);
+  assert.match(source, /startCurrentLocationTracking/);
 });
 
-test('geolocation uses a bounded fast attempt and a high-accuracy retry', () => {
-  assert.match(source, /enableHighAccuracy:\s*false/);
-  assert.match(source, /enableHighAccuracy:\s*true/);
-  assert.match(source, /maximumAge/);
-  assert.match(source, /timeout/);
+test('map resources and location tracking are released when the picker closes', () => {
+  assert.match(source, /locationTracker\.stop\(\)/);
+  assert.match(source, /tiles\.remove\(\)/);
+  assert.match(source, /map\.remove\(\)/);
 });
 
-test('phone map CSS uses dynamic viewport and touch-safe containment', () => {
+test('phone map CSS uses a smaller dynamic viewport and Leaflet-specific controls', () => {
   assert.match(css, /\.delivery-map-panel[\s\S]*100dvh/);
-  assert.match(css, /\.delivery-map-canvas-wrap[\s\S]*touch-action/);
-  assert.match(css, /overscroll-behavior/);
+  assert.match(css, /\.delivery-map-canvas-wrap[\s\S]*42dvh/);
+  assert.match(css, /\.leaflet-container/);
+  assert.match(css, /\.dagoldol-leaflet-marker/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
+});
+
+test('security policy allows Leaflet fallback CDN and same-origin geolocation', () => {
+  assert.match(vercel, /geolocation=\(self\)/);
+  assert.match(vercel, /cdn\.jsdelivr\.net/);
+  assert.match(vercel, /unpkg\.com/);
+  assert.match(vercel, /tile\.openstreetmap\.org/);
 });
