@@ -1,12 +1,12 @@
 {
   "name": "dagoldol-phase3",
-  "version": "3.3.3",
+  "version": "3.3.4",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/generate-public-catalogue.mjs",
     "check": "node --check script.js && node --check delivery-map.js && node --check auth-resilience.js && node --check config.js && node --check liquid-chrome.js && node --check phase2-accessibility.js && node --check phase2-core.js && node --check script1.js && node --check scripts/generate-public-catalogue.mjs && node --check scripts/verify-source.mjs",
-    "verify": "npm run check && npm run test:auth && npm run test:device-auth && npm run test:payment && npm run test:mobile-fast && npm run test:delivery-map && npm run test:delivery-origin && npm run test:mobile-map && npm run test:geolocation && npm run test:current-location-v2 && node scripts/verify-source.mjs",
+    "verify": "npm run check && npm run test:auth && npm run test:device-auth && npm run test:payment && npm run test:mobile-fast && npm run test:delivery-map && npm run test:delivery-origin && npm run test:mobile-map && npm run test:geolocation && npm run test:current-location-v2 && npm run test:landmark-map-ux && node scripts/verify-source.mjs",
     "test:payment": "node --test tests/payment-settings-contract.mjs",
     "test:mobile-fast": "node --test tests/mobile-fast-bootstrap.test.mjs",
     "test:auth": "node --test tests/multidevice-auth-contract.test.mjs",
@@ -15,6 +15,7 @@
     "test:delivery-origin": "node --test tests/delivery-origin-contract.test.mjs",
     "test:mobile-map": "node --test tests/mobile-map-reliability.test.mjs",
     "test:geolocation": "node --test tests/geolocation-reliability.test.mjs",
-    "test:current-location-v2": "node --test tests/current-location-map-v2.test.mjs"
+    "test:current-location-v2": "node --test tests/current-location-map-v2.test.mjs",
+    "test:landmark-map-ux": "node --test tests/landmark-map-ux.test.mjs"
   }
 }
