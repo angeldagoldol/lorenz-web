@@ -786,6 +786,8 @@
   border-radius:14px;
   background:#10131a;
   isolation:isolate;
+  touch-action:none;
+  overscroll-behavior:contain;
 }
 
 .delivery-map-canvas{
@@ -874,6 +876,9 @@
   .delivery-map-panel{
     width:min(100%, calc(100vw - 16px));
     max-height:calc(100dvh - 16px);
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
     padding-left:max(14px, env(safe-area-inset-left));
     padding-right:max(14px, env(safe-area-inset-right));
     padding-bottom:max(14px, env(safe-area-inset-bottom));
