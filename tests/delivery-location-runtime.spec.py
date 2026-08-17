@@ -71,36 +71,46 @@ MOCK = f'''
 }})();
 '''
 
-FAKE_MAPLIBRE = r'''
+FAKE_LEAFLET = r'''
 (() => {
   class Map {
-    constructor(options){ this.options=options; this.handlers={}; window.__fakeMap=this; }
-    addControl(){}
-    on(name,cb){ this.handlers[name]=cb; }
-    once(name,cb){ if(name==='load') setTimeout(cb,0); else this.handlers[name]=cb; }
-    resize(){}
-    flyTo(opts){ this.center=opts.center; }
+    constructor(container, options){ this.container=container; this.options=options; this.handlers={}; window.__fakeMap=this; }
+    setView(latlng, zoom){ this.center=latlng; this.zoom=zoom; return this; }
+    on(name,cb){ this.handlers[name]=cb; return this; }
+    invalidateSize(){ this.invalidated=true; return this; }
+    remove(){}
+  }
+  class TileLayer {
+    constructor(){ this.handlers={}; }
+    on(name,cb){ this.handlers[name]=cb; return this; }
+    addTo(map){ this.map=map; return this; }
     remove(){}
   }
   class Marker {
-    constructor(){ this.lngLat={lng:121.774,lat:12.8797}; this.connected=false; this.handlers={}; this.el=document.createElement('div'); }
-    setLngLat(value){ this.lngLat=Array.isArray(value)?{lng:value[0],lat:value[1]}:value; return this; }
-    addTo(){ this.connected=true; if(!this.el.isConnected) document.body.appendChild(this.el); return this; }
-    getElement(){ return {isConnected:this.connected}; }
-    getLngLat(){ return this.lngLat; }
+    constructor(latlng){ this.latlng={lat:latlng[0],lng:latlng[1]}; this.handlers={}; this.added=false; }
+    setLatLng(value){ this.latlng=Array.isArray(value)?{lat:value[0],lng:value[1]}:value; return this; }
+    addTo(){ this.added=true; return this; }
+    getLatLng(){ return this.latlng; }
     on(name,cb){ this.handlers[name]=cb; return this; }
-    remove(){ this.connected=false; this.el.remove(); }
+    remove(){ this.added=false; }
   }
-  class NavigationControl { constructor(){} }
-  window.maplibregl={Map,Marker,NavigationControl};
+  class Circle { addTo(){ return this; } remove(){} }
+  window.L={
+    map(container,options){ return new Map(container,options); },
+    tileLayer(){ return new TileLayer(); },
+    divIcon(options){ return options; },
+    marker(latlng){ return new Marker(latlng); },
+    circle(){ return new Circle(); }
+  };
 })();
 '''
 
 async def boot(page):
     await page.route('https://dagoldol.test/delivery-map.js*', lambda route: route.fulfill(status=200, content_type='application/javascript', body=MAP_MODULE))
-    await page.route('https://cdn.jsdelivr.net/npm/maplibre-gl@5.12.0/dist/maplibre-gl.js', lambda route: route.fulfill(status=200, content_type='application/javascript', body=FAKE_MAPLIBRE))
-    await page.route('https://cdn.jsdelivr.net/npm/maplibre-gl@5.12.0/dist/maplibre-gl.css', lambda route: route.fulfill(status=200, content_type='text/css', body=''))
-    await page.route('https://tiles.openfreemap.org/**', lambda route: route.fulfill(status=200, content_type='application/json', body='{}'))
+    await page.route('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js', lambda route: route.fulfill(status=200, content_type='application/javascript', body=FAKE_LEAFLET))
+    await page.route('https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css', lambda route: route.fulfill(status=200, content_type='text/css', body=''))
+    await page.route('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', lambda route: route.fulfill(status=200, content_type='application/javascript', body=FAKE_LEAFLET))
+    await page.route('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', lambda route: route.fulfill(status=200, content_type='text/css', body=''))
     async def nominatim(route):
         url=route.request.url
         if '/reverse' in url:
@@ -114,13 +124,15 @@ async def boot(page):
     await page.route('https://dagoldol.test/product-routes.json*', lambda route: route.fulfill(status=200, content_type='application/json', body='{}'))
     await page.set_content(HTML, wait_until='domcontentloaded')
     await page.evaluate("""() => {
-      const originalGetContext = HTMLCanvasElement.prototype.getContext;
-      HTMLCanvasElement.prototype.getContext = function(type, ...args) {
-        if (type === 'webgl2' || type === 'webgl') {
-          return { getParameter() { return 1; } };
-        }
-        return originalGetContext.call(this, type, ...args);
+      const geo = {
+        watchPosition(success) { setTimeout(() => success({coords:{latitude:7.0731,longitude:125.6128,accuracy:24},timestamp:Date.now()}), 5); return 91; },
+        getCurrentPosition(success) { setTimeout(() => success({coords:{latitude:7.0732,longitude:125.6129,accuracy:180},timestamp:Date.now()}), 8); },
+        clearWatch() {}
       };
+      Object.defineProperty(navigator, 'geolocation', { configurable:true, value:geo });
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query = async ({name}) => name === 'geolocation' ? {state:'granted'} : {state:'prompt'};
+      }
     }""")
     await page.add_style_tag(content=CSS)
     await page.evaluate('history.replaceState=()=>{};history.pushState=()=>{};')
@@ -147,7 +159,11 @@ async def main():
         if await page.locator('#profile-address').input_value()!='Old Road': failures.append(f'{width}px profile address not restored')
         # Current-location pin reverse geocodes and fills profile fields.
         await page.locator('#profile-location-open').click(); await page.wait_for_timeout(120)
-        await page.evaluate("window.__fakeMap.handlers.click({lngLat:{lng:125.6128,lat:7.0731}})")
+        await page.locator('#delivery-map-current-location').click(); await page.wait_for_timeout(1400)
+        current_summary=await page.locator('#delivery-map-summary').inner_text()
+        if not current_summary: failures.append(f'{width}px current-location summary stayed empty')
+        if await page.locator('#delivery-map-confirm').is_disabled(): failures.append(f'{width}px current-location did not enable confirm')
+        await page.evaluate("window.__fakeMap.handlers.click({latlng:{lng:125.6128,lat:7.0731}})")
         await page.wait_for_timeout(1300)
         if await page.locator('#delivery-map-confirm').is_disabled(): failures.append(f'{width}px confirm stayed disabled')
         await page.locator('#delivery-map-confirm').click(); await page.wait_for_timeout(50)
@@ -159,7 +175,7 @@ async def main():
         await page.evaluate("document.querySelector('#profile-modal').classList.add('hidden'); document.querySelector('#shop-screen').classList.add('hidden'); document.querySelector('#checkout-screen').classList.remove('hidden');")
         await page.locator('#order-address').fill('Old Road'); await page.locator('#order-city').fill('Davao City'); await page.locator('#order-postal').fill('8000')
         await page.locator('#checkout-location-open').click(); await page.wait_for_timeout(120)
-        await page.evaluate("window.__fakeMap.handlers.click({lngLat:{lng:125.6128,lat:7.0731}})")
+        await page.evaluate("window.__fakeMap.handlers.click({latlng:{lng:125.6128,lat:7.0731}})")
         await page.wait_for_timeout(1300)
         await page.locator('#delivery-map-confirm').click(); await page.wait_for_timeout(100)
         delivery_text=await page.locator('#delivery-distance-status').inner_text()
@@ -174,6 +190,6 @@ async def main():
         await context.close()
       await browser.close()
     if failures: raise SystemExit('\n'.join(failures))
-    print('delivery-location-runtime: PASS (320/390/430/1440; profile restore/save, geolocation reverse fill, checkout direct-pin routing, stale-pin protection, no overflow)')
+    print('delivery-location-runtime: PASS (320/390/430/1440; Leaflet map, live current-location pin, profile restore/save, checkout direct-pin routing, stale-pin protection, no overflow)')
 
 if __name__=='__main__': asyncio.run(main())
