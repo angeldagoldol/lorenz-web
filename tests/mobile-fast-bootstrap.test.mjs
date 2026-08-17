@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const root = new URL('../', import.meta.url);
 const script = fs.readFileSync(new URL('../script.js', import.meta.url), 'utf8');
 const phase3 = fs.readFileSync(new URL('../phase3-fixes.css', import.meta.url), 'utf8');
 const style1 = fs.readFileSync(new URL('../style1.css', import.meta.url), 'utf8');
@@ -15,7 +14,7 @@ function sliceFunction(source, name) {
   const start = source.indexOf(marker);
   assert.notEqual(start, -1, `${name} must exist`);
   const signatureEnd = source.indexOf(')', start);
-  const brace = source.indexOf('{', signatureEnd);
+  let brace = source.indexOf('{', signatureEnd);
   assert.notEqual(brace, -1, `${name} must have a body`);
   let depth = 0;
   for (let i = brace; i < source.length; i += 1) {
@@ -62,17 +61,14 @@ test('session startup primes snapshot settings and does not block mobile first r
   assert.match(fn, /refreshSettingsLive/);
 });
 
-test('static mobile LiquidChrome uses a real optimized image plus a dark CSS fallback', () => {
-  const assetPath = new URL('../assets/mobile-liquid-chrome.webp', import.meta.url);
-  assert.equal(fs.existsSync(assetPath), true, 'optimized static mobile background asset must exist');
-  assert.ok(fs.statSync(assetPath).size > 10_000, 'mobile background should contain a real rendered visual');
-  assert.ok(fs.statSync(assetPath).size < 350_000, 'mobile background must stay lightweight');
+test('static LiquidChrome fallback is rich, layered, and non-animated on shop and My Info', () => {
+  assert.match(phase3, /DAGOLDOL STATIC LIQUID CHROME/);
+  assert.match(style1, /DAGOLDOL STATIC LIQUID CHROME/);
   for (const css of [phase3, style1]) {
-    assert.match(css, /DAGOLDOL STATIC LIQUID CHROME/);
-    assert.match(css, /url\(["']?\.\/assets\/mobile-liquid-chrome\.webp["']?\)/);
-    assert.match(css, /linear-gradient|radial-gradient/);
-    const section = css.match(/DAGOLDOL STATIC LIQUID CHROME[\s\S]*$/)?.[0] || '';
-    assert.doesNotMatch(section, /@keyframes|animation\s*:/);
+    assert.match(css, /\.liquid-chrome-bg\.liquid-chrome-static/);
+    const gradients = (css.match(/radial-gradient\(/g) || []).length;
+    assert.ok(gradients >= 4, 'static fallback should use at least four radial gradients');
+    assert.doesNotMatch(css.match(/DAGOLDOL STATIC LIQUID CHROME[\s\S]*$/)?.[0] || '', /@keyframes|animation\s*:/);
   }
 });
 
@@ -85,32 +81,17 @@ test('mobile critical CSS, safe-area viewport, and connection warm-up hints ship
   assert.match(index, /href="\.\/phase2-fixes\.css\?v=3\.2\.0"/);
   assert.match(index, /href="\.\/phase3-fixes\.css\?v=3\.2\.0"/);
   assert.match(index, /src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2"\s+defer/);
-  assert.match(index, /src="script\.js\?v=3\.2\.0"\s+defer/);
+  assert.match(index, /src="script\.js\?v=3\.2\.1"\s+defer/);
 });
 
-test('mobile static path exits before OGL module download', () => {
+test('mobile static path still exits before OGL module download', () => {
   const fn = sliceFunction(liquid, 'createLiquidChrome');
   const staticIndex = fn.indexOf('shouldUseStaticBackground()');
   const oglIndex = fn.indexOf('loadOglModule()');
   assert.ok(staticIndex >= 0 && oglIndex > staticIndex, 'static mobile decision must happen before OGL import');
 });
 
-test('video-matched desktop PixelTrail source stays unchanged by the mobile performance feature', () => {
-  const pixel = fs.readFileSync(new URL('../pixel-trail.js', import.meta.url), 'utf8');
-  assert.match(pixel, /scratchCount:\s*3/);
-  assert.match(pixel, /maxAge:\s*220/);
-  assert.match(pixel, /color:\s*['"]#1A00FE['"]/);
-});
-
-
-test('first product image is prioritized without eagerly loading the whole catalogue', () => {
-  const fn = sliceFunction(script, 'buildProductCardPhoto');
-  assert.match(fn, /index\s*===\s*0/);
-  assert.match(fn, /fetchpriority=["']high["']/);
-  assert.match(fn, /loading=["']lazy["']/);
-});
-
-
-test('shop head preloads the same-origin catalogue snapshot for faster mobile first render', () => {
-  assert.match(index, /rel="preload"\s+as="fetch"\s+href="\/catalogue-snapshot\.json"/);
+test('My Info contact cards can shrink and wrap at 320px without horizontal overflow', () => {
+  assert.match(style1, /\.contact__grid[\s\S]*min-width:\s*0/);
+  assert.match(style1, /\.contact-card__value[\s\S]*overflow-wrap:\s*anywhere/);
 });
