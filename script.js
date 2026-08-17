@@ -1047,6 +1047,8 @@ let adminDeliveryOriginDraft = null;
 let deliveryMapTarget = null;
 let deliveryMapController = null;
 let pendingDeliveryMapSelection = null;
+let pendingCurrentLocationRequest = null;
+let deliveryMapRequestToken = 0;
 let deliveryMapModulePromise = null;
 
 function cleanAddressValue(value){
@@ -1154,7 +1156,7 @@ function renderPinnedLocationCard(cardEl, location, fields, isStale = false){
 
 function loadDeliveryMapModule(){
   if (!deliveryMapModulePromise){
-    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.2");
+    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.3");
     deliveryMapModulePromise = import(`./delivery-map.js?v=${version}`);
   }
   return deliveryMapModulePromise;
@@ -3752,6 +3754,7 @@ function closeModalAccessible(modalEl){
 }
 
 function closeDeliveryMapModal(){
+  deliveryMapRequestToken += 1;
   if (deliveryMapController){
     deliveryMapController.destroy();
     deliveryMapController = null;
@@ -3840,6 +3843,43 @@ function locationForDeliveryMapTarget(target){
   return checkoutPinnedLocation;
 }
 
+function showCurrentLocationProgress(payload, target){
+  if (!deliveryMapStatus || deliveryMapTarget !== target || deliveryMapModal?.classList.contains("hidden")) return;
+  if (payload?.type === "position" && payload.position?.coords){
+    const accuracy = Number(payload.bestPosition?.coords?.accuracy ?? payload.position.coords.accuracy);
+    const accuracyText = Number.isFinite(accuracy)
+      ? accuracy < 1000 ? `±${Math.max(1, Math.round(accuracy))} m` : `±${(accuracy / 1000).toFixed(1)} km`
+      : "estimated accuracy";
+    deliveryMapStatus.classList.remove("delivery-map-status-error");
+    deliveryMapStatus.textContent = `Current location received (${accuracyText}). Preparing the pin…`;
+  }
+}
+
+async function getCurrentLocationSelection(target){
+  const requestTarget = target || deliveryMapTarget;
+  if (!requestTarget) return null;
+
+  if (deliveryMapController){
+    return deliveryMapController.useCurrentLocation();
+  }
+
+  if (!pendingCurrentLocationRequest){
+    const requestToken = deliveryMapRequestToken;
+    pendingCurrentLocationRequest = (async () => {
+      const mapModule = await loadDeliveryMapModule();
+      const selection = await mapModule.getCurrentLocationSelection({
+        onProgress(payload){ showCurrentLocationProgress(payload, requestTarget); }
+      });
+      if (requestToken !== deliveryMapRequestToken || deliveryMapTarget !== requestTarget) return null;
+      return selection;
+    })().finally(() => {
+      pendingCurrentLocationRequest = null;
+    });
+  }
+
+  return pendingCurrentLocationRequest;
+}
+
 async function openDeliveryMapPicker(target){
   if (!deliveryMapModal || !deliveryMapCanvas) return;
   if (deliveryMapController){
@@ -3849,9 +3889,10 @@ async function openDeliveryMapPicker(target){
   deliveryMapCanvas.replaceChildren();
   deliveryMapCanvas.parentElement?.classList.remove("is-ready");
   deliveryMapTarget = target;
+  deliveryMapRequestToken += 1;
   pendingDeliveryMapSelection = locationForDeliveryMapTarget(target);
   if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
-  if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = true;
+  if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = false;
   if (deliveryMapStatus) {
     deliveryMapStatus.classList.remove("delivery-map-status-error");
     deliveryMapStatus.textContent = target === "admin-origin"
@@ -3878,6 +3919,9 @@ async function openDeliveryMapPicker(target){
         if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !selection;
       }
     });
+    if (pendingDeliveryMapSelection){
+      await deliveryMapController.setSelection(pendingDeliveryMapSelection, { center: true });
+    }
     if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = false;
   } catch (error) {
     console.error("[Dagoldol] Could not initialize delivery map:", error);
@@ -3886,7 +3930,9 @@ async function openDeliveryMapPicker(target){
       deliveryMapStatus.textContent = error?.message || "The interactive map could not load. You can close it and type the delivery address manually.";
       deliveryMapStatus.classList.add("delivery-map-status-error");
     }
-    if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = true;
+    // Geolocation does not depend on the map renderer. Keep the button usable so
+    // a customer can still capture device coordinates even if map tiles/scripts fail.
+    if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = false;
   }
 }
 
@@ -3950,13 +3996,28 @@ if (deliveryMapModal) deliveryMapModal.addEventListener("click", (event) => {
   if (event.target === deliveryMapModal) closeDeliveryMapModal();
 });
 if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.addEventListener("click", async () => {
-  if (!deliveryMapController) return;
+  const targetAtStart = deliveryMapTarget;
+  if (!targetAtStart) return;
   const originalLabel = deliveryMapCurrentLocationBtn.textContent;
   deliveryMapCurrentLocationBtn.disabled = true;
   deliveryMapCurrentLocationBtn.textContent = "Locating…";
+  if (deliveryMapStatus){
+    deliveryMapStatus.classList.remove("delivery-map-status-error");
+    deliveryMapStatus.textContent = "Requesting your device location… Keep Location Services and Wi-Fi/mobile data on.";
+  }
   try {
-    pendingDeliveryMapSelection = await deliveryMapController.useCurrentLocation();
-    if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
+    const selection = await getCurrentLocationSelection(targetAtStart);
+    if (!selection || deliveryMapTarget !== targetAtStart) return;
+    pendingDeliveryMapSelection = selection;
+    if (deliveryMapController){
+      await deliveryMapController.setSelection(selection, { center: true });
+    } else if (deliveryMapSummary){
+      const address = selection.address || {};
+      deliveryMapSummary.textContent = [address.address, address.city, address.postal]
+        .map(cleanAddressValue).filter(Boolean).join(", ") ||
+        `${Number(selection.latitude).toFixed(5)}, ${Number(selection.longitude).toFixed(5)}`;
+    }
+    if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = false;
   } catch (error) {
     if (deliveryMapStatus){
       deliveryMapStatus.textContent = error?.message || "Current location is unavailable. Tap the map to choose manually.";
