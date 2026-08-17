@@ -100,6 +100,9 @@ const DEFAULT_GCASH_NUMBER = "0963 202 0564";
 const DEFAULT_BANK_NAME = "BDO Unibank";
 const DEFAULT_BANK_ACCOUNT_NAME = "Dagoldol Trading Co.";
 const DEFAULT_BANK_ACCOUNT_NUMBER = "0012 3456 7890";
+const DEFAULT_DELIVERY_ORIGIN_ADDRESS = "Davao-Bukidnon Hwy, Sitio Pamuhatan, Marilog District, Davao City, Davao del Sur, 8000, Philippines";
+const DEFAULT_DELIVERY_ORIGIN_LATITUDE = 7.2777;
+const DEFAULT_DELIVERY_ORIGIN_LONGITUDE = 125.3245;
 
 let currentSettings = {
   gcash_number: DEFAULT_GCASH_NUMBER,
@@ -108,7 +111,10 @@ let currentSettings = {
   bank_account_name: DEFAULT_BANK_ACCOUNT_NAME,
   bank_account_number: DEFAULT_BANK_ACCOUNT_NUMBER,
   bank_qr_image: null,
-  shop_logo_image: null
+  shop_logo_image: null,
+  delivery_origin_address: DEFAULT_DELIVERY_ORIGIN_ADDRESS,
+  delivery_origin_latitude: DEFAULT_DELIVERY_ORIGIN_LATITUDE,
+  delivery_origin_longitude: DEFAULT_DELIVERY_ORIGIN_LONGITUDE
 };
 
 // Same-origin public catalogue snapshot generated at deploy time.
@@ -195,7 +201,10 @@ function settingsFromRows(rows){
     bank_account_name: map.bank_account_name || DEFAULT_BANK_ACCOUNT_NAME,
     bank_account_number: map.bank_account_number || DEFAULT_BANK_ACCOUNT_NUMBER,
     bank_qr_image: map.bank_qr_image || null,
-    shop_logo_image: map.shop_logo_image || null
+    shop_logo_image: map.shop_logo_image || null,
+    delivery_origin_address: map.delivery_origin_address || DEFAULT_DELIVERY_ORIGIN_ADDRESS,
+    delivery_origin_latitude: Number(map.delivery_origin_latitude || DEFAULT_DELIVERY_ORIGIN_LATITUDE),
+    delivery_origin_longitude: Number(map.delivery_origin_longitude || DEFAULT_DELIVERY_ORIGIN_LONGITUDE)
   };
 }
 
@@ -207,6 +216,7 @@ async function primeSettingsFromSnapshot(){
   }
 
   currentSettings = settingsFromRows(snapshot.settings);
+  shopOriginCoords = null;
   applySettingsToDom();
   return true;
 }
@@ -216,6 +226,7 @@ async function refreshSettingsLive({ reportError = false } = {}){
     const { data, error } = await supabase.from("settings").select("*");
     if (error) throw error;
     currentSettings = settingsFromRows(data || []);
+    shopOriginCoords = null;
     applySettingsToDom();
     return true;
   } catch (error) {
@@ -306,8 +317,8 @@ function applyBrandLogoToDom(){
   });
 }
 
-const SHOP_ORIGIN_ADDRESS = "Davao-Bukidnon Hwy, Sitio Pamuhatan, Marilog District, Davao City, Davao del Sur, 8000, Philippines";
-const SHOP_ORIGIN_FALLBACK_COORDS = { lat: 7.2777, lon: 125.3245 };
+const SHOP_ORIGIN_ADDRESS = DEFAULT_DELIVERY_ORIGIN_ADDRESS;
+const SHOP_ORIGIN_FALLBACK_COORDS = { lat: DEFAULT_DELIVERY_ORIGIN_LATITUDE, lon: DEFAULT_DELIVERY_ORIGIN_LONGITUDE };
 
 const FREE_ZONE_ADDRESSES = [
   "Katipunan National High School, Katipunan, Arakan, Cotabato, Philippines",
@@ -330,8 +341,28 @@ const DELIVERY_ESTIMATE_MAX_DAYS = 6;
 
 let shopOriginCoords = null;
 
+function getConfiguredDeliveryOrigin(){
+  const lat = Number(currentSettings.delivery_origin_latitude);
+  const lon = Number(currentSettings.delivery_origin_longitude);
+  const isValid = Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= 4 && lat <= 21.5 && lon >= 116 && lon <= 127.5;
+  if (!isValid) return null;
+  return {
+    lat,
+    lon,
+    address: cleanAddressValue(currentSettings.delivery_origin_address) || SHOP_ORIGIN_ADDRESS
+  };
+}
+
 async function getShopOriginCoords(){
   if (shopOriginCoords) return shopOriginCoords;
+
+  const configured = getConfiguredDeliveryOrigin();
+  if (configured) {
+    shopOriginCoords = { lat: configured.lat, lon: configured.lon };
+    return shopOriginCoords;
+  }
+
   const geocoded = await geocodeAddress(SHOP_ORIGIN_ADDRESS);
   shopOriginCoords = geocoded || SHOP_ORIGIN_FALLBACK_COORDS;
   return shopOriginCoords;
@@ -1012,6 +1043,7 @@ let checkoutPinnedLocation = null;
 let checkoutPinnedLocationStale = false;
 let profilePinnedLocation = null;
 let profilePinnedLocationStale = false;
+let adminDeliveryOriginDraft = null;
 let deliveryMapTarget = null;
 let deliveryMapController = null;
 let pendingDeliveryMapSelection = null;
@@ -1122,7 +1154,7 @@ function renderPinnedLocationCard(cardEl, location, fields, isStale = false){
 
 function loadDeliveryMapModule(){
   if (!deliveryMapModulePromise){
-    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.0");
+    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.1");
     deliveryMapModulePromise = import(`./delivery-map.js?v=${version}`);
   }
   return deliveryMapModulePromise;
@@ -3732,25 +3764,104 @@ function closeDeliveryMapModal(){
   if (deliveryMapModal) closeModalAccessible(deliveryMapModal);
 }
 
+function currentSettingsDeliveryOriginLocation(){
+  const configured = getConfiguredDeliveryOrigin();
+  if (!configured) return null;
+  return normalizePinnedLocationValue({
+    latitude: configured.lat,
+    longitude: configured.lon,
+    source: "admin-origin",
+    addressSnapshot: {
+      address: configured.address,
+      city: "",
+      postal: ""
+    },
+    displayName: configured.address
+  }, { address: configured.address, city: "", postal: "" });
+}
+
+function getAdminDeliveryOriginAddressFields(){
+  const address = cleanAddressValue(
+    adminDeliveryOriginDraft?.displayName ||
+    adminDeliveryOriginDraft?.addressSnapshot?.address ||
+    currentSettings.delivery_origin_address ||
+    SHOP_ORIGIN_ADDRESS
+  );
+  return { address, city: "", postal: "" };
+}
+
+function formatDeliveryOriginSelectionAddress(selection){
+  const explicit = cleanAddressValue(selection?.displayName);
+  if (explicit) return explicit;
+  const reverseAddress = selection?.address || {};
+  return [reverseAddress.address, reverseAddress.city, reverseAddress.postal, "Philippines"]
+    .map(cleanAddressValue)
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(", ");
+}
+
+function updateAdminDeliveryOriginUi(){
+  const card = document.getElementById("admin-delivery-origin-card");
+  const addressInput = document.getElementById("admin-delivery-origin-address");
+  const latitudeInput = document.getElementById("admin-delivery-origin-latitude");
+  const longitudeInput = document.getElementById("admin-delivery-origin-longitude");
+  const location = normalizePinnedLocationValue(adminDeliveryOriginDraft, getAdminDeliveryOriginAddressFields()) || currentSettingsDeliveryOriginLocation();
+  const address = cleanAddressValue(
+    adminDeliveryOriginDraft?.displayName ||
+    adminDeliveryOriginDraft?.addressSnapshot?.address ||
+    currentSettings.delivery_origin_address ||
+    SHOP_ORIGIN_ADDRESS
+  );
+
+  if (addressInput) addressInput.value = address;
+  if (latitudeInput) latitudeInput.value = location ? location.latitude.toFixed(6) : "";
+  if (longitudeInput) longitudeInput.value = location ? location.longitude.toFixed(6) : "";
+  if (card) {
+    card.dataset.state = location ? "saved" : "empty";
+    const title = card.querySelector(".delivery-location-card-title");
+    const copy = card.querySelector(".delivery-location-card-copy");
+    if (title) title.textContent = location ? "Delivery start location set" : "No delivery origin pinned";
+    if (copy) copy.textContent = location
+      ? `${address || "Pinned shop location"} · ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
+      : "The existing Davao fallback will be used until you pin the owner/shop location.";
+  }
+}
+
 function addressForDeliveryMapTarget(target){
   if (target === "profile") return getProfileAddressFields();
+  if (target === "admin-origin") return getAdminDeliveryOriginAddressFields();
   return getCheckoutAddressFields();
 }
 
 function locationForDeliveryMapTarget(target){
-  return target === "profile" ? profilePinnedLocation : checkoutPinnedLocation;
+  if (target === "profile") return profilePinnedLocation;
+  if (target === "admin-origin") return adminDeliveryOriginDraft || currentSettingsDeliveryOriginLocation();
+  return checkoutPinnedLocation;
 }
 
 async function openDeliveryMapPicker(target){
   if (!deliveryMapModal || !deliveryMapCanvas) return;
+  if (deliveryMapController){
+    deliveryMapController.destroy();
+    deliveryMapController = null;
+  }
+  deliveryMapCanvas.replaceChildren();
+  deliveryMapCanvas.parentElement?.classList.remove("is-ready");
   deliveryMapTarget = target;
   pendingDeliveryMapSelection = locationForDeliveryMapTarget(target);
   if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
-  if (deliveryMapStatus) deliveryMapStatus.textContent = "Loading the delivery map…";
+  if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = true;
+  if (deliveryMapStatus) {
+    deliveryMapStatus.classList.remove("delivery-map-status-error");
+    deliveryMapStatus.textContent = target === "admin-origin"
+      ? "Loading the map so you can set the delivery starting point…"
+      : "Loading the delivery map…";
+  }
   if (deliveryMapSummary) deliveryMapSummary.textContent = "Preparing map…";
   if (deliveryMapLoading) deliveryMapLoading.textContent = "Loading map…";
 
-  openModalAccessible(deliveryMapModal, deliveryMapCurrentLocationBtn || deliveryMapCloseBtn);
+  openModalAccessible(deliveryMapModal, deliveryMapCloseBtn || deliveryMapCurrentLocationBtn);
 
   try {
     const mapModule = await loadDeliveryMapModule();
@@ -3767,13 +3878,15 @@ async function openDeliveryMapPicker(target){
         if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !selection;
       }
     });
+    if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = false;
   } catch (error) {
     console.error("[Dagoldol] Could not initialize delivery map:", error);
     if (deliveryMapLoading) deliveryMapLoading.textContent = "Map unavailable";
     if (deliveryMapStatus){
-      deliveryMapStatus.textContent = "The interactive map could not load. You can close it and type the delivery address manually.";
+      deliveryMapStatus.textContent = error?.message || "The interactive map could not load. You can close it and type the delivery address manually.";
       deliveryMapStatus.classList.add("delivery-map-status-error");
     }
+    if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = true;
   }
 }
 
@@ -3793,6 +3906,19 @@ function applyMapSelectionToTarget(target, selection){
     profilePinnedLocationStale = false;
     renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), false);
     return true;
+  }
+
+  if (target === "admin-origin") {
+    const originAddress = formatDeliveryOriginSelectionAddress(selection) || SHOP_ORIGIN_ADDRESS;
+    adminDeliveryOriginDraft = normalizePinnedLocationValue({
+      ...selection,
+      source: "admin-origin",
+      displayName: originAddress,
+      addressSnapshot: { address: originAddress, city: "", postal: "" }
+    }, { address: originAddress, city: "", postal: "" });
+    if (adminDeliveryOriginDraft) adminDeliveryOriginDraft.displayName = originAddress;
+    updateAdminDeliveryOriginUi();
+    return Boolean(adminDeliveryOriginDraft);
   }
 
   if (reverseAddress.address) orderAddressInput.value = reverseAddress.address;
@@ -5910,6 +6036,7 @@ function renderAdminSettingsTab(){
   pendingQrDataUrl = undefined;
   pendingBankQrDataUrl = undefined;
   pendingLogoDataUrl = undefined;
+  adminDeliveryOriginDraft = currentSettingsDeliveryOriginLocation();
 
   panel.innerHTML = `
     <h2 class="admin-section-title">Payment Settings</h2>
@@ -5968,9 +6095,37 @@ function renderAdminSettingsTab(){
         </div>
       </div>
 
+      <div class="admin-sizes-field admin-delivery-origin-section" style="padding-top:18px; border-top:1px dashed var(--line);">
+        <div class="delivery-location-heading-row">
+          <div>
+            <p class="admin-form-title" style="margin-bottom:6px;">Delivery Origin</p>
+            <p class="field-hint" style="margin:0;">Pin the owner/shop/warehouse starting point used for delivery-distance routing. This does not change the current delivery-price formula.</p>
+          </div>
+          <button type="button" class="btn-secondary delivery-location-open-btn" id="admin-delivery-origin-open">Set starting point</button>
+        </div>
+        <div class="delivery-location-card" id="admin-delivery-origin-card" data-state="saved" aria-live="polite">
+          <span class="delivery-location-card-title">Delivery start location set</span>
+          <span class="delivery-location-card-copy"></span>
+        </div>
+        <label class="field">
+          <span>Saved delivery origin address</span>
+          <input type="text" id="admin-delivery-origin-address" readonly>
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Latitude</span>
+            <input type="text" id="admin-delivery-origin-latitude" readonly inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>Longitude</span>
+            <input type="text" id="admin-delivery-origin-longitude" readonly inputmode="decimal">
+          </label>
+        </div>
+      </div>
+
       <p id="admin-settings-error" class="error-message"></p>
       <p id="admin-settings-success" class="success-message hidden"></p>
-      <button type="button" class="btn-primary" id="admin-settings-save" style="width:auto; padding:10px 22px;">Save payment settings</button>
+      <button type="button" class="btn-primary" id="admin-settings-save" style="width:auto; padding:10px 22px;">Save payment &amp; delivery settings</button>
     </div>
 
     <div class="admin-card" style="margin-top:20px;">
@@ -6005,6 +6160,12 @@ function renderAdminSettingsTab(){
   const saveBtn = document.getElementById("admin-settings-save");
   const errEl = document.getElementById("admin-settings-error");
   const successEl = document.getElementById("admin-settings-success");
+  const adminDeliveryOriginOpenBtn = document.getElementById("admin-delivery-origin-open");
+
+  updateAdminDeliveryOriginUi();
+  adminDeliveryOriginOpenBtn?.addEventListener("click", () => {
+    void openDeliveryMapPicker("admin-origin");
+  });
 
   qrInput.addEventListener("change", async () => {
     const file = qrInput.files[0];
@@ -6051,6 +6212,8 @@ function renderAdminSettingsTab(){
     const bankName = document.getElementById("admin-bank-name").value.trim();
     const bankAccountName = document.getElementById("admin-bank-account-name").value.trim();
     const bankAccountNumber = document.getElementById("admin-bank-account-number").value.trim();
+    const originLocation = normalizePinnedLocationValue(adminDeliveryOriginDraft, getAdminDeliveryOriginAddressFields()) || currentSettingsDeliveryOriginLocation();
+    const originAddress = cleanAddressValue(document.getElementById("admin-delivery-origin-address")?.value) || SHOP_ORIGIN_ADDRESS;
 
     if (!number) {
       errEl.textContent = "Please enter a GCash number.";
@@ -6058,6 +6221,10 @@ function renderAdminSettingsTab(){
     }
     if (!bankName || !bankAccountName || !bankAccountNumber) {
       errEl.textContent = "Please complete the bank name, account holder name, and account number.";
+      return;
+    }
+    if (!originLocation) {
+      errEl.textContent = "Please pin a valid delivery origin within the Philippines.";
       return;
     }
 
@@ -6074,7 +6241,10 @@ function renderAdminSettingsTab(){
       saveSetting("bank_name", bankName),
       saveSetting("bank_account_name", bankAccountName),
       saveSetting("bank_account_number", bankAccountNumber),
-      saveSetting("bank_qr_image", bankQrImage || "")
+      saveSetting("bank_qr_image", bankQrImage || ""),
+      saveSetting("delivery_origin_address", originAddress),
+      saveSetting("delivery_origin_latitude", String(originLocation.latitude)),
+      saveSetting("delivery_origin_longitude", String(originLocation.longitude))
     ]);
 
     saveBtn.disabled = false;
@@ -6092,10 +6262,16 @@ function renderAdminSettingsTab(){
       bank_name: bankName,
       bank_account_name: bankAccountName,
       bank_account_number: bankAccountNumber,
-      bank_qr_image: bankQrImage || null
+      bank_qr_image: bankQrImage || null,
+      delivery_origin_address: originAddress,
+      delivery_origin_latitude: originLocation.latitude,
+      delivery_origin_longitude: originLocation.longitude
     };
+    shopOriginCoords = null;
+    adminDeliveryOriginDraft = currentSettingsDeliveryOriginLocation();
     applySettingsToDom();
-    successEl.textContent = "Payment settings saved. Customers will see the updated GCash and bank details immediately.";
+    updateAdminDeliveryOriginUi();
+    successEl.textContent = "Payment and delivery settings saved. Checkout routing now starts from the pinned owner location.";
     successEl.classList.remove("hidden");
   });
 
