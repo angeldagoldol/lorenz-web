@@ -42,7 +42,8 @@ const REQUIRED_FILES = [
   'tests/device-auth-resilience.test.mjs',
   'tests/delivery-map-contract.test.mjs',
   'tests/delivery-origin-contract.test.mjs',
-  'tests/mobile-map-reliability.test.mjs'
+  'tests/mobile-map-reliability.test.mjs',
+  'tests/geolocation-reliability.test.mjs'
 ];
 
 const REQUIRED_INDEX_IDS = [
@@ -98,7 +99,7 @@ async function main() {
   if (!indexHtml.includes('rel="dns-prefetch" href="//rvrjkfbenramappteuae.supabase.co"')) {
     throw new Error('index.html is missing the Supabase DNS prefetch hint.');
   }
-  for (const href of ['./phase2-fixes.css?v=3.3.1', './phase3-fixes.css?v=3.3.1']) {
+  for (const href of ['./phase2-fixes.css?v=3.3.2', './phase3-fixes.css?v=3.3.2']) {
     if (!indexHtml.includes(`href="${href}"`)) {
       throw new Error(`index.html does not direct-load critical mobile stylesheet: ${href}`);
     }
@@ -106,14 +107,14 @@ async function main() {
   if (!indexHtml.includes('src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer')) {
     throw new Error('index.html does not start the Supabase runtime early with defer.');
   }
-  if (!indexHtml.includes('src="script.js?v=3.3.1" defer')) {
-    throw new Error('index.html is missing the deferred Phase 3.3.1 application runtime.');
+  if (!indexHtml.includes('src="script.js?v=3.3.2" defer')) {
+    throw new Error('index.html is missing the deferred Phase 3.3.2 application runtime.');
   }
 
   const configSource = await readFile(resolve(ROOT, 'config.js'), 'utf8');
   if (!configSource.includes('PHASE3_ENABLED: true')) throw new Error('config.js does not enable Phase 3.');
   if (!configSource.includes('./phase3-fixes.css')) throw new Error('config.js does not load phase3-fixes.css.');
-  if (!configSource.includes('ASSET_VERSION: "3.3.1"')) throw new Error('config.js does not expose the mobile performance asset version.');
+  if (!configSource.includes('ASSET_VERSION: "3.3.2"')) throw new Error('config.js does not expose the mobile performance asset version.');
 
   const vercelConfig = JSON.parse(await readFile(resolve(ROOT, 'vercel.json'), 'utf8'));
   const supabaseProxy = (vercelConfig.rewrites || []).find(rule => rule.source === '/api/supabase/:path*');
@@ -133,7 +134,7 @@ async function main() {
   if (!scriptSource.includes('persistSession: true') || !scriptSource.includes('autoRefreshToken: true')) {
     throw new Error('script.js must explicitly persist and refresh independent browser sessions.');
   }
-  if (!indexHtml.includes('src="auth-resilience.js?v=3.3.1" defer')) {
+  if (!indexHtml.includes('src="auth-resilience.js?v=3.3.2" defer')) {
     throw new Error('index.html is missing the resilient Supabase transport runtime.');
   }
   if (!scriptSource.includes('DAGOLDOL_AUTH_RESILIENCE') || !scriptSource.includes('fetch: resilientSupabaseFetch')) {
@@ -181,6 +182,15 @@ async function main() {
   const deliveryMapSource = await readFile(resolve(ROOT, 'delivery-map.js'), 'utf8');
   for (const marker of ['openDeliveryMap', 'reverseGeocodePin', 'NOMINATIM_MIN_INTERVAL_MS = 1100', 'MAP_LIBRARY_LOAD_TIMEOUT_MS', 'MAP_RENDER_LOAD_TIMEOUT_MS', 'isWebGLSupported', 'getMapRuntimeProfile', 'webglcontextlost', 'tiles.openfreemap.org/styles/liberty', 'draggable: true']) {
     if (!deliveryMapSource.includes(marker)) throw new Error(`delivery-map.js is missing contract: ${marker}`);
+  }
+  for (const marker of ['getReliableCurrentPosition', 'getGeolocationPermissionState', 'getLocationFailureMessage', 'watchPosition', 'clearWatch', 'acceptableFastAccuracyMeters', 'watchTimeoutMs = 35000']) {
+    if (!deliveryMapSource.includes(marker)) throw new Error(`delivery-map.js is missing resilient geolocation contract: ${marker}`);
+  }
+  if (!indexHtml.includes('Keep device/browser Location Services enabled')) {
+    throw new Error('index.html is missing current-location permission/acquisition guidance.');
+  }
+  if (!scriptSource.includes('deliveryMapCurrentLocationBtn.textContent = "Locating…"')) {
+    throw new Error('script.js is missing current-location progress feedback.');
   }
   const permissionsPolicy = (vercelConfig.headers || []).flatMap(rule => rule.headers || []).find(header => header.key === 'Permissions-Policy');
   if (!permissionsPolicy || !permissionsPolicy.value.includes('geolocation=(self)')) {
