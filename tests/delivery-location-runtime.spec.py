@@ -124,6 +124,7 @@ async def boot(page):
     await page.route('https://dagoldol.test/product-routes.json*', lambda route: route.fulfill(status=200, content_type='application/json', body='{}'))
     await page.set_content(HTML, wait_until='domcontentloaded')
     await page.evaluate("""() => {
+      Object.defineProperty(window, 'isSecureContext', { configurable:true, value:true });
       const geo = {
         watchPosition(success) { setTimeout(() => success({coords:{latitude:7.0731,longitude:125.6128,accuracy:24},timestamp:Date.now()}), 5); return 91; },
         getCurrentPosition(success) { setTimeout(() => success({coords:{latitude:7.0732,longitude:125.6129,accuracy:180},timestamp:Date.now()}), 8); },
@@ -161,6 +162,9 @@ async def main():
         await page.locator('#profile-location-open').click(); await page.wait_for_timeout(120)
         await page.locator('#delivery-map-current-location').click(); await page.wait_for_timeout(1400)
         current_summary=await page.locator('#delivery-map-summary').inner_text()
+        current_button=await page.locator('#delivery-map-current-location').inner_text()
+        if 'Current location pinned' not in current_button: failures.append(f'{width}px current-location button state not updated: {current_button}')
+        if await page.locator('#delivery-map-center-location').get_attribute('disabled') is not None: failures.append(f'{width}px center-current-location button stayed disabled')
         if not current_summary: failures.append(f'{width}px current-location summary stayed empty')
         if await page.locator('#delivery-map-confirm').is_disabled(): failures.append(f'{width}px current-location did not enable confirm')
         await page.evaluate("window.__fakeMap.handlers.click({latlng:{lng:125.6128,lat:7.0731}})")
@@ -168,6 +172,11 @@ async def main():
         if await page.locator('#delivery-map-confirm').is_disabled(): failures.append(f'{width}px confirm stayed disabled')
         await page.locator('#delivery-map-confirm').click(); await page.wait_for_timeout(50)
         if await page.locator('#profile-address').input_value()!='123 New Road, Barangay 1': failures.append(f'{width}px reverse address did not fill profile')
+        if await page.locator('#profile-landmark').input_value()!='Blue gate': failures.append(f'{width}px map overwrote manual profile landmark')
+        if await page.locator('#profile-landmark-suggestion').get_attribute('class') and 'hidden' in (await page.locator('#profile-landmark-suggestion').get_attribute('class')): failures.append(f'{width}px profile landmark suggestion stayed hidden')
+        if await page.locator('#profile-landmark-use-suggestion').is_hidden(): failures.append(f'{width}px profile restore-suggestion button not offered')
+        await page.locator('#profile-landmark-use-suggestion').click(); await page.wait_for_timeout(20)
+        if await page.locator('#profile-landmark').input_value()!='Barangay 1': failures.append(f'{width}px profile suggestion restore did not apply')
         await page.locator('#profile-form button[type="submit"]').click(); await page.wait_for_timeout(60)
         updates=await page.evaluate('window.__profileUpdates')
         if not any((u.get('address') or {}).get('location',{}).get('latitude')==7.0731 for u in updates): failures.append(f'{width}px profile location not persisted')
@@ -177,7 +186,17 @@ async def main():
         await page.locator('#checkout-location-open').click(); await page.wait_for_timeout(120)
         await page.evaluate("window.__fakeMap.handlers.click({latlng:{lng:125.6128,lat:7.0731}})")
         await page.wait_for_timeout(1300)
+        if width <= 430:
+            action_position=await page.locator('.delivery-map-actions').evaluate("el => getComputedStyle(el).position")
+            if action_position!='sticky': failures.append(f'{width}px mobile map action bar is not sticky: {action_position}')
         await page.locator('#delivery-map-confirm').click(); await page.wait_for_timeout(100)
+        if await page.locator('#order-landmark').input_value()!='Barangay 1': failures.append(f'{width}px empty checkout landmark was not auto-filled')
+        await page.locator('#order-landmark').fill('Red gate beside sari-sari store')
+        await page.locator('#checkout-location-open').click(); await page.wait_for_timeout(120)
+        await page.evaluate("window.__fakeMap.handlers.click({latlng:{lng:125.6128,lat:7.0731}})")
+        await page.wait_for_timeout(1300)
+        await page.locator('#delivery-map-confirm').click(); await page.wait_for_timeout(80)
+        if await page.locator('#order-landmark').input_value()!='Red gate beside sari-sari store': failures.append(f'{width}px second pin overwrote manual checkout landmark')
         delivery_text=await page.locator('#delivery-distance-status').inner_text()
         if 'exact map pin' not in delivery_text: failures.append(f'{width}px delivery did not route by pin: {delivery_text}')
         await page.locator('#order-address').fill('Manually Edited Road'); await page.wait_for_timeout(20)
@@ -190,6 +209,6 @@ async def main():
         await context.close()
       await browser.close()
     if failures: raise SystemExit('\n'.join(failures))
-    print('delivery-location-runtime: PASS (320/390/430/1440; Leaflet map, live current-location pin, profile restore/save, checkout direct-pin routing, stale-pin protection, no overflow)')
+    print('delivery-location-runtime: PASS (320/390/430/1440; location controls, landmark autofill/preserve/restore, sticky mobile actions, profile save, checkout routing, stale-pin protection, no overflow)')
 
 if __name__=='__main__': asyncio.run(main())
