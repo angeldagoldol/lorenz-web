@@ -7,7 +7,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = resolve(ROOT, 'config.js');
 const PRODUCTS_DIR = resolve(ROOT, 'products');
 const GENERATED_PRODUCT_IMAGE_DIR = resolve(ROOT, 'assets', 'generated-product-images');
-const PUBLIC_SETTING_KEYS = new Set(['gcash_number', 'gcash_qr_image', 'bank_name', 'bank_account_name', 'bank_account_number', 'bank_qr_image', 'shop_logo_image']);
+const PUBLIC_SETTING_KEYS = new Set(['gcash_number', 'gcash_qr_image', 'bank_name', 'bank_account_name', 'bank_account_number', 'bank_qr_image', 'shop_logo_image', 'delivery_origin_address', 'delivery_origin_latitude', 'delivery_origin_longitude']);
 
 function normalizeSiteUrl(value) {
   return String(value || '').trim().replace(/\/+$/, '');
