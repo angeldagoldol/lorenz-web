@@ -19,6 +19,27 @@ if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) {
   return;
 }
 
+if (!window.DAGOLDOL_AUTH_RESILIENCE || typeof window.DAGOLDOL_AUTH_RESILIENCE.createResilientSupabaseFetch !== "function") {
+  reportBootstrapFailure("The shop could not start because its account resilience module did not load. Refresh the page and try again.");
+  return;
+}
+
+const {
+  createResilientSupabaseFetch,
+  describeAuthError
+} = window.DAGOLDOL_AUTH_RESILIENCE;
+
+const resilientSupabaseFetch = createResilientSupabaseFetch({
+  nativeFetch: window.fetch.bind(window),
+  supabaseOrigin: new URL(window.SUPABASE_URL).origin,
+  proxyPrefix: "/api/supabase",
+  onFallback: ({ originalUrl }) => {
+    let path = "Supabase request";
+    try { path = new URL(originalUrl).pathname; } catch (_) {}
+    console.warn(`[Dagoldol] Direct ${path} request failed; retrying through the same-origin Vercel fallback.`);
+  }
+});
+
 const supabase = window.supabase.createClient(
   window.SUPABASE_URL,
   window.SUPABASE_ANON_KEY,
@@ -27,6 +48,9 @@ const supabase = window.supabase.createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true
+    },
+    global: {
+      fetch: resilientSupabaseFetch
     }
   }
 );
@@ -571,6 +595,15 @@ wirePasswordStrengthMeter(document.getElementById("signup-password"), document.g
 wirePasswordStrengthMeter(document.getElementById("reset-password"), document.getElementById("reset-pw-strength-fill"), document.getElementById("reset-pw-strength-label"));
 
 // ===================== Show/hide password toggle =====================
+function resetPasswordVisibility(input){
+  if (!input) return;
+  input.type = "password";
+  const btn = document.querySelector(`.password-toggle-btn[data-target="${input.id}"]`);
+  if (!btn) return;
+  btn.textContent = "Show";
+  btn.setAttribute("aria-label", "Show password");
+}
+
 document.querySelectorAll(".password-toggle-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     const input = document.getElementById(btn.dataset.target);
@@ -5982,18 +6015,23 @@ loginForm.addEventListener("submit", async (e) => {
   } catch (err) {
     console.error("[Dagoldol] signInWithPassword threw an exception:", err);
     submitBtn.disabled = false;
-    errorMessage.textContent = "Could not reach the server. Check your connection and try again.";
+    errorMessage.textContent = describeAuthError(err, "login");
+    passwordInput.value = "";
+    resetPasswordVisibility(passwordInput);
+    passwordInput.focus();
     return;
   }
 
 
-  if (error || !data.user) {
+  if (error || !data?.user) {
     submitBtn.disabled = false;
-    errorMessage.textContent = "Incorrect email or password. Try again.";
+    console.error("[Dagoldol] signInWithPassword error:", error);
+    errorMessage.textContent = describeAuthError(error || { code: "invalid_credentials" }, "login");
     errorMessage.classList.remove("shake");
     void errorMessage.offsetWidth;
     errorMessage.classList.add("shake");
     passwordInput.value = "";
+    resetPasswordVisibility(passwordInput);
     passwordInput.focus();
     return;
   }
@@ -6092,11 +6130,22 @@ signupForm.addEventListener("submit", async (e) => {
   const submitBtn = signupForm.querySelector("button[type='submit']");
   submitBtn.disabled = true;
 
-  const { data, error } = await supabase.auth.signUp({ email: newEmail, password: newPassword });
+  let data, error;
+  try {
+    const result = await supabase.auth.signUp({ email: newEmail, password: newPassword });
+    data = result.data;
+    error = result.error;
+  } catch (err) {
+    console.error("[Dagoldol] signUp threw an exception:", err);
+    submitBtn.disabled = false;
+    signupError.textContent = describeAuthError(err, "signup");
+    return;
+  }
 
   if (error) {
+    console.error("[Dagoldol] signUp error:", error);
     submitBtn.disabled = false;
-    signupError.textContent = error.message || "Could not create that account.";
+    signupError.textContent = describeAuthError(error, "signup");
     return;
   }
 
@@ -6134,6 +6183,8 @@ signupForm.addEventListener("submit", async (e) => {
 
   signupError.textContent = "";
   signupForm.reset();
+  resetPasswordVisibility(signupPasswordInput);
+  resetPasswordVisibility(signupConfirmInput);
   document.getElementById("signup-pw-strength-fill").style.width = "0%";
   document.getElementById("signup-pw-strength-label").textContent = "Enter a password";
 
