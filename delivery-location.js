@@ -180,6 +180,26 @@
     }).addTo(map);
   }
 
+  function observeMapResize(element, map) {
+    if (!element || !map || element.dataset.dagoldolResizeObserved === "1") return;
+    element.dataset.dagoldolResizeObserved = "1";
+    let timer = null;
+    const invalidate = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        try { map.invalidateSize({ pan: false, debounceMoveend: true }); } catch (_) { /* map may be closing */ }
+      }, 60);
+    };
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver(invalidate);
+      observer.observe(element);
+    }
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("orientationchange", invalidate, { passive: true });
+      window.addEventListener("resize", invalidate, { passive: true });
+    }
+  }
+
   function ensureCheckoutMap() {
     const mapEl = byId("delivery-pin-map");
     if (!mapEl || !window.L) return null;
@@ -193,6 +213,7 @@
       attributionControl: true
     }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     addBaseLayer(checkoutMap);
+    observeMapResize(mapEl, checkoutMap);
 
     checkoutMap.on("click", (event) => {
       setCheckoutPoint(event.latlng.lat, event.latlng.lng, {
@@ -699,6 +720,7 @@
       const label = String(element.dataset && element.dataset.label || "Customer location").trim();
       if (marker && typeof marker.bindPopup === "function") marker.bindPopup(escapeHtml(label));
       accountPreviewMaps.set(element, map);
+      observeMapResize(element, map);
       rendered += 1;
       window.setTimeout(() => map.invalidateSize(), 30);
     });
@@ -715,6 +737,7 @@
     }
     routeMap = window.L.map(mapEl, { zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     addBaseLayer(routeMap);
+    observeMapResize(mapEl, routeMap);
     return routeMap;
   }
 
