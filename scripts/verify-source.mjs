@@ -100,7 +100,7 @@ async function main() {
   if (!indexHtml.includes('rel="dns-prefetch" href="//rvrjkfbenramappteuae.supabase.co"')) {
     throw new Error('index.html is missing the Supabase DNS prefetch hint.');
   }
-  for (const href of ['./phase2-fixes.css?v=3.3.4', './phase3-fixes.css?v=3.3.4']) {
+  for (const href of ['./phase2-fixes.css?v=3.3.5', './phase3-fixes.css?v=3.3.5']) {
     if (!indexHtml.includes(`href="${href}"`)) {
       throw new Error(`index.html does not direct-load critical mobile stylesheet: ${href}`);
     }
@@ -108,8 +108,8 @@ async function main() {
   if (!indexHtml.includes('src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer')) {
     throw new Error('index.html does not start the Supabase runtime early with defer.');
   }
-  if (!indexHtml.includes('src="script.js?v=3.3.4" defer')) {
-    throw new Error('index.html is missing the deferred Phase 3.3.4 application runtime.');
+  if (!indexHtml.includes('src="script.js?v=3.3.5" defer')) {
+    throw new Error('index.html is missing the deferred Phase 3.3.5 application runtime.');
   }
 
 
@@ -127,7 +127,7 @@ async function main() {
   const configSource = await readFile(resolve(ROOT, 'config.js'), 'utf8');
   if (!configSource.includes('PHASE3_ENABLED: true')) throw new Error('config.js does not enable Phase 3.');
   if (!configSource.includes('./phase3-fixes.css')) throw new Error('config.js does not load phase3-fixes.css.');
-  if (!configSource.includes('ASSET_VERSION: "3.3.4"')) throw new Error('config.js does not expose the mobile performance asset version.');
+  if (!configSource.includes('ASSET_VERSION: "3.3.5"')) throw new Error('config.js does not expose the mobile performance asset version.');
 
   const vercelConfig = JSON.parse(await readFile(resolve(ROOT, 'vercel.json'), 'utf8'));
   const supabaseProxy = (vercelConfig.rewrites || []).find(rule => rule.source === '/api/supabase/:path*');
@@ -147,7 +147,7 @@ async function main() {
   if (!scriptSource.includes('persistSession: true') || !scriptSource.includes('autoRefreshToken: true')) {
     throw new Error('script.js must explicitly persist and refresh independent browser sessions.');
   }
-  if (!indexHtml.includes('src="auth-resilience.js?v=3.3.4" defer')) {
+  if (!indexHtml.includes('src="auth-resilience.js?v=3.3.5" defer')) {
     throw new Error('index.html is missing the resilient Supabase transport runtime.');
   }
   if (!scriptSource.includes('DAGOLDOL_AUTH_RESILIENCE') || !scriptSource.includes('fetch: resilientSupabaseFetch')) {
@@ -185,7 +185,10 @@ async function main() {
     'delivery_origin_address',
     'delivery_origin_latitude',
     'delivery_origin_longitude',
-    'admin-delivery-origin-open'
+    'admin-delivery-origin-open',
+    'adminLatestDeliveryByUserId',
+    'openAdminCustomerDeliveryLocation',
+    'view-customer-location'
   ]) {
     if (!scriptSource.includes(marker)) throw new Error(`script.js is missing delivery map integration: ${marker}`);
   }
@@ -200,7 +203,7 @@ async function main() {
   if (/leaflet(?:\.js|@)/i.test(indexHtml)) throw new Error('Leaflet must remain lazy-loaded and must not be included directly in index.html.');
 
   const deliveryMapSource = await readFile(resolve(ROOT, 'delivery-map.js'), 'utf8');
-  for (const marker of ['openDeliveryMap', 'reverseGeocodePin', 'NOMINATIM_MIN_INTERVAL_MS = 1100', 'MAP_LIBRARY_LOAD_TIMEOUT_MS', 'LEAFLET_VERSION = "1.9.4"', 'LEAFLET_JS_URLS', 'tile.openstreetmap.org/{z}/{x}/{y}.png', 'invalidateSize', 'draggable: true']) {
+  for (const marker of ['openDeliveryMap', 'reverseGeocodePin', 'NOMINATIM_MIN_INTERVAL_MS = 1100', 'MAP_LIBRARY_LOAD_TIMEOUT_MS', 'LEAFLET_VERSION = "1.9.4"', 'LEAFLET_JS_URLS', 'tile.openstreetmap.org/{z}/{x}/{y}.png', 'invalidateSize', 'draggable: !readOnly', 'onLookupStateChange', 'readOnly = false']) {
     if (!deliveryMapSource.includes(marker)) throw new Error(`delivery-map.js is missing contract: ${marker}`);
   }
   for (const marker of ['startCurrentLocationTracking', 'getReliableCurrentPosition', 'getCurrentLocationSelection', 'getGeolocationPermissionState', 'getLocationFailureMessage', 'watchPosition', 'clearWatch', 'enableHighAccuracy: true', 'enableHighAccuracy: false']) {
@@ -270,9 +273,12 @@ async function main() {
     if (!css.includes('DAGOLDOL STATIC LIQUID CHROME')) {
       throw new Error(`${name} is missing the rich static LiquidChrome fallback.`);
     }
-    if ((css.match(/radial-gradient\(/g) || []).length < 4) {
-      throw new Error(`${name} static background is missing layered gradient depth.`);
-    }
+  }
+  if ((phase3Source.match(/radial-gradient\(/g) || []).length < 4) {
+    throw new Error('phase3-fixes.css static background is missing layered gradient depth.');
+  }
+  if ((style1Source.match(/radial-gradient\(/g) || []).length < 2 || !style1Source.includes('mobile-liquid-chrome.webp')) {
+    throw new Error('style1.css static background is missing its image-backed layered depth.');
   }
   if (!style1Source.includes('.contact-card__value') || !style1Source.includes('overflow-wrap:anywhere')) {
     throw new Error('style1.css is missing the 320px My Info contact-value overflow fix.');
