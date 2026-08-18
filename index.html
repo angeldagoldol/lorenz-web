@@ -804,10 +804,14 @@
 
 <!-- ===================== CHAT / MESSAGES MODAL ===================== -->
 <div id="chat-modal" class="modal-overlay hidden">
-  <div class="modal-panel modal-panel-wide">
-    <button type="button" class="modal-close" id="chat-modal-close" aria-label="Close">&times;</button>
-    <p class="eyebrow">Messages</p>
-    <h2 class="modal-item-name">Chat</h2>
+  <div class="modal-panel modal-panel-wide chat-modal-panel">
+    <div class="chat-modal-header">
+      <div class="chat-modal-heading">
+        <p class="eyebrow">Messages</p>
+        <h2 class="modal-item-name">Chat</h2>
+      </div>
+      <button type="button" class="modal-close" id="chat-modal-close" aria-label="Close messages">&times;</button>
+    </div>
 
     <div class="chat-layout">
       <div class="chat-thread-list" id="chat-thread-list">
@@ -832,34 +836,38 @@
 <!-- ===================== LIVE DELIVERY ROUTE ===================== -->
 <div id="delivery-route-modal" class="modal-overlay hidden" aria-hidden="true" data-nosnippet>
   <div class="modal-panel delivery-route-panel" role="dialog" aria-modal="true" aria-labelledby="delivery-route-order">
-    <button type="button" class="modal-close" id="delivery-route-close" aria-label="Close live delivery route">&times;</button>
-    <div class="delivery-route-head">
-      <div>
-        <p class="eyebrow">Live Delivery Navigation</p>
-        <h2 class="delivery-route-order" id="delivery-route-order">Customer delivery pin</h2>
-        <p class="delivery-route-address" id="delivery-route-address"></p>
+    <div class="delivery-route-modal-header">
+      <div class="delivery-route-head">
+        <div>
+          <p class="eyebrow">Live Delivery Navigation</p>
+          <h2 class="delivery-route-order" id="delivery-route-order">Customer delivery pin</h2>
+          <p class="delivery-route-address" id="delivery-route-address"></p>
+        </div>
       </div>
+      <button type="button" class="modal-close" id="delivery-route-close" aria-label="Close live delivery route">&times;</button>
     </div>
-    <div id="delivery-route-map" class="delivery-route-map" role="application" aria-label="Live route from the rider to the customer's exact delivery pin"></div>
-    <div class="delivery-route-status-wrap">
-      <span class="delivery-route-state-badge" id="delivery-route-state">Locating…</span>
-      <p id="delivery-route-status" class="delivery-route-status" aria-live="polite">Waiting for your live location…</p>
+    <div class="delivery-route-scroll">
+      <div id="delivery-route-map" class="delivery-route-map" role="application" aria-label="Live route from the rider to the customer's exact delivery pin"></div>
+      <div class="delivery-route-status-wrap">
+        <span class="delivery-route-state-badge" id="delivery-route-state">Locating…</span>
+        <p id="delivery-route-status" class="delivery-route-status" aria-live="polite">Waiting for your live location…</p>
+      </div>
+      <div class="delivery-route-metrics delivery-route-metrics-advanced">
+        <div class="delivery-route-metric"><span>Straight-line proximity</span><strong id="delivery-route-proximity">Locating…</strong></div>
+        <div class="delivery-route-metric"><span>Road distance remaining</span><strong id="delivery-route-road-distance">Waiting…</strong></div>
+        <div class="delivery-route-metric"><span>Estimated travel time</span><strong id="delivery-route-eta">Waiting…</strong></div>
+        <div class="delivery-route-metric"><span>GPS accuracy</span><strong id="delivery-route-accuracy">Waiting…</strong></div>
+      </div>
+      <p class="delivery-route-road-info" id="delivery-route-road-info">Road route will appear after your live location is available.</p>
+      <p class="delivery-route-updated">Last GPS update: <strong id="delivery-route-updated">Waiting…</strong></p>
+      <div class="delivery-route-actions">
+        <button type="button" class="btn-secondary" id="delivery-route-center">Center on me</button>
+        <button type="button" class="btn-secondary" id="delivery-route-refresh">Refresh / reroute</button>
+        <button type="button" class="btn-secondary" id="delivery-route-stop">Stop live tracking</button>
+        <a class="btn-primary" id="delivery-open-external-map" href="#" target="_blank" rel="noopener">Open in Maps</a>
+      </div>
+      <p class="delivery-map-helper">Keep this page open during delivery. The blue YOU marker follows this device. The route is recalculated as you move, while the red PIN remains the customer's saved delivery destination.</p>
     </div>
-    <div class="delivery-route-metrics delivery-route-metrics-advanced">
-      <div class="delivery-route-metric"><span>Straight-line proximity</span><strong id="delivery-route-proximity">Locating…</strong></div>
-      <div class="delivery-route-metric"><span>Road distance remaining</span><strong id="delivery-route-road-distance">Waiting…</strong></div>
-      <div class="delivery-route-metric"><span>Estimated travel time</span><strong id="delivery-route-eta">Waiting…</strong></div>
-      <div class="delivery-route-metric"><span>GPS accuracy</span><strong id="delivery-route-accuracy">Waiting…</strong></div>
-    </div>
-    <p class="delivery-route-road-info" id="delivery-route-road-info">Road route will appear after your live location is available.</p>
-    <p class="delivery-route-updated">Last GPS update: <strong id="delivery-route-updated">Waiting…</strong></p>
-    <div class="delivery-route-actions">
-      <button type="button" class="btn-secondary" id="delivery-route-center">Center on me</button>
-      <button type="button" class="btn-secondary" id="delivery-route-refresh">Refresh / reroute</button>
-      <button type="button" class="btn-secondary" id="delivery-route-stop">Stop live tracking</button>
-      <a class="btn-primary" id="delivery-open-external-map" href="#" target="_blank" rel="noopener">Open in Maps</a>
-    </div>
-    <p class="delivery-map-helper">Keep this page open during delivery. The blue YOU marker follows this device. The route is recalculated as you move, while the red PIN remains the customer's saved delivery destination.</p>
   </div>
 </div>
 
