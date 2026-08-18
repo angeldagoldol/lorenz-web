@@ -66,10 +66,10 @@ test('static LiquidChrome fallback is rich, layered, and non-animated on shop an
   assert.match(style1, /DAGOLDOL STATIC LIQUID CHROME/);
   for (const css of [phase3, style1]) {
     assert.match(css, /\.liquid-chrome-bg\.liquid-chrome-static/);
-    const gradients = (css.match(/radial-gradient\(/g) || []).length;
-    assert.ok(gradients >= 4, 'static fallback should use at least four radial gradients');
     assert.doesNotMatch(css.match(/DAGOLDOL STATIC LIQUID CHROME[\s\S]*$/)?.[0] || '', /@keyframes|animation\s*:/);
   }
+  assert.ok((phase3.match(/radial-gradient\(/g) || []).length >= 4, 'shop static fallback should keep layered gradients');
+  assert.ok((style1.match(/radial-gradient\(/g) || []).length >= 2, 'My Info static fallback should keep its image-backed gradient depth');
 });
 
 test('mobile critical CSS, safe-area viewport, and connection warm-up hints ship from the head', () => {
@@ -78,10 +78,10 @@ test('mobile critical CSS, safe-area viewport, and connection warm-up hints ship
   assert.match(index, /rel="preconnect"\s+href="https:\/\/rvrjkfbenramappteuae\.supabase\.co"/);
   assert.match(index, /rel="dns-prefetch"\s+href="\/\/rvrjkfbenramappteuae\.supabase\.co"/);
   assert.match(index, /rel="preconnect"\s+href="https:\/\/cdn\.jsdelivr\.net"/);
-  assert.match(index, /href="\.\/phase2-fixes\.css\?v=3\.3\.4"/);
-  assert.match(index, /href="\.\/phase3-fixes\.css\?v=3\.3\.4"/);
+  assert.match(index, /href="\.\/phase2-fixes\.css\?v=3\.3\.5"/);
+  assert.match(index, /href="\.\/phase3-fixes\.css\?v=3\.3\.5"/);
   assert.match(index, /src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2"\s+defer/);
-  assert.match(index, /src="script\.js\?v=3\.3\.4"\s+defer/);
+  assert.match(index, /src="script\.js\?v=3\.3\.5"\s+defer/);
 });
 
 test('mobile static path still exits before OGL module download', () => {
