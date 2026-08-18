@@ -1,7 +1,7 @@
 /**
  * Dagoldol delivery location picker.
  *
- * Version 3.3.4 keeps the interactive picker away from a WebGL-only map path
+ * Version 3.3.5 keeps the interactive picker away from a WebGL-only map path
  * and uses Leaflet 1.9.4 with raster tiles. This keeps the picker usable on
  * iPhone Safari, low-memory phones, and Windows machines whose browser/driver
  * cannot keep a stable WebGL map context.
@@ -108,11 +108,14 @@ export function normalizeSavedLocation(value) {
     };
   }
 
+  const accuracy = Number(value.accuracy);
+
   return {
     latitude,
     longitude,
     source: cleanText(value.source) || "pin",
     pinnedAt: cleanText(value.pinnedAt ?? value.pinned_at) || null,
+    accuracy: Number.isFinite(accuracy) && accuracy > 0 ? accuracy : null,
     addressSnapshot
   };
 }
@@ -143,14 +146,59 @@ function pickLandmarkSuggestion(payload, address, { streetAddress, roadLine, nei
   return "";
 }
 
+function displayAddressParts(payload) {
+  return uniqueParts(cleanText(payload?.display_name).split(","));
+}
+
+function isAdministrativeDisplayPart(value) {
+  const text = cleanText(value);
+  if (!text) return true;
+  if (/^philippines$/i.test(text)) return true;
+  if (/^\d{4}$/i.test(text)) return true;
+  if (/\b(region|province)\b/i.test(text)) return true;
+  return false;
+}
+
+function inferCityFromDisplayParts(parts) {
+  const explicitCity = [...parts].reverse().find(part => /\b(city|municipality)\b/i.test(part));
+  if (explicitCity) return cleanText(explicitCity.replace(/^municipality\s+of\s+/i, ""));
+  const usable = parts.filter(part => !isAdministrativeDisplayPart(part));
+  return usable.length >= 3 ? usable[usable.length - 1] : "";
+}
+
+function inferStreetFromDisplayParts(parts, city, postal) {
+  const cityKey = normalizeComparable(city);
+  const postalKey = normalizeComparable(postal);
+  const candidates = parts.filter(part => {
+    const normalized = normalizeComparable(part);
+    if (!normalized) return false;
+    if (normalized === cityKey || normalized === postalKey) return false;
+    return !isAdministrativeDisplayPart(part) && !/\b(district)\b/i.test(part);
+  });
+  if (!candidates.length) return "";
+  return uniqueParts(candidates.slice(0, 2)).join(", ");
+}
+
 export function buildAddressFromNominatim(payload) {
   const address = payload && typeof payload.address === "object" ? payload.address : {};
   const countryCode = cleanText(address.country_code).toLowerCase();
   if (countryCode && countryCode !== "ph") return null;
 
+  const displayParts = displayAddressParts(payload);
+  const postal = cleanText(address.postcode) || displayParts.find(part => /^\d{4}$/.test(cleanText(part))) || "";
+
+  const city = cleanText(
+    address.city ||
+    address.town ||
+    address.municipality ||
+    address.city_district ||
+    address.county ||
+    address.state_district
+  ) || inferCityFromDisplayParts(displayParts);
+
   const roadLine = cleanText([
     cleanText(address.house_number),
-    cleanText(address.road || address.pedestrian || address.residential || address.footway)
+    cleanText(address.road || address.pedestrian || address.residential || address.footway || address.highway)
   ].filter(Boolean).join(" "));
 
   const neighbourhood = cleanText(
@@ -162,33 +210,37 @@ export function buildAddressFromNominatim(payload) {
     address.barangay
   );
 
-  const streetAddress = uniqueParts([roadLine, neighbourhood]).join(", ") ||
-    cleanText(payload?.name) ||
-    cleanText(payload?.display_name).split(",")[0] ||
-    "Pinned location";
+  let streetAddress = uniqueParts([roadLine, neighbourhood]).join(", ");
+  if (!streetAddress) streetAddress = inferStreetFromDisplayParts(displayParts, city, postal);
+  if (!streetAddress) streetAddress = cleanText(payload?.name) || displayParts[0] || "Pinned location";
 
-  const city = cleanText(
-    address.city ||
-    address.town ||
-    address.municipality ||
-    address.city_district ||
-    address.county ||
-    address.state_district ||
-    address.state
-  );
-  const landmarkSuggestion = pickLandmarkSuggestion(payload, address, {
+  let landmarkSuggestion = pickLandmarkSuggestion(payload, address, {
     streetAddress,
     roadLine,
     neighbourhood,
     city
   });
+  if (!landmarkSuggestion) {
+    const streetParts = streetAddress.split(",").map(cleanText);
+    const fallback = displayParts.find((part, index) => {
+      if (index === 0 && normalizeComparable(part) === normalizeComparable(streetParts[0])) return false;
+      const normalized = normalizeComparable(part);
+      if (!normalized || normalized === normalizeComparable(city) || normalized === normalizeComparable(postal)) return false;
+      if (isAdministrativeDisplayPart(part) || /\bdistrict\b/i.test(part)) return false;
+      return !streetParts.some(streetPart => normalizeComparable(streetPart) === normalized);
+    });
+    const streetLandmark = streetParts.find((part, index) =>
+      index > 0 && /\b(barangay|brgy\.?|sitio|purok|village|subdivision|neighbou?rhood)\b/i.test(part)
+    );
+    landmarkSuggestion = cleanText(fallback || neighbourhood || streetLandmark);
+  }
 
   return {
     address: streetAddress,
     city,
-    postal: cleanText(address.postcode),
+    postal,
     landmarkSuggestion,
-    displayName: cleanText(payload?.display_name) || uniqueParts([streetAddress, city, address.postcode, "Philippines"]).join(", ")
+    displayName: cleanText(payload?.display_name) || uniqueParts([streetAddress, city, postal, "Philippines"]).join(", ")
   };
 }
 
@@ -248,7 +300,7 @@ function scheduleNominatimRequest(requestFn) {
   return task;
 }
 
-export async function reverseGeocodePin(lat, lon) {
+export async function reverseGeocodePin(lat, lon, { force = false } = {}) {
   const latitude = Number(lat);
   const longitude = Number(lon);
   if (!isPhilippinesCoordinate(latitude, longitude)) {
@@ -258,7 +310,7 @@ export async function reverseGeocodePin(lat, lon) {
   const key = reverseCacheKey(latitude, longitude);
   const cache = loadReverseCache();
   const cached = cache[key];
-  if (cached && Date.now() - Number(cached.at || 0) < REVERSE_CACHE_MAX_AGE_MS) {
+  if (!force && cached && Date.now() - Number(cached.at || 0) < REVERSE_CACHE_MAX_AGE_MS) {
     return cached.result || null;
   }
 
@@ -313,6 +365,7 @@ function toSelection(location, address, source) {
     longitude: normalized.longitude,
     source: cleanText(source || normalized.source) || "pin",
     pinnedAt: new Date().toISOString(),
+    accuracy: normalized.accuracy,
     addressSnapshot: createSnapshot(address),
     address: createSnapshot(address),
     displayName: cleanText(address?.displayName)
@@ -748,7 +801,7 @@ export async function getCurrentLocationSelection({
   } catch {
     address = {};
   }
-  return toSelection({ latitude, longitude, source: "geolocation" }, address, "geolocation");
+  return toSelection({ latitude, longitude, source: "geolocation", accuracy: readAccuracy(position) }, address, "geolocation");
 }
 
 /**
@@ -762,7 +815,9 @@ export async function openDeliveryMap({
   summaryElement,
   initialLocation,
   initialAddress,
-  onSelectionChange
+  onSelectionChange,
+  onLookupStateChange,
+  readOnly = false
 } = {}) {
   if (!container) throw new Error("Map container is missing.");
 
@@ -842,7 +897,7 @@ export async function openDeliveryMap({
     iconAnchor: [17, 41]
   });
   const marker = L.marker(startLatLng, {
-    draggable: true,
+    draggable: !readOnly,
     keyboard: true,
     icon: markerIcon,
     autoPan: true
@@ -890,13 +945,15 @@ export async function openDeliveryMap({
     }
 
     const existingAddress = selected?.address || {};
-    selected = toSelection({ latitude, longitude, source: "geolocation" }, existingAddress, "geolocation");
-    setSummary(selected);
-    if (typeof onSelectionChange === "function") onSelectionChange(selected);
-    return selected;
+    const rawSelection = toSelection({ latitude, longitude, source: "geolocation", accuracy }, existingAddress, "geolocation");
+    setSummary(rawSelection);
+    if (typeof onLookupStateChange === "function") {
+      onLookupStateChange({ resolving: true, selection: rawSelection, source: "geolocation" });
+    }
+    return rawSelection;
   };
 
-  async function selectAt(lng, lat, source = "pin") {
+  async function selectAt(lng, lat, source = "pin", { force = false, accuracy = null } = {}) {
     if (destroyed) return null;
     if (!isPhilippinesCoordinate(lat, lng)) {
       setStatus("Please choose a location within the Philippines.", true);
@@ -907,33 +964,44 @@ export async function openDeliveryMap({
     marker.setLatLng([lat, lng]);
     const token = ++reverseLookupToken;
     setStatus("Finding the address for this pin…");
+    if (typeof onLookupStateChange === "function") {
+      onLookupStateChange({ resolving: true, selection: null, source });
+    }
 
     try {
-      const address = await reverseGeocodePin(lat, lng);
+      const address = await reverseGeocodePin(lat, lng, { force });
       if (destroyed || token !== reverseLookupToken) return null;
-      selected = toSelection({ latitude: lat, longitude: lng, source }, address, source);
+      selected = toSelection({ latitude: lat, longitude: lng, source, accuracy }, address, source);
       setSummary(selected);
       setStatus("Address found. Confirm the pin when it matches the delivery entrance.");
+      if (typeof onLookupStateChange === "function") {
+        onLookupStateChange({ resolving: false, selection: selected, source });
+      }
       if (typeof onSelectionChange === "function") onSelectionChange(selected);
       return selected;
     } catch (error) {
       if (destroyed || token !== reverseLookupToken) return null;
-      selected = toSelection({ latitude: lat, longitude: lng, source }, {}, source);
+      selected = toSelection({ latitude: lat, longitude: lng, source, accuracy }, {}, source);
       setSummary(selected);
       setStatus(error?.message || "Could not look up that address. You can still confirm the pin and edit the address fields manually.", true);
+      if (typeof onLookupStateChange === "function") {
+        onLookupStateChange({ resolving: false, selection: selected, source, error });
+      }
       if (typeof onSelectionChange === "function") onSelectionChange(selected);
       return selected;
     }
   }
 
-  map.on("click", event => {
-    void selectAt(event.latlng.lng, event.latlng.lat, "pin");
-  });
+  if (!readOnly) {
+    map.on("click", event => {
+      void selectAt(event.latlng.lng, event.latlng.lat, "pin");
+    });
 
-  marker.on("dragend", () => {
-    const latLng = marker.getLatLng();
-    void selectAt(latLng.lng, latLng.lat, "drag");
-  });
+    marker.on("dragend", () => {
+      const latLng = marker.getLatLng();
+      void selectAt(latLng.lng, latLng.lat, "drag");
+    });
+  }
 
   setSummary(selected);
   setStatus(selected
@@ -943,6 +1011,11 @@ export async function openDeliveryMap({
   return {
     getSelection() {
       return selected;
+    },
+
+    async refreshSelectionAddress({ force = true } = {}) {
+      if (!selected) return null;
+      return selectAt(selected.longitude, selected.latitude, selected.source || "pin", { force, accuracy: selected.accuracy });
     },
 
     async setSelection(selection, { center = true } = {}) {
@@ -958,6 +1031,7 @@ export async function openDeliveryMap({
     },
 
     async useCurrentLocation() {
+      if (readOnly) throw new Error("This delivery pin is view-only.");
       if (locationTracker) locationTracker.stop();
       const permissionState = await getGeolocationPermissionState(navigator.permissions);
       setStatus(permissionState === "prompt"
@@ -985,7 +1059,7 @@ export async function openDeliveryMap({
           if (!firstValidPosition || (accuracy <= 100 && lastAccurateReverse > 100)) {
             firstValidPosition = current;
             lastAccurateReverse = accuracy;
-            void selectAt(longitude, latitude, "geolocation");
+            void selectAt(longitude, latitude, "geolocation", { accuracy });
           }
         },
         onError(error) {
@@ -1018,7 +1092,7 @@ export async function openDeliveryMap({
       }
 
       showRawPosition(position, { center: true });
-      const selection = await selectAt(longitude, latitude, "geolocation");
+      const selection = await selectAt(longitude, latitude, "geolocation", { accuracy: readAccuracy(position) });
       if (selection) {
         const accuracy = readAccuracy(position);
         setStatus(accuracy <= 100
