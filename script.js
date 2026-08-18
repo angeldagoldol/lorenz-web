@@ -1021,6 +1021,8 @@ const profileLocationCurrentEl = document.getElementById("profile-location-curre
 
 // ===================== Elements: delivery location map =====================
 const deliveryMapModal = document.getElementById("delivery-map-modal");
+const deliveryMapTitleEl = document.getElementById("delivery-map-title");
+const deliveryMapSubEl = deliveryMapModal?.querySelector(".modal-sub") || null;
 const deliveryMapCloseBtn = document.getElementById("delivery-map-close");
 const deliveryMapCancelBtn = document.getElementById("delivery-map-cancel");
 const deliveryMapConfirmBtn = document.getElementById("delivery-map-confirm");
@@ -1051,6 +1053,8 @@ let checkoutPinnedLocationStale = false;
 let profilePinnedLocation = null;
 let profilePinnedLocationStale = false;
 let adminDeliveryOriginDraft = null;
+let adminCustomerLocationView = null;
+let deliveryMapLookupPending = false;
 let deliveryMapTarget = null;
 let deliveryMapController = null;
 let pendingDeliveryMapSelection = null;
@@ -1206,11 +1210,14 @@ function normalizePinnedLocationValue(value, fallbackAddress = null){
     postal: cleanAddressValue(rawSnapshot.postal ?? rawSnapshot.postcode)
   } : null;
 
+  const accuracyValue = Number(value.accuracy);
+
   return {
     latitude,
     longitude,
     source: cleanAddressValue(value.source) || "pin",
     pinnedAt: cleanAddressValue(value.pinnedAt ?? value.pinned_at) || null,
+    accuracy: Number.isFinite(accuracyValue) && accuracyValue > 0 ? accuracyValue : null,
     addressSnapshot,
     address: value.address && typeof value.address === "object" ? {
       address: cleanAddressValue(value.address.address ?? value.address.street),
@@ -1231,6 +1238,21 @@ function pinnedLocationMatchesFields(location, fields){
     normalize(normalized.addressSnapshot.postal) === normalize(fields.postal);
 }
 
+function reconcilePinnedLocationWithFieldCompletion(location, fields){
+  const normalized = normalizePinnedLocationValue(location, fields);
+  if (!normalized?.addressSnapshot) return normalized;
+  const snapshot = normalized.addressSnapshot;
+  const nextFields = {
+    address: cleanAddressValue(fields?.address),
+    city: cleanAddressValue(fields?.city),
+    postal: cleanAddressValue(fields?.postal)
+  };
+  for (const key of ["address", "city", "postal"]) {
+    if (!cleanAddressValue(snapshot[key]) && nextFields[key]) snapshot[key] = nextFields[key];
+  }
+  return normalized;
+}
+
 function serializePinnedLocation(location, fields, isStale = false){
   if (isStale) return null;
   const normalized = normalizePinnedLocationValue(location, fields);
@@ -1240,6 +1262,7 @@ function serializePinnedLocation(location, fields, isStale = false){
     longitude: normalized.longitude,
     source: normalized.source || "pin",
     pinned_at: normalized.pinnedAt || new Date().toISOString(),
+    ...(normalized.accuracy ? { accuracy: normalized.accuracy } : {}),
     address_snapshot: {
       address: cleanAddressValue(fields.address),
       city: cleanAddressValue(fields.city),
@@ -1278,7 +1301,7 @@ function renderPinnedLocationCard(cardEl, location, fields, isStale = false){
 
 function loadDeliveryMapModule(){
   if (!deliveryMapModulePromise){
-    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.4");
+    const version = encodeURIComponent(window.DAGOLDOL_CONFIG?.ASSET_VERSION || "3.3.5");
     deliveryMapModulePromise = import(`./delivery-map.js?v=${version}`);
   }
   return deliveryMapModulePromise;
@@ -3100,6 +3123,7 @@ function scheduleDeliveryRecalc(){
   input.addEventListener("input", () => {
     clearMapAutofilledState(input);
     if (checkoutPinnedLocation) {
+      checkoutPinnedLocation = reconcilePinnedLocationWithFieldCompletion(checkoutPinnedLocation, getCheckoutAddressFields());
       checkoutPinnedLocationStale = !pinnedLocationMatchesFields(checkoutPinnedLocation, getCheckoutAddressFields());
       renderPinnedLocationCard(checkoutLocationCurrentEl, checkoutPinnedLocation, getCheckoutAddressFields(), checkoutPinnedLocationStale);
     }
@@ -3111,6 +3135,7 @@ function scheduleDeliveryRecalc(){
   input.addEventListener("input", () => {
     clearMapAutofilledState(input);
     if (!profilePinnedLocation) return;
+    profilePinnedLocation = reconcilePinnedLocationWithFieldCompletion(profilePinnedLocation, getProfileAddressFields());
     profilePinnedLocationStale = !pinnedLocationMatchesFields(profilePinnedLocation, getProfileAddressFields());
     renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), profilePinnedLocationStale);
   });
@@ -3893,14 +3918,42 @@ function closeDeliveryMapModal(){
   }
   pendingDeliveryMapSelection = null;
   lastCurrentLocationSelection = null;
+  deliveryMapLookupPending = false;
+  adminCustomerLocationView = null;
   deliveryMapTarget = null;
-  if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = true;
+  if (deliveryMapConfirmBtn) {
+    deliveryMapConfirmBtn.disabled = true;
+    deliveryMapConfirmBtn.textContent = "✓ Use this location";
+    deliveryMapConfirmBtn.setAttribute("aria-busy", "false");
+  }
   setCurrentLocationButtonState("idle");
   if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = false;
   setCenterCurrentLocationAvailable(false);
   if (deliveryMapLoading) deliveryMapLoading.textContent = "Loading map…";
   if (deliveryMapCanvas?.parentElement) deliveryMapCanvas.parentElement.classList.remove("is-ready");
   if (deliveryMapModal) closeModalAccessible(deliveryMapModal);
+}
+
+function setDeliveryMapMode(target){
+  const isAdminCustomerView = target === "admin-customer";
+  if (deliveryMapTitleEl) {
+    deliveryMapTitleEl.textContent = isAdminCustomerView
+      ? `Customer delivery pin${adminCustomerLocationView?.username ? ` · ${adminCustomerLocationView.username}` : ""}`
+      : target === "admin-origin"
+        ? "Set the shop delivery starting point"
+        : "Pin the exact rider entrance";
+  }
+  if (deliveryMapSubEl) {
+    deliveryMapSubEl.textContent = isAdminCustomerView
+      ? "Read-only customer delivery location. Only administrators can open this view."
+      : target === "admin-origin"
+        ? "Tap the map or use your current location to set where delivery distance starts."
+        : "Tap the map or drag the pin. The address fields will be filled automatically when map data is available.";
+  }
+  deliveryMapCurrentLocationBtn?.classList.toggle("hidden", isAdminCustomerView);
+  deliveryMapCenterLocationBtn?.classList.add("hidden");
+  deliveryMapConfirmBtn?.classList.toggle("hidden", isAdminCustomerView);
+  if (deliveryMapCancelBtn) deliveryMapCancelBtn.textContent = isAdminCustomerView ? "Close" : "Cancel";
 }
 
 function currentSettingsDeliveryOriginLocation(){
@@ -3970,12 +4023,14 @@ function updateAdminDeliveryOriginUi(){
 function addressForDeliveryMapTarget(target){
   if (target === "profile") return getProfileAddressFields();
   if (target === "admin-origin") return getAdminDeliveryOriginAddressFields();
+  if (target === "admin-customer") return adminCustomerLocationView?.addressFields || { address: "", city: "", postal: "", landmarkSuggestion: "" };
   return getCheckoutAddressFields();
 }
 
 function locationForDeliveryMapTarget(target){
   if (target === "profile") return profilePinnedLocation;
   if (target === "admin-origin") return adminDeliveryOriginDraft || currentSettingsDeliveryOriginLocation();
+  if (target === "admin-customer") return adminCustomerLocationView?.location || null;
   return checkoutPinnedLocation;
 }
 
@@ -4028,7 +4083,13 @@ async function openDeliveryMapPicker(target){
   deliveryMapRequestToken += 1;
   pendingDeliveryMapSelection = locationForDeliveryMapTarget(target);
   lastCurrentLocationSelection = null;
-  if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !pendingDeliveryMapSelection;
+  deliveryMapLookupPending = false;
+  setDeliveryMapMode(target);
+  if (deliveryMapConfirmBtn) {
+    deliveryMapConfirmBtn.disabled = target === "admin-customer" || !pendingDeliveryMapSelection;
+    deliveryMapConfirmBtn.textContent = "✓ Use this location";
+    deliveryMapConfirmBtn.setAttribute("aria-busy", "false");
+  }
   setCurrentLocationButtonState("idle");
   if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.disabled = false;
   setCenterCurrentLocationAvailable(false);
@@ -4036,7 +4097,9 @@ async function openDeliveryMapPicker(target){
     deliveryMapStatus.classList.remove("delivery-map-status-error");
     deliveryMapStatus.textContent = target === "admin-origin"
       ? "Loading the map so you can set the delivery starting point…"
-      : "Loading the delivery map…";
+      : target === "admin-customer"
+        ? "Loading this customer's saved delivery pin…"
+        : "Loading the delivery map…";
   }
   if (deliveryMapSummary) deliveryMapSummary.textContent = "Preparing map…";
   if (deliveryMapLoading) deliveryMapLoading.textContent = "Loading map…";
@@ -4053,15 +4116,33 @@ async function openDeliveryMapPicker(target){
       summaryElement: deliveryMapSummary,
       initialLocation: locationForDeliveryMapTarget(target),
       initialAddress: addressForDeliveryMapTarget(target),
+      readOnly: target === "admin-customer",
+      onLookupStateChange(state){
+        deliveryMapLookupPending = Boolean(state?.resolving);
+        if (deliveryMapConfirmBtn && target !== "admin-customer") {
+          deliveryMapConfirmBtn.disabled = deliveryMapLookupPending || !pendingDeliveryMapSelection;
+          deliveryMapConfirmBtn.setAttribute("aria-busy", deliveryMapLookupPending ? "true" : "false");
+          deliveryMapConfirmBtn.textContent = deliveryMapLookupPending ? "Finding address…" : "✓ Use this location";
+        }
+      },
       onSelectionChange(selection){
         pendingDeliveryMapSelection = selection;
-        if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !selection;
+        if (deliveryMapConfirmBtn && target !== "admin-customer") {
+          deliveryMapConfirmBtn.disabled = deliveryMapLookupPending || !selection;
+        }
       }
     });
     if (pendingDeliveryMapSelection){
       await deliveryMapController.setSelection(pendingDeliveryMapSelection, { center: true });
     }
-    if (!pendingCurrentLocationRequest) setCurrentLocationButtonState("idle");
+    if (target === "admin-customer" && deliveryMapSummary && adminCustomerLocationView) {
+      const { addressFields, landmark, location } = adminCustomerLocationView;
+      const readable = [addressFields.address, addressFields.city, addressFields.postal].filter(Boolean).join(", ");
+      const coordinates = location ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : "No coordinates";
+      deliveryMapSummary.textContent = `${readable || "Saved delivery address"}${landmark ? ` · Landmark: ${landmark}` : ""} · ${coordinates}`;
+      if (deliveryMapStatus) deliveryMapStatus.textContent = "Read-only customer delivery pin.";
+    }
+    if (!pendingCurrentLocationRequest && target !== "admin-customer") setCurrentLocationButtonState("idle");
   } catch (error) {
     console.error("[Dagoldol] Could not initialize delivery map:", error);
     if (deliveryMapLoading) deliveryMapLoading.textContent = "Map unavailable";
@@ -4093,6 +4174,8 @@ function applyMapSelectionToTarget(target, selection){
     renderPinnedLocationCard(profileLocationCurrentEl, profilePinnedLocation, getProfileAddressFields(), false);
     return true;
   }
+
+  if (target === "admin-customer") return false;
 
   if (target === "admin-origin") {
     const originAddress = formatDeliveryOriginSelectionAddress(selection) || SHOP_ORIGIN_ADDRESS;
@@ -4149,7 +4232,7 @@ if (deliveryMapModal) deliveryMapModal.addEventListener("click", (event) => {
 });
 if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.addEventListener("click", async () => {
   const targetAtStart = deliveryMapTarget;
-  if (!targetAtStart) return;
+  if (!targetAtStart || targetAtStart === "admin-customer") return;
   setCurrentLocationButtonState("locating");
   if (deliveryMapStatus){
     deliveryMapStatus.classList.remove("delivery-map-status-error");
@@ -4191,11 +4274,62 @@ if (deliveryMapCenterLocationBtn) deliveryMapCenterLocationBtn.addEventListener(
     deliveryMapStatus.textContent = "Centered on your latest device location. Drag the pin if the rider entrance is slightly different.";
   }
 });
-if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.addEventListener("click", () => {
-  const selection = deliveryMapController?.getSelection?.() || pendingDeliveryMapSelection;
-  if (!selection || !deliveryMapTarget) return;
+async function resolveSelectionAddressBeforeConfirm(selection, target){
+  if (!selection || !target || target === "admin-origin" || target === "admin-customer") return selection;
+  const currentAddress = selection.address || {};
+  if (cleanAddressValue(currentAddress.address) && cleanAddressValue(currentAddress.city)) return selection;
+
+  if (deliveryMapStatus) {
+    deliveryMapStatus.classList.remove("delivery-map-status-error");
+    deliveryMapStatus.textContent = "Double-checking the street and city before saving this pin…";
+  }
+  deliveryMapLookupPending = true;
+  if (deliveryMapConfirmBtn) {
+    deliveryMapConfirmBtn.disabled = true;
+    deliveryMapConfirmBtn.setAttribute("aria-busy", "true");
+    deliveryMapConfirmBtn.textContent = "Finding address…";
+  }
+
+  try {
+    const mapModule = await loadDeliveryMapModule();
+    const address = await mapModule.reverseGeocodePin(selection.latitude, selection.longitude, { force: true });
+    const enriched = { ...selection, address, addressSnapshot: address, displayName: address?.displayName || selection.displayName };
+    pendingDeliveryMapSelection = enriched;
+    if (deliveryMapController) await deliveryMapController.setSelection(enriched, { center: false });
+    return enriched;
+  } catch (error) {
+    console.warn("[Dagoldol] Final address lookup could not complete:", error);
+    return selection;
+  } finally {
+    deliveryMapLookupPending = false;
+    if (deliveryMapConfirmBtn) {
+      deliveryMapConfirmBtn.setAttribute("aria-busy", "false");
+      deliveryMapConfirmBtn.textContent = "✓ Use this location";
+    }
+  }
+}
+
+function focusFirstMissingAddressField(target){
+  const pairs = target === "profile"
+    ? [[profileAddressInput, "Street address"], [profileCityInput, "City / Municipality"]]
+    : [[orderAddressInput, "Street address"], [orderCityInput, "City / Municipality"]];
+  const missing = pairs.filter(([input]) => !cleanAddressValue(input?.value));
+  if (!missing.length) return;
+  showToast(`Pin saved. Please enter the missing ${missing.map(([, label]) => label).join(" and ")}.`);
+  requestAnimationFrame(() => missing[0][0]?.focus({ preventScroll: false }));
+}
+
+if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.addEventListener("click", async () => {
+  if (deliveryMapLookupPending) return;
+  let selection = deliveryMapController?.getSelection?.() || pendingDeliveryMapSelection;
+  if (!selection || !deliveryMapTarget || deliveryMapTarget === "admin-customer") return;
   const target = deliveryMapTarget;
-  if (applyMapSelectionToTarget(target, selection)) closeDeliveryMapModal();
+  selection = await resolveSelectionAddressBeforeConfirm(selection, target);
+  if (!selection || deliveryMapTarget !== target) return;
+  if (applyMapSelectionToTarget(target, selection)) {
+    closeDeliveryMapModal();
+    if (target === "profile" || target === "checkout") focusFirstMissingAddressField(target);
+  }
 });
 
 function closeTopModal(){
@@ -5899,6 +6033,7 @@ function renderAdminMessagesTab(){
 // ---------- Accounts tab ----------
 let adminAccountsCache = [];
 let adminOrderCountsByUserId = new Map();
+let adminLatestDeliveryByUserId = new Map();
 
 async function deleteAuthUserViaEdgeFunction(userId){
   try {
@@ -5945,7 +6080,7 @@ async function renderAdminAccounts(){
 
   const [profilesResult, orderCountResult] = await Promise.all([
     supabase.from("profiles").select("*").eq("role", "customer"),
-    supabase.from("orders").select("user_id")
+    supabase.from("orders").select("user_id, address, placed_at").order("placed_at", { ascending: false })
   ]);
 
   if (profilesResult.error) reportLoadError("Accounts", profilesResult.error);
@@ -5953,16 +6088,58 @@ async function renderAdminAccounts(){
 
   adminAccountsCache = profilesResult.error ? [] : (profilesResult.data || []);
   adminOrderCountsByUserId = new Map();
+  adminLatestDeliveryByUserId = new Map();
 
   if (!orderCountResult.error) {
     (orderCountResult.data || []).forEach(row => {
       const userId = row.user_id;
       if (!userId) return;
       adminOrderCountsByUserId.set(userId, (adminOrderCountsByUserId.get(userId) || 0) + 1);
+      if (!adminLatestDeliveryByUserId.has(userId) && row.address && typeof row.address === "object") {
+        adminLatestDeliveryByUserId.set(userId, row.address);
+      }
     });
   }
 
   renderAdminAccountsTab();
+}
+
+function resolveAdminCustomerDelivery(account){
+  const profileAddress = account?.address && typeof account.address === "object" ? account.address : null;
+  const latestOrderAddress = adminLatestDeliveryByUserId.get(account?.id) || null;
+  const profileLocation = normalizePinnedLocationValue(profileAddress?.location, profileAddress || {});
+  const orderLocation = normalizePinnedLocationValue(latestOrderAddress?.location, latestOrderAddress || {});
+  const address = profileLocation ? profileAddress : (orderLocation ? latestOrderAddress : (profileAddress || latestOrderAddress));
+  const location = profileLocation || orderLocation || null;
+  return {
+    address: address || null,
+    location,
+    source: profileLocation ? "Saved profile" : orderLocation ? "Latest order" : "No saved pin"
+  };
+}
+
+async function openAdminCustomerDeliveryLocation(accountId){
+  const account = adminAccountsCache.find(item => String(item.id) === String(accountId));
+  if (!account) return;
+  const delivery = resolveAdminCustomerDelivery(account);
+  if (!delivery.location) {
+    showToast(`No saved delivery pin for ${account.username}.`);
+    return;
+  }
+  const address = delivery.address || {};
+  adminCustomerLocationView = {
+    username: account.username,
+    location: delivery.location,
+    addressFields: {
+      address: cleanAddressValue(address.address),
+      city: cleanAddressValue(address.city),
+      postal: cleanAddressValue(address.postal),
+      landmarkSuggestion: cleanAddressValue(address.landmark)
+    },
+    landmark: cleanAddressValue(address.landmark),
+    source: delivery.source
+  };
+  await openDeliveryMapPicker("admin-customer");
 }
 
 function renderAdminAccountsTab(){
@@ -5982,19 +6159,39 @@ function renderAdminAccountsTab(){
         const orderCount = adminOrderCountsByUserId.get(account.id) || 0;
         const cart = account.cart || [];
         const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-        const addr = account.address ? `${escapeHtml(account.address.city)}, ${escapeHtml(account.address.postal)}` : "No saved address";
         const profile = account.profile || {};
         const profileLine = (profile.name || profile.email || profile.phone)
           ? `<br>Profile: ${[profile.name, profile.email, profile.phone].filter(Boolean).map(escapeHtml).join(" · ")}`
           : "";
+        const delivery = resolveAdminCustomerDelivery(account);
+        const deliveryAddress = delivery.address || {};
+        const deliveryReadable = [deliveryAddress.address, deliveryAddress.city, deliveryAddress.postal].map(cleanAddressValue).filter(Boolean).join(", ");
+        const landmark = cleanAddressValue(deliveryAddress.landmark);
+        const coordinates = delivery.location
+          ? `${delivery.location.latitude.toFixed(6)}, ${delivery.location.longitude.toFixed(6)}`
+          : "";
+        const accuracy = delivery.location?.accuracy
+          ? ` · ±${Math.max(1, Math.round(delivery.location.accuracy))} m`
+          : "";
+        const deliveryBlock = `
+          <div class="admin-customer-delivery" data-state="${delivery.location ? "pinned" : "empty"}">
+            <div class="admin-customer-delivery-heading">
+              <span>Delivery location</span>
+              <span class="admin-customer-delivery-source">${escapeHtml(delivery.source)}</span>
+            </div>
+            <div class="admin-customer-delivery-address">${escapeHtml(deliveryReadable || "No saved delivery address")}</div>
+            ${landmark ? `<div class="admin-customer-delivery-landmark">Landmark: ${escapeHtml(landmark)}</div>` : ""}
+            ${coordinates ? `<div class="admin-customer-delivery-coords">Pin: ${escapeHtml(coordinates)}${escapeHtml(accuracy)}</div>` : `<div class="admin-customer-delivery-coords">No saved delivery pin</div>`}
+          </div>`;
         return `
           <div class="admin-card">
             <div class="admin-card-header">
               <span class="admin-card-title">${escapeHtml(username)}</span>
               <span class="admin-card-meta">${orderCount} order${orderCount === 1 ? "" : "s"}</span>
             </div>
-            <div class="admin-card-body">${addr} · ${cartCount} item${cartCount === 1 ? "" : "s"} currently in cart${profileLine}</div>
+            <div class="admin-card-body">${cartCount} item${cartCount === 1 ? "" : "s"} currently in cart${profileLine}${deliveryBlock}</div>
             <div class="admin-card-actions">
+              ${delivery.location ? `<button type="button" class="admin-btn-edit" data-id="${account.id}" data-action="view-customer-location">View delivery pin</button>` : ""}
               <button type="button" class="admin-btn-danger" data-username="${escapeHtml(username)}" data-id="${account.id}" data-action="delete-account">Delete account</button>
             </div>
           </div>
@@ -6002,6 +6199,10 @@ function renderAdminAccountsTab(){
       }).join("")}
     </div>
   `;
+
+  panel.querySelectorAll("[data-action='view-customer-location']").forEach(btn => {
+    btn.addEventListener("click", () => { void openAdminCustomerDeliveryLocation(btn.dataset.id); });
+  });
 
   panel.querySelectorAll("[data-action='delete-account']").forEach(btn => {
     btn.addEventListener("click", () => {
