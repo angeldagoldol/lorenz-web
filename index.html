@@ -607,8 +607,8 @@
 
       <div class="field-row">
         <label class="field">
-          <span>City</span>
-          <input type="text" id="order-city" placeholder="City" required>
+          <span>City / Municipality</span>
+          <input type="text" id="order-city" placeholder="City or municipality" required>
         </label>
         <label class="field">
           <span>Postal code</span>
@@ -622,7 +622,7 @@
         <div class="delivery-location-head">
           <div>
             <h3 class="delivery-location-title" id="delivery-location-title">Exact delivery location</h3>
-            <p class="delivery-location-copy">Use your phone location or tap/drag the pin. We will automatically fill the street, city/municipality and postal code for you.</p>
+            <p class="delivery-location-copy">Use your phone or computer location, or tap/drag the pin. We will automatically fill the street, city/municipality and postal code when map data provides them.</p>
           </div>
         </div>
         <div class="delivery-location-actions">
@@ -651,7 +651,7 @@
 
       <label class="checkbox-field">
         <input type="checkbox" id="order-save" checked>
-        <span>Remember this address for next time</span>
+        <span>Remember this address and exact pin for future orders</span>
       </label>
 
       <div class="promo-section">
@@ -841,16 +841,25 @@
       </div>
     </div>
     <div id="delivery-route-map" class="delivery-route-map" role="application" aria-label="Live route from the rider to the customer's exact delivery pin"></div>
-    <p id="delivery-route-status" class="delivery-route-status" aria-live="polite">Waiting for your live location…</p>
-    <div class="delivery-route-metrics">
-      <div class="delivery-route-metric"><span>Distance to exact pin</span><strong id="delivery-route-proximity">Locating…</strong></div>
-      <div class="delivery-route-metric"><span>Road route</span><strong id="delivery-route-road-info">Waiting for route…</strong></div>
+    <div class="delivery-route-status-wrap">
+      <span class="delivery-route-state-badge" id="delivery-route-state">Locating…</span>
+      <p id="delivery-route-status" class="delivery-route-status" aria-live="polite">Waiting for your live location…</p>
     </div>
+    <div class="delivery-route-metrics delivery-route-metrics-advanced">
+      <div class="delivery-route-metric"><span>Straight-line proximity</span><strong id="delivery-route-proximity">Locating…</strong></div>
+      <div class="delivery-route-metric"><span>Road distance remaining</span><strong id="delivery-route-road-distance">Waiting…</strong></div>
+      <div class="delivery-route-metric"><span>Estimated travel time</span><strong id="delivery-route-eta">Waiting…</strong></div>
+      <div class="delivery-route-metric"><span>GPS accuracy</span><strong id="delivery-route-accuracy">Waiting…</strong></div>
+    </div>
+    <p class="delivery-route-road-info" id="delivery-route-road-info">Road route will appear after your live location is available.</p>
+    <p class="delivery-route-updated">Last GPS update: <strong id="delivery-route-updated">Waiting…</strong></p>
     <div class="delivery-route-actions">
-      <button type="button" class="btn-secondary" id="delivery-route-refresh">Refresh live route</button>
+      <button type="button" class="btn-secondary" id="delivery-route-center">Center on me</button>
+      <button type="button" class="btn-secondary" id="delivery-route-refresh">Refresh / reroute</button>
+      <button type="button" class="btn-secondary" id="delivery-route-stop">Stop live tracking</button>
       <a class="btn-primary" id="delivery-open-external-map" href="#" target="_blank" rel="noopener">Open in Maps</a>
     </div>
-    <p class="delivery-map-helper">Keep this page open during delivery. The blue YOU marker follows your device and the route line updates as you move.</p>
+    <p class="delivery-map-helper">Keep this page open during delivery. The blue YOU marker follows this device. The route is recalculated as you move, while the red PIN remains the customer's saved delivery destination.</p>
   </div>
 </div>
 
