@@ -154,7 +154,7 @@
 }
 .delivery-route-modal-header{
   position:relative;
-  z-index:4;
+  z-index:20;
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
@@ -326,6 +326,7 @@
    ===================================================================== */
 #chat-modal,
 #delivery-route-modal{
+  z-index:1200;
   overflow:hidden;
   overscroll-behavior:contain;
 }
@@ -342,7 +343,7 @@
 }
 .chat-modal-header{
   position:relative;
-  z-index:4;
+  z-index:20;
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
@@ -449,6 +450,30 @@
 .leaflet-map-pane,
 .leaflet-tile-pane{
   max-width:none;
+}
+
+/* Leaflet uses pane z-index values up to the hundreds. Give every map host
+   its own stacking context so those panes can never paint over another
+   modal, chat control, or delivery action outside that map. */
+.delivery-pin-map,
+.delivery-route-map,
+.admin-customer-map-preview{
+  position:relative;
+  isolation:isolate;
+  z-index:0;
+  overflow:hidden;
+  contain:paint;
+}
+.delivery-pin-map.leaflet-container,
+.delivery-route-map.leaflet-container,
+.admin-customer-map-preview.leaflet-container{
+  z-index:0;
+}
+
+/* Modal chrome always stays above its own map and any map behind the modal. */
+.delivery-route-modal-header,
+.chat-modal-header{
+  z-index:20;
 }
 
 @media (max-width:720px){
