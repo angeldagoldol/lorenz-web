@@ -1,0 +1,279 @@
+/* Dagoldol exact-pin checkout + live delivery routing */
+.delivery-location-card{
+  margin:18px 0 14px;
+  padding:16px;
+  border:1px solid var(--line, rgba(255,255,255,.16));
+  border-radius:14px;
+  background:rgba(29,33,44,.72);
+}
+.delivery-location-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.delivery-location-title{
+  margin:0;
+  color:var(--cream, #f3eadb);
+  font:600 .92rem/1.3 var(--font-body, sans-serif);
+}
+.delivery-location-copy{
+  margin:4px 0 0;
+  color:var(--cream-dim, #bcb5a9);
+  font-size:.8rem;
+  line-height:1.45;
+}
+.delivery-location-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:12px;
+}
+.delivery-location-actions button,
+.delivery-location-summary button{
+  min-height:44px;
+}
+.delivery-pin-map,
+.delivery-route-map{
+  width:100%;
+  border:1px solid var(--line, rgba(255,255,255,.16));
+  border-radius:12px;
+  overflow:hidden;
+  background:#1c2230;
+}
+.delivery-pin-map{height:clamp(280px, 42vh, 420px);}
+.delivery-route-map{height:clamp(330px, 55vh, 560px);}
+.delivery-pin-status,
+.delivery-route-status{
+  margin:10px 0 0;
+  padding:9px 10px;
+  border-radius:9px;
+  background:rgba(255,255,255,.045);
+  color:var(--cream-dim, #c4bdaf);
+  font-size:.8rem;
+  line-height:1.45;
+}
+.delivery-pin-status.is-working,
+.delivery-route-status.is-working{border-left:3px solid var(--brass, #caa45e);}
+.delivery-pin-status.is-ok,
+.delivery-route-status.is-ok{border-left:3px solid #75a77d;}
+.delivery-pin-status.is-error,
+.delivery-route-status.is-error{border-left:3px solid var(--rust, #b85c45);}
+.delivery-route-status.is-near{
+  border-left:3px solid #75a77d;
+  background:rgba(117,167,125,.12);
+  color:var(--cream, #f3eadb);
+  font-weight:600;
+}
+.delivery-location-summary{
+  margin-top:10px;
+  padding:12px;
+  border:1px solid rgba(202,164,94,.38);
+  border-radius:10px;
+  background:rgba(202,164,94,.07);
+}
+.delivery-location-summary-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.delivery-location-summary-label{
+  color:var(--cream-dim, #c4bdaf);
+  font-size:.75rem;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+#delivery-pin-coordinates{
+  color:var(--cream, #f3eadb);
+  font:600 .82rem/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break:break-all;
+}
+#delivery-pin-confirm.is-confirmed{
+  border-color:#75a77d;
+}
+.delivery-map-helper{
+  margin:8px 0 0;
+  color:var(--cream-dim, #bcb5a9);
+  font-size:.75rem;
+  line-height:1.45;
+}
+.dagoldol-map-marker{
+  background:transparent;
+  border:0;
+}
+.dagoldol-map-marker span{
+  display:grid;
+  place-items:center;
+  width:42px;
+  height:42px;
+  border-radius:50% 50% 50% 8px;
+  transform:rotate(-45deg);
+  border:3px solid #fff;
+  background:#b8492f;
+  color:#fff;
+  box-shadow:0 3px 14px rgba(0,0,0,.35);
+  font:700 9px/1 sans-serif;
+  letter-spacing:.03em;
+}
+.dagoldol-map-marker span::first-line{transform:rotate(45deg);}
+.dagoldol-map-marker-rider span{
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  transform:none;
+  background:#345b91;
+}
+/* Keep text upright in destination pin. */
+.dagoldol-map-marker-destination span{font-size:0;}
+.dagoldol-map-marker-destination span::after{
+  content:"PIN";
+  transform:rotate(45deg);
+  font:700 9px/1 sans-serif;
+  letter-spacing:.03em;
+}
+.delivery-route-panel{
+  width:min(96vw, 920px);
+  max-height:94vh;
+  overflow:auto;
+}
+.delivery-route-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+  padding-right:38px;
+}
+.delivery-route-order{
+  margin:0;
+  color:var(--cream, #f3eadb);
+  font:600 1rem/1.3 var(--font-body, sans-serif);
+}
+.delivery-route-address{
+  margin:4px 0 0;
+  color:var(--cream-dim, #bcb5a9);
+  font-size:.8rem;
+  line-height:1.45;
+}
+.delivery-route-metrics{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+  gap:8px;
+  margin:10px 0;
+}
+.delivery-route-metric{
+  padding:10px;
+  border:1px solid var(--line, rgba(255,255,255,.16));
+  border-radius:9px;
+  background:rgba(255,255,255,.04);
+}
+.delivery-route-metric span{
+  display:block;
+  color:var(--cream-dim, #bcb5a9);
+  font-size:.72rem;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.delivery-route-metric strong{
+  display:block;
+  margin-top:4px;
+  color:var(--cream, #f3eadb);
+  font-size:.9rem;
+  line-height:1.35;
+}
+.delivery-route-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
+}
+.admin-delivery-pin-line{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-top:5px;
+  color:var(--cream-dim, #c4bdaf);
+  font-size:.78rem;
+}
+.admin-delivery-pin-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:2px 8px;
+  border:1px solid rgba(117,167,125,.5);
+  border-radius:999px;
+  color:#bfe0c4;
+  background:rgba(117,167,125,.1);
+  font-size:.72rem;
+  font-weight:600;
+}
+.leaflet-container{font-family:var(--font-body, sans-serif);}
+.leaflet-control-attribution{font-size:10px;}
+@media(max-width:600px){
+  .delivery-location-card{margin-left:-4px;margin-right:-4px;padding:12px;}
+  .delivery-location-head,.delivery-route-head{display:block;}
+  .delivery-location-actions,.delivery-route-actions{display:grid;grid-template-columns:1fr;}
+  .delivery-location-actions button,.delivery-route-actions a,.delivery-route-actions button{width:100%;justify-content:center;}
+  .delivery-location-summary-row{display:block;}
+  #delivery-pin-coordinates{display:block;margin-top:5px;}
+  .delivery-route-metrics{grid-template-columns:1fr;}
+  .delivery-pin-map{height:320px;}
+  .delivery-route-map{height:420px;}
+}
+
+
+/* Persistent Admin Accounts customer pinpoint preview */
+.admin-customer-location-block{
+  margin-top:12px;
+  padding:10px;
+  border:1px solid rgba(202,164,94,.28);
+  border-radius:12px;
+  background:rgba(9,12,18,.34);
+}
+.admin-customer-location-title{
+  margin:0 0 8px;
+  color:var(--cream, #f3eadb);
+  font-size:.78rem;
+  font-weight:600;
+  letter-spacing:.02em;
+}
+.admin-customer-map-preview{
+  width:100%;
+  height:190px;
+  overflow:hidden;
+  border:1px solid var(--line, rgba(255,255,255,.16));
+  border-radius:10px;
+  background:#1c2230;
+}
+.admin-customer-map-preview.is-map-unavailable{
+  display:grid;
+  place-items:center;
+  padding:16px;
+  color:var(--cream-dim, #c4bdaf);
+  font-size:.78rem;
+  line-height:1.45;
+  text-align:center;
+}
+@media(max-width:600px){
+  .admin-customer-map-preview{height:220px;}
+}
+
+
+/* Enhanced rider proximity / ETA console */
+.delivery-route-status-wrap{margin-top:10px;}
+.delivery-route-state-badge{
+  display:inline-flex;align-items:center;min-height:28px;padding:4px 10px;margin-bottom:7px;
+  border:1px solid rgba(202,164,94,.45);border-radius:999px;background:rgba(202,164,94,.10);
+  color:var(--cream,#f3eadb);font-size:.75rem;font-weight:700;letter-spacing:.02em;
+}
+.delivery-route-status-wrap .delivery-route-status{margin-top:0;}
+.delivery-route-metrics-advanced{grid-template-columns:repeat(4,minmax(0,1fr));}
+.delivery-route-road-info,.delivery-route-updated{
+  margin:8px 0 0;color:var(--cream-dim,#c4bdaf);font-size:.76rem;line-height:1.45;
+}
+.delivery-route-updated strong{color:var(--cream,#f3eadb);font-weight:600;}
+@media(max-width:850px){.delivery-route-metrics-advanced{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:520px){.delivery-route-metrics-advanced{grid-template-columns:1fr;}}
