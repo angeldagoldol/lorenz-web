@@ -37,6 +37,9 @@
 .delivery-pin-map,
 .delivery-route-map{
   width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
   border:1px solid var(--line, rgba(255,255,255,.16));
   border-radius:12px;
   overflow:hidden;
@@ -135,17 +138,46 @@
   letter-spacing:.03em;
 }
 .delivery-route-panel{
-  width:min(96vw, 920px);
-  max-height:94vh;
-  overflow:auto;
+  width:min(calc(100vw - 32px), 920px);
+  max-width:920px;
+  height:min(94dvh, 900px);
+  max-height:94dvh;
+  padding:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  box-sizing:border-box;
 }
 .delivery-route-head{
+  min-width:0;
+  flex:1;
+}
+.delivery-route-modal-header{
+  position:relative;
+  z-index:4;
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
   gap:12px;
-  margin-bottom:12px;
-  padding-right:38px;
+  flex:0 0 auto;
+  padding:18px 20px 14px;
+  border-bottom:1px solid var(--line, rgba(255,255,255,.16));
+  background:rgba(14,16,22,.98);
+}
+.delivery-route-modal-header .modal-close{
+  position:static;
+  flex:0 0 auto;
+  margin:-4px -4px 0 0;
+}
+.delivery-route-scroll{
+  flex:1 1 auto;
+  min-width:0;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:16px 20px 20px;
 }
 .delivery-route-order{
   margin:0;
@@ -227,6 +259,11 @@
 
 /* Persistent Admin Accounts customer pinpoint preview */
 .admin-customer-location-block{
+  width:100%;
+  max-width:680px;
+  min-width:0;
+  box-sizing:border-box;
+  overflow:hidden;
   margin-top:12px;
   padding:10px;
   border:1px solid rgba(202,164,94,.28);
@@ -242,7 +279,10 @@
 }
 .admin-customer-map-preview{
   width:100%;
-  height:190px;
+  max-width:100%;
+  min-width:0;
+  height:clamp(190px, 26vw, 260px);
+  box-sizing:border-box;
   overflow:hidden;
   border:1px solid var(--line, rgba(255,255,255,.16));
   border-radius:10px;
@@ -277,3 +317,208 @@
 .delivery-route-updated strong{color:var(--cream,#f3eadb);font-weight:600;}
 @media(max-width:850px){.delivery-route-metrics-advanced{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:520px){.delivery-route-metrics-advanced{grid-template-columns:1fr;}}
+
+
+/* =====================================================================
+   RESPONSIVE MODAL HARDENING — Windows + phone
+   Keeps maps inside their cards, prevents sideways scrolling, and keeps
+   message/navigation close controls reachable without scrolling upward.
+   ===================================================================== */
+#chat-modal,
+#delivery-route-modal{
+  overflow:hidden;
+  overscroll-behavior:contain;
+}
+#chat-modal .modal-panel{
+  width:min(calc(100vw - 32px), 1000px);
+  max-width:1000px;
+  height:min(88dvh, 760px);
+  max-height:88dvh;
+  padding:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  box-sizing:border-box;
+}
+.chat-modal-header{
+  position:relative;
+  z-index:4;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex:0 0 auto;
+  padding:18px 20px 14px;
+  border-bottom:1px solid var(--line, rgba(255,255,255,.16));
+  background:rgba(14,16,22,.98);
+}
+.chat-modal-heading{min-width:0;}
+.chat-modal-header .eyebrow{margin-top:0;}
+.chat-modal-header .modal-item-name{margin-bottom:0;}
+.chat-modal-header .modal-close{
+  position:static;
+  flex:0 0 auto;
+  margin:-4px -4px 0 0;
+}
+#chat-modal .chat-layout{
+  flex:1 1 auto;
+  min-width:0;
+  min-height:0;
+  width:100%;
+  overflow:hidden;
+  align-items:stretch;
+  padding:16px;
+  box-sizing:border-box;
+}
+#chat-modal .chat-thread-list,
+#chat-modal .chat-conversation,
+#chat-modal #chat-threads-inner,
+#chat-modal .chat-messages-list,
+#chat-modal .chat-new-row,
+#chat-modal .chat-input-row{
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+#chat-modal .chat-thread-list{
+  width:280px;
+  max-width:34%;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+}
+#chat-modal #chat-threads-inner{
+  max-height:none;
+  overflow-y:visible;
+  overflow-x:hidden;
+}
+#chat-modal .chat-conversation{
+  flex:1 1 auto;
+  min-width:0;
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+}
+#chat-modal .chat-conversation-header{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+#chat-modal .chat-messages-list{
+  flex:1 1 auto;
+  min-height:0;
+  max-height:none;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+}
+#chat-modal .chat-bubble-row{max-width:92%;}
+#chat-modal .chat-bubble,
+#chat-modal .chat-bubble-text{
+  max-width:100%;
+  min-width:0;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+#chat-modal .chat-new-row,
+#chat-modal .chat-input-row{
+  width:100%;
+}
+#chat-modal .chat-new-row input,
+#chat-modal .chat-input-row input{
+  min-width:0;
+  width:100%;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.delivery-location-card{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  overflow:hidden;
+}
+.delivery-route-address,
+.delivery-route-order,
+.delivery-route-road-info,
+.delivery-map-helper{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+.leaflet-container,
+.leaflet-map-pane,
+.leaflet-tile-pane{
+  max-width:none;
+}
+
+@media (max-width:720px){
+  #chat-modal,
+  #delivery-route-modal{
+    padding:0;
+    align-items:flex-end;
+  }
+  #chat-modal .modal-panel,
+  .delivery-route-panel{
+    width:100%;
+    max-width:none;
+    height:94dvh;
+    max-height:94dvh;
+    border-left:0;
+    border-right:0;
+    border-bottom:0;
+    border-radius:18px 18px 0 0;
+  }
+  .chat-modal-header,
+  .delivery-route-modal-header{
+    padding:14px 14px 12px;
+  }
+  #chat-modal .chat-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr);
+    gap:10px;
+    min-width:0;
+    min-height:0;
+    overflow-x:hidden;
+    overflow-y:hidden;
+    padding:10px;
+  }
+  #chat-modal .chat-thread-list{
+    width:100%;
+    max-width:100%;
+    max-height:170px;
+    padding-right:2px;
+  }
+  #chat-modal #chat-threads-inner{max-height:110px;overflow-y:auto;}
+  #chat-modal .chat-conversation{
+    width:100%;
+    height:100%;
+    min-height:0;
+    padding:12px;
+  }
+  #chat-modal .chat-new-row{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+  }
+  #chat-modal .chat-input-row{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+  }
+  #chat-modal .chat-input-row button{
+    padding:0 14px;
+  }
+  .delivery-route-scroll{padding:12px 14px 18px;}
+  .delivery-route-map{height:min(42dvh, 360px);}
+  .delivery-pin-map{height:min(42dvh, 340px);}
+  .admin-customer-location-block{max-width:100%;}
+  .admin-customer-map-preview{height:min(44vw, 220px);min-height:180px;}
+}
+
+@media (max-width:420px){
+  #chat-modal .chat-layout{padding:8px;gap:8px;}
+  #chat-modal .chat-thread-list{max-height:150px;}
+  #chat-modal #chat-threads-inner{max-height:94px;}
+  #chat-modal .chat-conversation{padding:10px;}
+  #chat-modal .chat-bubble-row{max-width:94%;}
+  .delivery-route-map{height:300px;}
+}
