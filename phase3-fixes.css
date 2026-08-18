@@ -1120,3 +1120,76 @@
     order:-1;
   }
 }
+
+/* =====================================================================
+   DAGOLDOL 3.3.5 — SMART DELIVERY ADDRESS + ADMIN CUSTOMER PIN VIEW
+   Additive only: admin-private delivery details and clearer map readiness.
+   ===================================================================== */
+.admin-customer-delivery{
+  display:grid;
+  gap:5px;
+  margin-top:12px;
+  padding:12px 14px;
+  border:1px solid rgba(98,107,128,.38);
+  border-radius:10px;
+  background:rgba(17,20,28,.72);
+  min-width:0;
+}
+
+.admin-customer-delivery[data-state="pinned"]{
+  border-color:rgba(79,227,193,.34);
+  background:rgba(79,227,193,.045);
+}
+
+.admin-customer-delivery-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+  color:var(--cream, #fff);
+  font-weight:700;
+}
+
+.admin-customer-delivery-source{
+  color:var(--brass, #4fe3c1);
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+
+.admin-customer-delivery-address,
+.admin-customer-delivery-landmark,
+.admin-customer-delivery-coords{
+  overflow-wrap:anywhere;
+}
+
+.admin-customer-delivery-address{
+  color:var(--cream-dim, #d6dae4);
+}
+
+.admin-customer-delivery-landmark{
+  color:var(--brass, #4fe3c1);
+}
+
+.admin-customer-delivery-coords{
+  color:var(--faint, #a4acbf);
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:.78rem;
+}
+
+.delivery-map-confirm-btn[aria-busy="true"]{
+  cursor:progress;
+  opacity:.72;
+}
+
+@media (max-width:720px){
+  .admin-customer-delivery{
+    padding:11px 12px;
+  }
+
+  .admin-customer-delivery-heading{
+    align-items:flex-start;
+  }
+}
