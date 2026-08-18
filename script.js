@@ -3566,7 +3566,7 @@ function renderAdminOrdersTab(){
             </div>
             ${statusSection}
             <div class="admin-card-actions">
-              ${deliveryLocation ? `<button type="button" class="btn-primary" data-order="${order.id}" data-action="delivery-route">Navigate to customer pin</button>` : ""}
+              ${deliveryLocation ? `<button type="button" class="btn-primary" data-order="${order.id}" data-action="delivery-route">Start live delivery navigation</button>` : ""}
               <button type="button" class="admin-btn-danger" data-order="${order.id}" data-action="delete-order">Delete order</button>
             </div>
           </div>
@@ -4648,6 +4648,25 @@ async function renderAdminAccounts(){
   renderAdminAccountsTab();
 }
 
+function resolveAdminAccountDelivery(account){
+  const accountOrders = adminOrdersCache
+    .filter(entry => String(entry.username) === String(account && account.username))
+    .slice()
+    .sort((a, b) => Number(b.order && b.order.placedAt || 0) - Number(a.order && a.order.placedAt || 0));
+  const orderAddresses = accountOrders.map(entry => entry.order && entry.order.address).filter(Boolean);
+  const api = window.DagoldolDeliveryLocation;
+  const location = api && api.resolveAccountLocation
+    ? api.resolveAccountLocation(account && account.address, orderAddresses)
+    : (api && api.locationFromAddress ? api.locationFromAddress(account && account.address) : null);
+  if (!location) return { location: null, address: account && account.address ? account.address : {}, provenance: null };
+
+  if (location.provenance === "latest-order") {
+    const sourceEntry = accountOrders.find(entry => api.locationFromAddress(entry.order && entry.order.address));
+    return { location, address: sourceEntry && sourceEntry.order ? (sourceEntry.order.address || {}) : {}, provenance: "latest-order" };
+  }
+  return { location, address: account && account.address ? account.address : {}, provenance: "profile" };
+}
+
 function renderAdminAccountsTab(){
   const panel = adminTabPanels.accounts;
   const customers = adminAccountsCache;
@@ -4666,11 +4685,17 @@ function renderAdminAccountsTab(){
         const cart = account.cart || [];
         const cartCount = cart.reduce((s, i) => s + i.qty, 0);
         const addr = account.address ? `${escapeHtml(account.address.city)}, ${escapeHtml(account.address.postal)}` : "No saved address";
-        const accountDeliveryLocation = window.DagoldolDeliveryLocation && window.DagoldolDeliveryLocation.locationFromAddress
-          ? window.DagoldolDeliveryLocation.locationFromAddress(account.address)
-          : null;
+        const resolvedDelivery = resolveAdminAccountDelivery(account);
+        const accountDeliveryLocation = resolvedDelivery.location;
+        const locationSourceLabel = resolvedDelivery.provenance === "latest-order" ? "Latest order pin" : "Saved customer pin";
         const accountPinLine = accountDeliveryLocation
-          ? `<br><span class="admin-delivery-pin-line"><span class="admin-delivery-pin-badge">Saved customer pin</span> ${accountDeliveryLocation.lat.toFixed(6)}, ${accountDeliveryLocation.lon.toFixed(6)}</span>`
+          ? `<br><span class="admin-delivery-pin-line"><span class="admin-delivery-pin-badge">${locationSourceLabel}</span> ${accountDeliveryLocation.lat.toFixed(6)}, ${accountDeliveryLocation.lon.toFixed(6)}</span>`
+          : `<br><span class="admin-delivery-pin-line">No exact customer pin saved yet.</span>`;
+        const accountMapPreview = accountDeliveryLocation
+          ? `<div class="admin-customer-location-block">
+               <div class="admin-customer-location-title">Customer pinpoint map</div>
+               <div class="admin-customer-map-preview" data-customer-location-preview data-lat="${accountDeliveryLocation.lat}" data-lon="${accountDeliveryLocation.lon}" data-label="${escapeHtml(username)} — ${locationSourceLabel}"></div>
+             </div>`
           : "";
         const profile = account.profile || {};
         const profileLine = (profile.name || profile.email || profile.phone)
@@ -4682,9 +4707,9 @@ function renderAdminAccountsTab(){
               <span class="admin-card-title">${escapeHtml(username)}</span>
               <span class="admin-card-meta">${orderCount} order${orderCount === 1 ? "" : "s"}</span>
             </div>
-            <div class="admin-card-body">${addr} · ${cartCount} item${cartCount === 1 ? "" : "s"} currently in cart${profileLine}${accountPinLine}</div>
+            <div class="admin-card-body">${addr} · ${cartCount} item${cartCount === 1 ? "" : "s"} currently in cart${profileLine}${accountPinLine}${accountMapPreview}</div>
             <div class="admin-card-actions">
-              ${accountDeliveryLocation ? `<button type="button" class="btn-secondary" data-id="${account.id}" data-action="customer-pin">View saved customer pin</button>` : ""}
+              ${accountDeliveryLocation ? `<button type="button" class="btn-secondary" data-id="${account.id}" data-action="customer-pin">View customer location</button>` : ""}
               <button type="button" class="admin-btn-danger" data-username="${escapeHtml(username)}" data-id="${account.id}" data-action="delete-account">Delete account</button>
             </div>
           </div>
@@ -4693,11 +4718,21 @@ function renderAdminAccountsTab(){
     </div>
   `;
 
+  if (window.DagoldolDeliveryLocation && window.DagoldolDeliveryLocation.renderAdminAccountLocationMaps) {
+    window.DagoldolDeliveryLocation.renderAdminAccountLocationMaps(panel);
+  }
+
   panel.querySelectorAll("[data-action='customer-pin']").forEach(btn => {
     btn.addEventListener("click", () => {
       const account = adminAccountsCache.find(item => String(item.id) === String(btn.dataset.id));
       if (account && window.DagoldolDeliveryLocation) {
-        window.DagoldolDeliveryLocation.openAdminRoute({ label: `Customer: ${account.username || "customer"}`, address: account.address || {} });
+        const resolvedDelivery = resolveAdminAccountDelivery(account);
+        if (resolvedDelivery.location) {
+          window.DagoldolDeliveryLocation.openAdminRoute({
+            label: `Customer: ${account.username || "customer"}`,
+            address: resolvedDelivery.address || {}
+          });
+        }
       }
     });
   });
