@@ -1,0 +1,9 @@
+Phase 4.1 runtime suites executed directly in this session:
+PASS tests/delivery-location-runtime.spec.py
+PASS tests/device-auth-runtime.spec.py
+PASS tests/mobile-matrix.spec.py
+PASS tests/mobile-resilience.spec.py
+PASS tests/payment-settings-runtime.spec.py
+PASS tests/runtime_mobile_fast.py (320/360/390/414/430)
+PASS tests/smart-delivery-runtime.spec.py
+BLOCKED tests/desktop-regression.spec.py (missing /mnt/data/DAGOLDOL-PASTED-TEXT1-MOBILE-FIX historical fixture directory)

@@ -1,0 +1,595 @@
+
+> dagoldol-phase3@3.3.5 verify
+> npm run check && npm run test:auth && npm run test:device-auth && npm run test:payment && npm run test:mobile-fast && npm run test:delivery-map && npm run test:delivery-origin && npm run test:mobile-map && npm run test:geolocation && npm run test:current-location-v2 && npm run test:landmark-map-ux && npm run test:smart-delivery && node scripts/verify-source.mjs
+
+
+> dagoldol-phase3@3.3.5 check
+> node --check script.js && node --check delivery-map.js && node --check auth-resilience.js && node --check config.js && node --check liquid-chrome.js && node --check phase2-accessibility.js && node --check phase2-core.js && node --check script1.js && node --check scripts/generate-public-catalogue.mjs && node --check scripts/verify-source.mjs
+
+
+> dagoldol-phase3@3.3.5 test:auth
+> node --test tests/multidevice-auth-contract.test.mjs
+
+TAP version 13
+# Subtest: browser auth client explicitly persists and refreshes each device session
+ok 1 - browser auth client explicitly persists and refreshes each device session
+  ---
+  duration_ms: 4.519219
+  type: 'test'
+  ...
+# Subtest: normal Dagoldol logout revokes only the current device session
+ok 2 - normal Dagoldol logout revokes only the current device session
+  ---
+  duration_ms: 3.910855
+  type: 'test'
+  ...
+# Subtest: no browser auth cleanup path uses global signOut implicitly
+ok 3 - no browser auth cleanup path uses global signOut implicitly
+  ---
+  duration_ms: 1.937611
+  type: 'test'
+  ...
+# Subtest: profile-recovery cleanup is local to the current browser session
+ok 4 - profile-recovery cleanup is local to the current browser session
+  ---
+  duration_ms: 1.86297
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 56.0379
+
+> dagoldol-phase3@3.3.5 test:device-auth
+> node --test tests/device-auth-resilience.test.mjs
+
+TAP version 13
+# Subtest: auth resilience module exists and exports the required helpers
+ok 1 - auth resilience module exists and exports the required helpers
+  ---
+  duration_ms: 2.152891
+  type: 'test'
+  ...
+# Subtest: network failure on Supabase auth falls back to same-origin Vercel proxy
+ok 2 - network failure on Supabase auth falls back to same-origin Vercel proxy
+  ---
+  duration_ms: 0.978345
+  type: 'test'
+  ...
+# Subtest: Supabase REST network failure also falls back so profile/account data stays usable
+ok 3 - Supabase REST network failure also falls back so profile/account data stays usable
+  ---
+  duration_ms: 0.89507
+  type: 'test'
+  ...
+# Subtest: unrelated origins are never proxied
+ok 4 - unrelated origins are never proxied
+  ---
+  duration_ms: 0.975079
+  type: 'test'
+  ...
+# Subtest: auth errors distinguish bad credentials from network failures
+ok 5 - auth errors distinguish bad credentials from network failures
+  ---
+  duration_ms: 0.683967
+  type: 'test'
+  ...
+# Subtest: runtime source uses resilient fetch and never maps network auth errors to invalid credentials
+ok 6 - runtime source uses resilient fetch and never maps network auth errors to invalid credentials
+  ---
+  duration_ms: 1.316267
+  type: 'test'
+  ...
+# Subtest: Vercel proxies auth fallback to the fixed Supabase project origin
+ok 7 - Vercel proxies auth fallback to the fixed Supabase project origin
+  ---
+  duration_ms: 0.266877
+  type: 'test'
+  ...
+# Subtest: mobile touch focus cannot leave skip link visibly pinned over the iOS status bar
+ok 8 - mobile touch focus cannot leave skip link visibly pinned over the iOS status bar
+  ---
+  duration_ms: 0.196952
+  type: 'test'
+  ...
+# Subtest: login failure resets password visibility to hidden
+ok 9 - login failure resets password visibility to hidden
+  ---
+  duration_ms: 1.882579
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 57.873108
+
+> dagoldol-phase3@3.3.5 test:payment
+> node --test tests/payment-settings-contract.mjs
+
+TAP version 13
+# Subtest: checkout contains customer-facing bank account fields and QR elements
+ok 1 - checkout contains customer-facing bank account fields and QR elements
+  ---
+  duration_ms: 0.995681
+  type: 'test'
+  ...
+# Subtest: settings state and DOM application include all bank payment keys
+ok 2 - settings state and DOM application include all bank payment keys
+  ---
+  duration_ms: 0.252445
+  type: 'test'
+  ...
+# Subtest: admin Payment Settings exposes editable bank details and QR controls
+ok 3 - admin Payment Settings exposes editable bank details and QR controls
+  ---
+  duration_ms: 1.253524
+  type: 'test'
+  ...
+# Subtest: public catalogue snapshot allowlist includes bank payment settings
+ok 4 - public catalogue snapshot allowlist includes bank payment settings
+  ---
+  duration_ms: 0.158726
+  type: 'test'
+  ...
+# Subtest: pill animation CSS does not override password toggle absolute positioning
+ok 5 - pill animation CSS does not override password toggle absolute positioning
+  ---
+  duration_ms: 0.266426
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 51.643897
+
+> dagoldol-phase3@3.3.5 test:mobile-fast
+> node --test tests/mobile-fast-bootstrap.test.mjs
+
+TAP version 13
+# Subtest: mobile/slow-network bootstrap policy exists and is scoped to constrained clients
+ok 1 - mobile/slow-network bootstrap policy exists and is scoped to constrained clients
+  ---
+  duration_ms: 1.108779
+  type: 'test'
+  ...
+# Subtest: fast catalogue path renders deploy snapshot before live hydration
+ok 2 - fast catalogue path renders deploy snapshot before live hydration
+  ---
+  duration_ms: 0.238284
+  type: 'test'
+  ...
+# Subtest: live hydration refreshes catalogue dependencies without clearing the visible snapshot first
+ok 3 - live hydration refreshes catalogue dependencies without clearing the visible snapshot first
+  ---
+  duration_ms: 0.235751
+  type: 'test'
+  ...
+# Subtest: session startup primes snapshot settings and does not block mobile first render on live settings
+ok 4 - session startup primes snapshot settings and does not block mobile first render on live settings
+  ---
+  duration_ms: 0.220538
+  type: 'test'
+  ...
+# Subtest: static LiquidChrome fallback is rich, layered, and non-animated on shop and My Info
+ok 5 - static LiquidChrome fallback is rich, layered, and non-animated on shop and My Info
+  ---
+  duration_ms: 0.331092
+  type: 'test'
+  ...
+# Subtest: mobile critical CSS, safe-area viewport, and connection warm-up hints ship from the head
+ok 6 - mobile critical CSS, safe-area viewport, and connection warm-up hints ship from the head
+  ---
+  duration_ms: 0.203643
+  type: 'test'
+  ...
+# Subtest: mobile static path still exits before OGL module download
+ok 7 - mobile static path still exits before OGL module download
+  ---
+  duration_ms: 0.854691
+  type: 'test'
+  ...
+# Subtest: My Info contact cards can shrink and wrap at 320px without horizontal overflow
+ok 8 - My Info contact cards can shrink and wrap at 320px without horizontal overflow
+  ---
+  duration_ms: 0.164675
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 53.747936
+
+> dagoldol-phase3@3.3.5 test:delivery-map
+> node --test tests/delivery-map-contract.test.mjs
+
+TAP version 13
+# Subtest: delivery map module exposes pure location helpers
+ok 1 - delivery map module exposes pure location helpers
+  ---
+  duration_ms: 7.83568
+  type: 'test'
+  ...
+# Subtest: Philippine coordinate validation accepts PH and rejects outside coordinates
+ok 2 - Philippine coordinate validation accepts PH and rejects outside coordinates
+  ---
+  duration_ms: 2.560186
+  type: 'test'
+  ...
+# Subtest: saved location normalization is backward compatible and clamps shape
+ok 3 - saved location normalization is backward compatible and clamps shape
+  ---
+  duration_ms: 1.97027
+  type: 'test'
+  ...
+# Subtest: Nominatim reverse result becomes Dagoldol address fields
+ok 4 - Nominatim reverse result becomes Dagoldol address fields
+  ---
+  duration_ms: 2.449021
+  type: 'test'
+  ...
+# Subtest: address-pin consistency detects manual edits that make a saved pin stale
+ok 5 - address-pin consistency detects manual edits that make a saved pin stale
+  ---
+  duration_ms: 2.771481
+  type: 'test'
+  ...
+# Subtest: main HTML contains reusable location map UI for profile and checkout
+ok 6 - main HTML contains reusable location map UI for profile and checkout
+  ---
+  duration_ms: 1.025965
+  type: 'test'
+  ...
+# Subtest: map integration remains lazy and security policy permits only required map capabilities
+ok 7 - map integration remains lazy and security policy permits only required map capabilities
+  ---
+  duration_ms: 0.469558
+  type: 'test'
+  ...
+# Subtest: checkout script persists location and routes by pin when available
+ok 8 - checkout script persists location and routes by pin when available
+  ---
+  duration_ms: 1.150471
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 70.818417
+
+> dagoldol-phase3@3.3.5 test:delivery-origin
+> node --test tests/delivery-origin-contract.test.mjs
+
+TAP version 13
+# Subtest: existing delivery pricing constants are unchanged
+ok 1 - existing delivery pricing constants are unchanged
+  ---
+  duration_ms: 0.793119
+  type: 'test'
+  ...
+# Subtest: settings state includes an admin-configurable delivery origin
+ok 2 - settings state includes an admin-configurable delivery origin
+  ---
+  duration_ms: 0.263892
+  type: 'test'
+  ...
+# Subtest: checkout routing prefers a valid saved owner origin and preserves hard-coded fallback
+ok 3 - checkout routing prefers a valid saved owner origin and preserves hard-coded fallback
+  ---
+  duration_ms: 0.166748
+  type: 'test'
+  ...
+# Subtest: admin Payment Settings exposes delivery-origin map controls and persists them
+ok 4 - admin Payment Settings exposes delivery-origin map controls and persists them
+  ---
+  duration_ms: 0.883744
+  type: 'test'
+  ...
+# Subtest: public settings snapshot includes owner origin for resilient checkout routing
+ok 5 - public settings snapshot includes owner origin for resilient checkout routing
+  ---
+  duration_ms: 0.244914
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 46.633813
+
+> dagoldol-phase3@3.3.5 test:mobile-map
+> node --test tests/mobile-map-reliability.test.mjs
+
+TAP version 13
+# Subtest: map renderer is Leaflet 1.9.4 and no longer depends on a WebGL context
+ok 1 - map renderer is Leaflet 1.9.4 and no longer depends on a WebGL context
+  ---
+  duration_ms: 0.790045
+  type: 'test'
+  ...
+# Subtest: Leaflet loader retries a second CDN and clears failed scripts
+ok 2 - Leaflet loader retries a second CDN and clears failed scripts
+  ---
+  duration_ms: 0.186307
+  type: 'test'
+  ...
+# Subtest: map becomes ready before remote raster tiles finish
+ok 3 - map becomes ready before remote raster tiles finish
+  ---
+  duration_ms: 0.205065
+  type: 'test'
+  ...
+# Subtest: current location draws an accuracy circle and recenters the map
+ok 4 - current location draws an accuracy circle and recenters the map
+  ---
+  duration_ms: 0.165577
+  type: 'test'
+  ...
+# Subtest: map resources and location tracking are released when the picker closes
+ok 5 - map resources and location tracking are released when the picker closes
+  ---
+  duration_ms: 0.140639
+  type: 'test'
+  ...
+# Subtest: phone map CSS uses a smaller dynamic viewport and Leaflet-specific controls
+ok 6 - phone map CSS uses a smaller dynamic viewport and Leaflet-specific controls
+  ---
+  duration_ms: 0.197153
+  type: 'test'
+  ...
+# Subtest: security policy allows Leaflet fallback CDN and same-origin geolocation
+ok 7 - security policy allows Leaflet fallback CDN and same-origin geolocation
+  ---
+  duration_ms: 0.091837
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 51.890704
+
+> dagoldol-phase3@3.3.5 test:geolocation
+> node --test tests/geolocation-reliability.test.mjs
+
+TAP version 13
+# Subtest: reliable geolocation exposes the resilience helpers
+ok 1 - reliable geolocation exposes the resilience helpers
+  ---
+  duration_ms: 5.58216
+  type: 'test'
+  ...
+# Subtest: permission state is read when the Permissions API supports geolocation
+ok 2 - permission state is read when the Permissions API supports geolocation
+  ---
+  duration_ms: 2.274381
+  type: 'test'
+  ...
+# Subtest: a usable cached/network position is accepted while a refinement watch also starts
+ok 3 - a usable cached/network position is accepted while a refinement watch also starts
+  ---
+  duration_ms: 7.487823
+  type: 'test'
+  ...
+# Subtest: after a fast timeout, watchPosition can deliver a slower GPS fix and is always cleared
+ok 4 - after a fast timeout, watchPosition can deliver a slower GPS fix and is always cleared
+  ---
+  duration_ms: 1606.531896
+  type: 'test'
+  ...
+# Subtest: watchPosition returns the best position it received when the accuracy deadline expires
+ok 5 - watchPosition returns the best position it received when the accuracy deadline expires
+  ---
+  duration_ms: 2209.562394
+  type: 'test'
+  ...
+# Subtest: a denied permission is not retried through a location watch
+ok 6 - a denied permission is not retried through a location watch
+  ---
+  duration_ms: 2.751291
+  type: 'test'
+  ...
+# Subtest: location failure copy gives actionable Windows and iPhone permission instructions
+ok 7 - location failure copy gives actionable Windows and iPhone permission instructions
+  ---
+  duration_ms: 1.969068
+  type: 'test'
+  ...
+# Subtest: an insecure context gets a specific HTTPS error before geolocation starts
+ok 8 - an insecure context gets a specific HTTPS error before geolocation starts
+  ---
+  duration_ms: 2.150237
+  type: 'test'
+  ...
+# Subtest: a reasonable watch fix settles quickly instead of waiting for the full GPS deadline
+ok 9 - a reasonable watch fix settles quickly instead of waiting for the full GPS deadline
+  ---
+  duration_ms: 10.556927
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3895.050899
+
+> dagoldol-phase3@3.3.5 test:current-location-v2
+> node --test tests/current-location-map-v2.test.mjs
+
+TAP version 13
+# Subtest: delivery map uses Leaflet instead of requiring MapLibre WebGL
+ok 1 - delivery map uses Leaflet instead of requiring MapLibre WebGL
+  ---
+  duration_ms: 0.828823
+  type: 'test'
+  ...
+# Subtest: map readiness does not wait for remote tiles to finish loading
+ok 2 - map readiness does not wait for remote tiles to finish loading
+  ---
+  duration_ms: 0.230463
+  type: 'test'
+  ...
+# Subtest: current-location tracking starts a continuous fix before the one-shot request
+ok 3 - current-location tracking starts a continuous fix before the one-shot request
+  ---
+  duration_ms: 5.122066
+  type: 'test'
+  ...
+# Subtest: the current-location control is not disabled while the map renderer is initializing
+ok 4 - the current-location control is not disabled while the map renderer is initializing
+  ---
+  duration_ms: 0.381888
+  type: 'test'
+  ...
+# Subtest: current-location button can acquire a position before the map controller is ready
+ok 5 - current-location button can acquire a position before the map controller is ready
+  ---
+  duration_ms: 0.408127
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 50.343974
+
+> dagoldol-phase3@3.3.5 test:landmark-map-ux
+> node --test tests/landmark-map-ux.test.mjs
+
+TAP version 13
+# Subtest: reverse geocoder derives a named nearby landmark suggestion
+ok 1 - reverse geocoder derives a named nearby landmark suggestion
+  ---
+  duration_ms: 5.035277
+  type: 'test'
+  ...
+# Subtest: reverse geocoder uses a neighbourhood as a fallback landmark without duplicating street/city
+ok 2 - reverse geocoder uses a neighbourhood as a fallback landmark without duplicating street/city
+  ---
+  duration_ms: 2.034355
+  type: 'test'
+  ...
+# Subtest: profile and checkout expose map landmark suggestion controls
+ok 3 - profile and checkout expose map landmark suggestion controls
+  ---
+  duration_ms: 0.382759
+  type: 'test'
+  ...
+# Subtest: map application preserves manual landmarks and only autofills empty fields
+ok 4 - map application preserves manual landmarks and only autofills empty fields
+  ---
+  duration_ms: 0.271293
+  type: 'test'
+  ...
+# Subtest: map controls have explicit locating state and center-current-location behavior
+ok 5 - map controls have explicit locating state and center-current-location behavior
+  ---
+  duration_ms: 0.160839
+  type: 'test'
+  ...
+# Subtest: mobile map actions are sticky and respect the bottom safe area
+ok 6 - mobile map actions are sticky and respect the bottom safe area
+  ---
+  duration_ms: 0.151335
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 51.813623
+
+> dagoldol-phase3@3.3.5 test:smart-delivery
+> node --test tests/smart-address-admin-pin.test.mjs
+
+TAP version 13
+# Subtest: Philippine reverse parser recovers street and city from display_name when structured fields are sparse
+ok 1 - Philippine reverse parser recovers street and city from display_name when structured fields are sparse
+  ---
+  duration_ms: 5.414661
+  type: 'test'
+  ...
+# Subtest: Philippine reverse parser uses village/barangay and municipality fallbacks without blanking required address fields
+ok 2 - Philippine reverse parser uses village/barangay and municipality fallbacks without blanking required address fields
+  ---
+  duration_ms: 2.96607
+  type: 'test'
+  ...
+# Subtest: raw GPS movement is not published as a confirmable selection before reverse lookup completes
+ok 3 - raw GPS movement is not published as a confirmable selection before reverse lookup completes
+  ---
+  duration_ms: 0.391672
+  type: 'test'
+  ...
+# Subtest: admin accounts expose saved customer delivery details and a private view-pin action
+ok 4 - admin accounts expose saved customer delivery details and a private view-pin action
+  ---
+  duration_ms: 0.486123
+  type: 'test'
+  ...
+# Subtest: admin customer delivery map is read-only
+ok 5 - admin customer delivery map is read-only
+  ---
+  duration_ms: 0.399384
+  type: 'test'
+  ...
+# Subtest: 3.3.5 release includes admin pin styles and verification script hook
+ok 6 - 3.3.5 release includes admin pin styles and verification script hook
+  ---
+  duration_ms: 0.104686
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 54.204905
+[Dagoldol verify] Source contract valid. Generated product directories currently present: 3.
