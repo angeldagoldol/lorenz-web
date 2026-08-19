@@ -1,7 +1,8 @@
 -- ============================================================================
--- DAGOLDOL PHASE 4.2A — STRUCTURAL AUTHORIZATION CONTRACT TEST
--- READ ONLY. Run after 20260820_phase4_2a_zero_trust_rls_private_data.sql on
--- staging. It intentionally reports the still-open Phase 4.2B checkout gate.
+-- DAGOLDOL PHASE 4.2A1 — PUBLIC STRUCTURAL AUTHORIZATION CONTRACT TEST
+-- READ ONLY. Run after 20260820_phase4_2a1_public_zero_trust_rls.sql on
+-- staging. Storage is verified separately after the managed Storage Policy UI
+-- checklist. This test intentionally reports the still-open Phase 4.2B gate.
 -- ============================================================================
 
 do $$
@@ -91,32 +92,9 @@ begin
     raise exception 'FAIL: purchase-bound ratings INSERT policy is missing or incomplete.';
   end if;
 
-  -- Private payment proof Storage must have no anonymous storage.objects SELECT.
-  if exists (
-    select 1 from storage.buckets where id='payment-proofs' and public
-  ) then
-    raise exception 'FAIL: payment-proofs bucket is public.';
-  end if;
-
-  if exists (
-    select 1 from pg_policies
-    where schemaname='storage' and tablename='objects'
-      and cmd='SELECT' and roles @> array['anon']::name[]
-  ) then
-    raise exception 'FAIL: anonymous storage.objects SELECT policy exists.';
-  end if;
-
-  if not exists (
-    select 1 from pg_policies
-    where schemaname='storage' and tablename='objects'
-      and policyname='p42_storage_payment_proof_owner_admin_read'
-      and cmd='SELECT'
-      and coalesce(qual,'') ilike '%payment-proofs%'
-      and coalesce(qual,'') ilike '%auth.uid()%'
-      and coalesce(qual,'') ilike '%is_admin()%'
-  ) then
-    raise exception 'FAIL: owner/admin payment proof read policy is missing.';
-  end if;
+  -- Storage is intentionally not asserted here. Hosted Supabase owns
+  -- storage.objects with supabase_storage_admin; use phase4_2_storage_regression.sql
+  -- only after applying the separate Storage Policy UI checklist.
 
   -- Safe directory APIs: authenticated only.
   if has_function_privilege('anon','public.p42_lookup_profile_directory(text)','EXECUTE')
@@ -172,6 +150,6 @@ select
       and cmd='INSERT'
   ) as phase42b_direct_order_insert_still_enabled;
 
--- PASS for Phase 4.2A requires the DO block to complete without exception.
--- Full Phase 4.2 closure additionally requires all three Phase 4.2B values above
+-- PASS for Phase 4.2A1 requires the DO block to complete without exception.
+-- Full Phase 4.2 closure additionally requires the Storage gate plus all three Phase 4.2B values above
 -- to become FALSE after the exact 3.3.5 checkout/cancellation cutover.
