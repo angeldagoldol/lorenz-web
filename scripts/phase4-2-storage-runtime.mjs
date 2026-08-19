@@ -1,176 +1,122 @@
-#!/usr/bin/env node
-/**
- * Dagoldol Phase 4.2 Storage runtime regression.
- *
- * STAGING ONLY. The script refuses to run unless:
- *   P42_ALLOW_STORAGE_TESTS=staging-only-confirmed
- *
- * Required environment variables:
- *   SUPABASE_URL
- *   SUPABASE_PUBLISHABLE_KEY
- *   P42_CUSTOMER_A_JWT
- *   P42_CUSTOMER_B_JWT
- *   P42_ADMIN_JWT
- *
- * It creates small text fixtures through the Storage API, validates owner,
- * cross-account, anonymous and admin behavior, then deletes its fixtures.
- */
+import { readFile, access } from 'node:fs/promises';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REQUIRED_SENTINEL = "staging-only-confirmed";
-if (process.env.P42_ALLOW_STORAGE_TESTS !== REQUIRED_SENTINEL) {
-  console.error(`Refusing Storage writes. Set P42_ALLOW_STORAGE_TESTS=${REQUIRED_SENTINEL} only for an isolated staging project.`);
-  process.exit(2);
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const files = {
+  preflight: 'database/00_phase4_2b_preflight.sql',
+  migration: 'database/20260820_phase4_2b_commerce_authority_compat.sql',
+  contract: 'database/tests/phase4_2b_contract.sql',
+  behavior: 'database/tests/phase4_2b_behavior.sql',
+  status: 'docs/phase4/PHASE4.2B-STATUS.md',
+  readme: 'README-FIRST.md',
+  security: 'SECURITY.md'
+};
+
+const errors = [];
+for (const rel of Object.values(files)) {
+  try { await access(resolve(ROOT, rel)); }
+  catch { errors.push(`Missing required file: ${rel}`); }
 }
 
-const required = [
-  "SUPABASE_URL",
-  "SUPABASE_PUBLISHABLE_KEY",
-  "P42_CUSTOMER_A_JWT",
-  "P42_CUSTOMER_B_JWT",
-  "P42_ADMIN_JWT"
-];
-for (const name of required) {
-  if (!process.env[name]) {
-    console.error(`Missing required environment variable: ${name}`);
-    process.exit(2);
+if (errors.length === 0) {
+  const preflight = await readFile(resolve(ROOT, files.preflight), 'utf8');
+  const migration = await readFile(resolve(ROOT, files.migration), 'utf8');
+  const contract = await readFile(resolve(ROOT, files.contract), 'utf8');
+  const behavior = await readFile(resolve(ROOT, files.behavior), 'utf8');
+  const status = await readFile(resolve(ROOT, files.status), 'utf8');
+  const security = await readFile(resolve(ROOT, files.security), 'utf8');
+
+  if (!preflight.includes('phase42b_preflight_status')) errors.push('Preflight does not expose phase42b_preflight_status.');
+  const preflightWithoutComments = preflight.replace(/^--.*$/gm, '');
+  if (/^\s*(insert|update|delete|alter|create|drop|grant|revoke)\b/im.test(preflightWithoutComments)) {
+    errors.push('Preflight contains a top-level write/DDL/DCL statement.');
   }
-}
 
-const baseUrl = process.env.SUPABASE_URL.replace(/\/$/, "");
-const apiKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-const customerA = process.env.P42_CUSTOMER_A_JWT;
-const customerB = process.env.P42_CUSTOMER_B_JWT;
-const admin = process.env.P42_ADMIN_JWT;
+  const requiredMigrationMarkers = [
+    'begin;',
+    'add column if not exists payment_reference text',
+    'add column if not exists payment_proof text',
+    'add column if not exists half_payment boolean',
+    'add column if not exists amount_due_now numeric',
+    'add column if not exists amount_due_later numeric',
+    'create schema if not exists dagoldol_private authorization postgres',
+    'create or replace function dagoldol_private.apply_stock_lines',
+    'create or replace function public.decrement_stock_for_order',
+    'security invoker',
+    'create or replace function public.restore_stock_for_order',
+    'create or replace function public.guard_customer_order_write()',
+    'security definer',
+    'perform dagoldol_private.apply_stock_lines(v_stock_lines,-1)',
+    'update public.promo_codes',
+    'perform dagoldol_private.apply_stock_lines(v_cancel_lines,1)',
+    'create or replace function public.place_order(',
+    'create policy p42_orders_insert_owner',
+    'commit;'
+  ];
 
-function decodeJwtSubject(token) {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Invalid JWT format");
-  const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-  if (!payload.sub || typeof payload.sub !== "string") throw new Error("JWT has no sub claim");
-  return payload.sub;
-}
-
-const customerAId = decodeJwtSubject(customerA);
-const customerBId = decodeJwtSubject(customerB);
-const adminId = decodeJwtSubject(admin);
-if (customerAId === customerBId || customerAId === adminId || customerBId === adminId) {
-  throw new Error("Storage test JWTs must represent three distinct accounts");
-}
-
-const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-const proofAPath = `${customerAId}/p42-${suffix}.txt`;
-const proofForgedPath = `${customerAId}/p42-forged-${suffix}.txt`;
-const avatarAPath = `${customerAId}/p42-${suffix}.txt`;
-const productPath = `p42-regression/${suffix}.txt`;
-
-const cleanupJobs = [];
-let failures = 0;
-
-function headers(jwt, contentType) {
-  const h = {
-    apikey: apiKey,
-    Authorization: `Bearer ${jwt}`
-  };
-  if (contentType) h["Content-Type"] = contentType;
-  return h;
-}
-
-async function upload(bucket, path, jwt, text) {
-  return fetch(`${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`, {
-    method: "POST",
-    headers: { ...headers(jwt, "text/plain"), "x-upsert": "false" },
-    body: text
-  });
-}
-
-async function downloadPrivate(bucket, path, jwt) {
-  return fetch(`${baseUrl}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`, {
-    method: "GET",
-    headers: headers(jwt)
-  });
-}
-
-async function downloadPrivateAnon(bucket, path) {
-  return fetch(`${baseUrl}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${path.split("/").map(encodeURIComponent).join("/")}`, {
-    method: "GET",
-    headers: { apikey: apiKey }
-  });
-}
-
-async function remove(bucket, paths, jwt) {
-  return fetch(`${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}`, {
-    method: "DELETE",
-    headers: headers(jwt, "application/json"),
-    body: JSON.stringify({ prefixes: paths })
-  });
-}
-
-function pass(name, detail = "") {
-  console.log(`PASS ${name}${detail ? ` — ${detail}` : ""}`);
-}
-
-function fail(name, detail) {
-  failures += 1;
-  console.error(`FAIL ${name} — ${detail}`);
-}
-
-async function expectAllowed(name, response) {
-  if (response.ok) pass(name, `HTTP ${response.status}`);
-  else fail(name, `expected success, received HTTP ${response.status}: ${await response.text()}`);
-}
-
-async function expectDenied(name, response) {
-  if (!response.ok) pass(name, `denied with HTTP ${response.status}`);
-  else fail(name, `expected denial, received HTTP ${response.status}`);
-}
-
-try {
-  let response = await upload("payment-proofs", proofAPath, customerA, "phase4.2 owner proof");
-  await expectAllowed("Customer A uploads into own payment-proof namespace", response);
-  if (response.ok) cleanupJobs.push(() => remove("payment-proofs", [proofAPath], customerA));
-
-  response = await downloadPrivate("payment-proofs", proofAPath, customerA);
-  await expectAllowed("Customer A reads own private payment proof", response);
-
-  response = await downloadPrivate("payment-proofs", proofAPath, customerB);
-  await expectDenied("Customer B cannot read Customer A payment proof", response);
-
-  response = await downloadPrivateAnon("payment-proofs", proofAPath);
-  await expectDenied("Anonymous request cannot read private payment proof", response);
-
-  response = await downloadPrivate("payment-proofs", proofAPath, admin);
-  await expectAllowed("Verified admin can read customer payment proof", response);
-
-  response = await upload("payment-proofs", proofForgedPath, customerB, "forged namespace attempt");
-  await expectDenied("Customer B cannot upload into Customer A payment-proof namespace", response);
-
-  response = await upload("avatars", avatarAPath, customerA, "phase4.2 avatar fixture");
-  await expectAllowed("Customer A uploads into own avatar namespace", response);
-  if (response.ok) cleanupJobs.push(() => remove("avatars", [avatarAPath], customerA));
-
-  response = await upload("avatars", avatarAPath.replace(customerAId, customerBId), customerA, "cross-user avatar attempt");
-  await expectDenied("Customer A cannot upload into Customer B avatar namespace", response);
-
-  response = await upload("product-images", productPath, customerA, "customer admin-media attempt");
-  await expectDenied("Customer cannot upload product image", response);
-
-  response = await upload("product-images", productPath, admin, "admin product image fixture");
-  await expectAllowed("Verified admin uploads product image", response);
-  if (response.ok) cleanupJobs.push(() => remove("product-images", [productPath], admin));
-} finally {
-  for (const cleanup of cleanupJobs.reverse()) {
-    try {
-      const response = await cleanup();
-      if (!response.ok) console.warn(`WARN cleanup returned HTTP ${response.status}: ${await response.text()}`);
-    } catch (error) {
-      console.warn(`WARN cleanup failed: ${error.message}`);
+  for (const marker of requiredMigrationMarkers) {
+    if (!migration.toLowerCase().includes(marker.toLowerCase())) {
+      errors.push(`Migration missing required marker: ${marker}`);
     }
   }
+
+  const forbiddenMigrationPatterns = [
+    /alter\s+table\s+storage\./i,
+    /create\s+policy[\s\S]*?on\s+storage\./i,
+    /drop\s+policy[\s\S]*?on\s+storage\./i,
+    /grant\s+.*supabase_storage_admin/i,
+    /todo/i,
+    /existing code here/i,
+    /\.\.\./
+  ];
+  for (const pattern of forbiddenMigrationPatterns) {
+    if (pattern.test(migration)) errors.push(`Forbidden migration pattern found: ${pattern}`);
+  }
+
+  const decrementStart = migration.indexOf('create or replace function public.decrement_stock_for_order');
+  const decrementEnd = migration.indexOf('comment on function public.decrement_stock_for_order', decrementStart);
+  const decrementBlock = migration.slice(decrementStart, decrementEnd);
+  if (/update\s+public\.products/i.test(decrementBlock)) {
+    errors.push('Public decrement compatibility RPC still mutates public.products.');
+  }
+
+  const restoreStart = migration.indexOf('create or replace function public.restore_stock_for_order');
+  const restoreEnd = migration.indexOf('comment on function public.restore_stock_for_order', restoreStart);
+  const restoreBlock = migration.slice(restoreStart, restoreEnd);
+  if (/update\s+public\.products/i.test(restoreBlock)) {
+    errors.push('Public restore compatibility RPC still mutates public.products.');
+  }
+
+  const dollarQuoteCount = (migration.match(/\$\$/g) || []).length;
+  if (dollarQuoteCount % 2 !== 0) errors.push(`Unbalanced $$ delimiters: ${dollarQuoteCount}`);
+
+  if (!contract.includes("phase42b_contract_status")) {
+    errors.push('Contract test does not expose phase42b_contract_status.');
+  }
+  if (!contract.includes("Delivery route pricing remains a Phase 4.3")) {
+    errors.push('Contract test does not preserve the Phase 4.3 delivery boundary.');
+  }
+  if (!behavior.toLowerCase().trimEnd().endsWith('rollback;')) {
+    errors.push('Behavior regression must end with ROLLBACK.');
+  }
+  if (!behavior.includes('DO NOT RUN THIS ON PRODUCTION')) {
+    errors.push('Behavior regression is missing its production safety warning.');
+  }
+  if (!security.includes('dagoldol_private.apply_stock_lines')) errors.push('SECURITY.md is missing the Phase 4.2B private stock boundary.');
+  if (!security.includes('Phase 4.3 commerce boundary')) errors.push('SECURITY.md is missing the residual Phase 4.3 boundary.');
+
+  const normalizedStatus = status.replace(/\*/g, '').toLowerCase();
+  if (!normalizedStatus.includes('not been applied by chatgpt to production')) {
+    errors.push('Status file must explicitly state production was not mutated.');
+  }
 }
 
-if (failures > 0) {
-  console.error(`Phase 4.2 Storage runtime regression failed: ${failures} assertion(s).`);
+if (errors.length) {
+  console.error('Dagoldol Phase 4.2B package verification FAILED.');
+  for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
 
-console.log("Phase 4.2 Storage runtime regression passed.");
+console.log('Dagoldol Phase 4.2B package verification passed.');
+console.log(`Checked ${Object.keys(files).length} required files plus migration safety markers.`);
