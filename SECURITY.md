@@ -110,6 +110,11 @@ DM RLS grants row access only to participants. Database triggers additionally en
 
 ## Storage security
 
+### Hosted Supabase Storage ownership boundary
+
+On the hosted Dagoldol project, `storage.objects` and `storage.buckets` are owned by Supabase's managed `supabase_storage_admin` role while SQL Editor runs as `postgres`. Phase 4.2 must not change that ownership, grant managed-role membership, or issue `ALTER TABLE storage.objects` from normal project migrations. Storage access policies are deployed through **Storage -> Policies -> OBJECTS** using `docs/phase4/PHASE4.2-STORAGE-POLICY-UI-CHECKLIST.md`, then verified read-only with `database/tests/phase4_2_storage_regression.sql`.
+
+
 `payment-proofs` is private. Its object path begins with the authenticated owner's UUID. Only that owner and a verified administrator may read the object; only the owner may perform ordinary customer writes to that namespace.
 
 `avatars` uses the same UUID-first owner namespace for customer writes.
