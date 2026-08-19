@@ -91,3 +91,8 @@ The live `place_order(...)` function body references those absent columns in its
 ## Security-advisor findings retained for follow-up
 
 The current advisor also reports multiple mutable-function `search_path` warnings and exposed `SECURITY DEFINER` functions. Phase 4.2 prioritizes exploitable authorization/commerce boundaries first; all remaining advisor items must be rerun and resolved or explicitly justified on staging before the phase closes.
+
+
+## 2026-08-20 corrected Storage ownership finding
+
+The first combined Phase 4.2A migration failed with `must be owner of table objects`. Live verification showed SQL Editor executes as `postgres`; `storage.objects` and `storage.buckets` are owned by `supabase_storage_admin`; and `postgres` is not a member of that managed role. The migration transaction rolled back. Corrective design: public-schema/RPC/grant hardening remains SQL migration work, while hosted Storage policy changes are performed through Storage -> Policies and verified read-only afterward. Ownership of managed Storage entities is not changed.
