@@ -8,7 +8,8 @@ const root = path.resolve(here, "..");
 
 const requiredFiles = [
   "database/20260820_phase4_2_live_contract.sql",
-  "database/20260820_phase4_2a_zero_trust_rls_private_data.sql",
+  "database/20260820_phase4_2a1_public_zero_trust_rls.sql",
+  "docs/phase4/PHASE4.2-STORAGE-POLICY-UI-CHECKLIST.md",
   "database/20260820_phase4_2b_checkout_authorization_gate.sql",
   "database/tests/phase4_2_policy_contract.sql",
   "database/tests/phase4_2_rls_regression.sql",
@@ -36,12 +37,13 @@ function read(rel) {
 
 for (const rel of requiredFiles) read(rel);
 
-const migration = read("database/20260820_phase4_2a_zero_trust_rls_private_data.sql");
+const migration = read("database/20260820_phase4_2a1_public_zero_trust_rls.sql");
 const policyTest = read("database/tests/phase4_2_policy_contract.sql");
 const rlsTest = read("database/tests/phase4_2_rls_regression.sql");
 const storageTest = read("database/tests/phase4_2_storage_regression.sql");
 const checkoutGate = read("database/20260820_phase4_2b_checkout_authorization_gate.sql");
 const status = read("PHASE4.2-IMPLEMENTATION-STATUS.md");
+const storageChecklist = read("docs/phase4/PHASE4.2-STORAGE-POLICY-UI-CHECKLIST.md");
 
 const requiredMigrationTokens = [
   "create or replace function public.is_admin()",
@@ -54,8 +56,6 @@ const requiredMigrationTokens = [
   "p42_ratings_insert_purchased_delivered",
   "p42_dm_thread_guard",
   "p42_dm_message_guard",
-  "p42_storage_payment_proof_owner_admin_read",
-  "p42_storage_admin_media_insert",
   "revoke all on function public.decrement_stock_for_order(jsonb) from anon",
   "grant execute on function public.decrement_stock_for_order(jsonb) to authenticated",
   "p42_orders_insert_owner_compat_phase42a"
@@ -76,6 +76,17 @@ for (const token of forbiddenLegacyPolicyNames) {
   if (migration.toLowerCase().includes(token.toLowerCase())) {
     fail(`migration recreates forbidden legacy policy: ${token}`);
   }
+}
+
+
+if (/alter\s+table\s+storage\.objects\s+enable\s+row\s+level\s+security/i.test(migration)) {
+  fail("4.2A1 public migration must not ALTER managed storage.objects");
+}
+if (/create\s+policy[\s\S]*?on\s+storage\.objects/i.test(migration)) {
+  fail("4.2A1 public migration must not CREATE policies on managed storage.objects");
+}
+if (/drop\s+policy[\s\S]*?on\s+storage\.objects/i.test(migration)) {
+  fail("4.2A1 public migration must not DROP policies on managed storage.objects");
 }
 
 if (!migration.includes("begin;") || !migration.includes("commit;")) {
@@ -108,10 +119,28 @@ if (!rlsTest.includes("rollback;")) fail("RLS behavior test must roll back fixtu
 
 for (const token of [
   "payment-proofs bucket is not private",
-  "anonymous storage.objects SELECT policy remains",
-  "p42_storage_payment_proof_owner_admin_read"
+  "broad legacy Storage bypass policies remain",
+  "p42_storage_avatar_owner_read",
+  "p42_storage_payment_proof_owner_update",
+  "p42_storage_admin_media_read"
 ]) {
   if (!storageTest.includes(token)) fail(`Storage structural test missing: ${token}`);
+}
+
+for (const token of [
+  "storage_public_read",
+  "storage_avatar_upload_own",
+  "storage_payment_proof_upload_own",
+  "storage_admin_delete",
+  "storage_admin_manage",
+  "storage_admin_upload",
+  "p42_storage_avatar_owner_read",
+  "p42_storage_payment_proof_owner_update",
+  "p42_storage_admin_media_read",
+  "Do not change ownership",
+  "Do not grant `postgres` membership in `supabase_storage_admin`"
+]) {
+  if (!storageChecklist.includes(token)) fail(`Storage UI checklist missing: ${token}`);
 }
 
 for (const token of [
@@ -126,6 +155,10 @@ for (const token of [
   if (!checkoutGate.includes(token)) fail(`Phase 4.2B gate missing diagnostic: ${token}`);
 }
 
+if (fs.existsSync(path.join(root, "database/20260820_phase4_2a_zero_trust_rls_private_data.sql"))) {
+  fail("broken combined 4.2A migration must not remain in corrected package");
+}
+
 if (!status.includes("**Phase 4.2 exit gate: NOT PASSED.**")) {
   fail("status document must not claim Phase 4.2 completion");
 }
@@ -133,7 +166,8 @@ if (!status.includes("**Phase 4.2 exit gate: NOT PASSED.**")) {
 // No placeholder markers in implementation artifacts. The approved plan may
 // discuss validation steps, so only executable/security deliverables are scanned.
 const executableDocs = [
-  "database/20260820_phase4_2a_zero_trust_rls_private_data.sql",
+  "database/20260820_phase4_2a1_public_zero_trust_rls.sql",
+  "docs/phase4/PHASE4.2-STORAGE-POLICY-UI-CHECKLIST.md",
   "database/20260820_phase4_2b_checkout_authorization_gate.sql",
   "database/tests/phase4_2_policy_contract.sql",
   "database/tests/phase4_2_rls_regression.sql",
@@ -202,7 +236,7 @@ function sqlLexicalCheck(rel, text) {
 
 for (const rel of [
   "database/20260820_phase4_2_live_contract.sql",
-  "database/20260820_phase4_2a_zero_trust_rls_private_data.sql",
+  "database/20260820_phase4_2a1_public_zero_trust_rls.sql",
   "database/20260820_phase4_2b_checkout_authorization_gate.sql",
   "database/tests/phase4_2_policy_contract.sql",
   "database/tests/phase4_2_rls_regression.sql",
