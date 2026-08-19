@@ -4,7 +4,7 @@
 
 This document defines the security boundary for Dagoldol Phase 4.2. The database and Supabase Storage authorization rules are authoritative. Browser UI visibility, disabled buttons, route guards, and client-side role checks are usability controls only and must never be treated as authorization.
 
-The latest confirmed application release for this work is Dagoldol 3.3.5. Phase 4.2 is currently **OPEN / NOT DEPLOYED**; the repository package contains a staging-first authorization migration and regression tests, but production must not be changed until the Phase 4.1 rollback evidence is complete.
+The latest confirmed application release for this work is Dagoldol 3.3.5. Phase 4.2A public/RLS and Storage hardening is deployed on the live Supabase project. Phase 4.2 remains **OPEN** until the Phase 4.2B commerce-authority migration is runtime-verified and promoted; this file describes the resulting target contract.
 
 ## Trust boundaries
 
@@ -21,7 +21,7 @@ A customer must not be able to:
 - change `profiles.role` or create an administrator profile;
 - read or modify another customer's private profile, address, cart, orders, subscriptions, stored-value records, private messages, or payment proof;
 - change trusted order totals, line prices, status, delivery fee, promo consumption, inventory, or payment-verification state;
-- execute internal inventory restoration/decrement commands after the Phase 4.2B checkout cutover;
+- directly mutate inventory through browser-facing stock RPCs; compatibility RPCs may remain callable only when they are demonstrably non-mutating;
 - change another participant's DM identity, sender identity, read marker, reaction identity, message body, thread membership, or saved timestamp;
 - write storefront settings, products, brands, bundles, flash sales, promo definitions, or admin media;
 - create or mutate stored-value gift-card balances through generic browser database access.
@@ -49,7 +49,7 @@ Server-only monetary/subscription processors must validate their own business in
 | `flash_sales` | read | read | manage | manage |
 | `promo_codes` | none | read definitions required by current checkout; no writes | manage | manage/consume atomically |
 | `settings` | read | read | manage | manage |
-| `orders` | none | own rows; Phase 4.2A temporary direct insert compatibility only | manage | trusted commerce command |
+| `orders` | none | own rows; owner INSERT accepted only through canonical database enforcement; protected saved fields immutable except legal cancellation/rating transitions | manage | trusted commerce operations |
 | `ratings` | read | insert only for owned delivered purchased item | correct/delete | manage |
 | `messages` | none | authenticated submission | read/delete | manage |
 | `activity` | none | authenticated append | read/delete | manage |
@@ -74,7 +74,7 @@ The following values are protected at the database/server boundary, not merely i
 - DM participant identities, sender identity, message body, saved timestamp, and another user's read/reaction state;
 - private Storage object namespace and payment-proof access.
 
-The existing `profiles_guard_role_client` and `orders_guard_customer_write` triggers remain defense-in-depth controls and must not be removed without an equivalent or stronger replacement plus regression evidence.
+The existing `profiles_guard_role_client` remains a defense-in-depth control. Phase 4.2B strengthens `orders_guard_customer_write` into the customer commerce-authority trigger: it canonicalizes line identity/pricing and trusted totals, consumes promos atomically, performs authoritative stock mutation through a private helper, restores stock atomically on cancellation, and protects saved order fields. It must not be weakened or removed without equivalent or stronger regression-proven controls.
 
 ## RLS policy rules
 
@@ -91,9 +91,13 @@ The existing `profiles_guard_role_client` and `orders_guard_customer_write` trig
 
 Browser execution is allowed only for functions deliberately designed as a browser API. Internal helpers must not be executable by `PUBLIC`, `anon`, or ordinary `authenticated` users.
 
-Phase 4.2A removes anonymous access to the order stock helpers but temporarily leaves authenticated execution for compatibility with the retrievable checkout/cancellation implementation. This is an acknowledged P0 and prevents Phase 4.2 closure. Phase 4.2B must move checkout and cancellation into trusted atomic commands, then revoke authenticated execution of `decrement_stock_for_order(jsonb)` and `restore_stock_for_order(jsonb)`.
+Phase 4.2A removed anonymous access to the legacy order stock helpers. Phase 4.2B preserves the current 3.3.5 browser call shape without preserving its authority: `decrement_stock_for_order(jsonb)` becomes a `SECURITY INVOKER` read-only availability validator and `restore_stock_for_order(jsonb)` becomes a `SECURITY INVOKER` no-op compatibility shim. The only real stock mutator is `dagoldol_private.apply_stock_lines(jsonb, integer)`, which is not executable by ordinary authenticated clients. Authoritative decrement occurs in the order INSERT transaction and authoritative restoration occurs in the cancellation UPDATE transaction.
 
 Gift-card monetary functions and the currently schema-stale subscription processors are server-only in the Phase 4.2A target contract.
+
+### Phase 4.3 commerce boundary
+
+Phase 4.2B does not claim to make road-route delivery pricing server-authoritative. The current browser still supplies the route-derived delivery quote; Phase 4.2B validates it as finite/non-negative, freezes it after INSERT, and derives the saved total from database-canonical product/bundle/promo values plus that quote. Phase 4.3 must move route quoting, final checkout request idempotency, and the complete server-authoritative checkout orchestration behind one trusted service boundary.
 
 ## Direct-message integrity
 
@@ -143,7 +147,7 @@ Before production deployment, staging must prove all of the following:
 2. Customer A cannot read Customer B profile-private data, order, location, messages, subscription data, or payment proof;
 3. customer trusted-order field tampering is denied;
 4. customer storefront settings and promo-counter writes are denied;
-5. customer direct stock mutation is denied after Phase 4.2B;
+5. customer direct stock mutation is denied after Phase 4.2B, including proof that browser-facing compatibility RPCs do not update `products`;
 6. DM identity/content/reaction impersonation is denied;
 7. invalid/non-purchased/non-delivered/duplicate ratings are denied while a valid eligible rating succeeds;
 8. anonymous access to protected customer data and payment proofs is denied;
