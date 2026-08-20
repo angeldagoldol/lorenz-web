@@ -74,7 +74,7 @@ revoke all on table dagoldol_private.checkout_requests,
 from public, anon, authenticated;
 
 grant select, insert, update on dagoldol_private.checkout_requests to service_role;
-grant select on dagoldol_private.delivery_config, dagoldol_private.delivery_free_zones to service_role;
+grant select, update on dagoldol_private.delivery_config, dagoldol_private.delivery_free_zones to service_role;
 
 create or replace function dagoldol_private.p43_delivery_config_hash()
 returns text
