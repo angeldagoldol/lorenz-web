@@ -7,7 +7,9 @@ const root = new URL('../', import.meta.url);
 const required = [
   'database/20260820_phase4_3_server_authoritative_checkout.sql',
   'database/tests/phase4_3_contract.sql',
+  'database/tests/phase4_3_clean_replay_behavior.sql',
   'docs/phase4/PHASE4.3-VERIFICATION.md',
+  'docs/phase4/PHASE4.3-DELIVERY-ZONE-EVIDENCE.md',
   'docs/phase4/PHASE4.3-PRODUCTION-PROMOTION-CHECKLIST.md',
   'supabase/functions/checkout/index.ts',
   'supabase/functions/checkout/contracts.ts',
@@ -19,6 +21,7 @@ const required = [
   'tests/phase4-3-edge-integration.test.mjs',
   'tests/phase4-3-concurrency.test.mjs',
   'SECURITY.md',
+  'scripts/verify-phase4-3-delivery-zones.mjs',
   'MANIFEST-PHASE4.3-STAGE-A.sha256',
 ];
 
@@ -41,6 +44,7 @@ for (const token of [
   assert.ok(migration.toLowerCase().includes(token.toLowerCase()), `migration missing ${token}`);
 }
 assert.match(migration, /revoke all on function public\.p43_commit_checkout[\s\S]*anon, authenticated/i);
+assert.match(migration, /grant select, update on dagoldol_private\.delivery_config, dagoldol_private\.delivery_free_zones to service_role;/i);
 
 const router = await fs.readFile(new URL('supabase/functions/checkout/router.ts', root), 'utf8');
 assert.match(router, /main\.roadDistanceKm <= config\.freeKmThreshold/);

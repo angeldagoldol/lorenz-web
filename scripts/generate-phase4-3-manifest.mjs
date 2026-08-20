@@ -9,6 +9,7 @@ const files = [
   'SECURITY.md',
   'database/20260820_phase4_3_server_authoritative_checkout.sql',
   'database/tests/phase4_3_contract.sql',
+  'database/tests/phase4_3_clean_replay_behavior.sql',
   'docs/phase4/PHASE4.3-DELIVERY-ZONE-EVIDENCE.md',
   'docs/phase4/PHASE4.3-PRODUCTION-PROMOTION-CHECKLIST.md',
   'docs/phase4/PHASE4.3-VERIFICATION.md',
