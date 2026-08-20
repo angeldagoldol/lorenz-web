@@ -2,9 +2,9 @@
 
 ## Scope
 
-This document defines the security boundary for Dagoldol Phase 4.2. The database and Supabase Storage authorization rules are authoritative. Browser UI visibility, disabled buttons, route guards, and client-side role checks are usability controls only and must never be treated as authorization.
+This document defines the security boundary for Dagoldol Phase 4.2 and the additive Phase 4.3 server-authoritative checkout candidate. The database and Supabase Storage authorization rules are authoritative. Browser UI visibility, disabled buttons, route guards, and client-side role checks are usability controls only and must never be treated as authorization.
 
-The latest confirmed application release for this work is Dagoldol 3.3.5. Phase 4.2A public/RLS and Storage hardening is deployed on the live Supabase project. Phase 4.2 remains **OPEN** until the Phase 4.2B commerce-authority migration is runtime-verified and promoted; this file describes the resulting target contract.
+The latest confirmed application release for this work is Dagoldol 3.3.5. Phase 4.2A public/RLS and Storage hardening and Phase 4.2B commerce-authority hardening are deployed and behavior-verified on the live Supabase project. Phase 4.3 Stage A is verified only in the isolated staging project and remains blocked from production promotion until the explicit release gates in the Phase 4.3 promotion checklist are closed.
 
 ## Trust boundaries
 
