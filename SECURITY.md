@@ -159,3 +159,49 @@ Before production deployment, staging must prove all of the following:
 ## Vulnerability reporting
 
 Security findings should be reported privately to the repository/project owner with the affected endpoint/table/function, reproduction conditions, expected authorization, observed authorization, and impact. Do not publish credentials, customer data, payment evidence, access tokens, or a working exploit against production in a public issue.
+
+## Phase 4.3 server-authoritative checkout
+
+Phase 4.3 adds a second, stricter checkout path without immediately removing the Phase 4.2B browser-compatibility path. Production must not remove the compatibility path until the exact deployed frontend has been cut over and verified.
+
+The trusted Stage A boundary is:
+
+`authenticated browser -> checkout Edge Function -> service-role-only Phase 4.3 RPC -> one PostgreSQL transaction`.
+
+The browser may submit semantic checkout intent only: product/bundle identifiers, existing variant discriminator, quantities, delivery text, confirmed coordinates, promo code, payment selection/reference/proof path, half-payment choice, address-save choice, and a client-generated UUID idempotency key. Browser-supplied prices, discounts, stock values, promo counters, delivery fee, bulk fee, subtotal, final total, payment amounts, order ID, timestamps, and privileged order state are not authoritative.
+
+### Phase 4.3 RPC exposure
+
+The following RPCs are deliberately callable only by `service_role`:
+
+- `public.p43_get_routing_config()`;
+- `public.p43_quote_checkout(uuid,jsonb,jsonb,text)`;
+- `public.p43_commit_checkout(uuid,uuid,jsonb,jsonb,text)`.
+
+`PUBLIC`, `anon`, and ordinary `authenticated` roles have `EXECUTE` revoked. The Edge Function verifies the incoming user JWT with Auth and supplies the verified user UUID to these service RPCs. The service-role secret must never be returned to, logged for, or embedded in the browser.
+
+The public Phase 4.3 RPCs are `SECURITY INVOKER` with fixed empty `search_path`. Internal request normalization, configuration hashing, pricing resolution, flash-sale lock coordination, the idempotency ledger, and delivery configuration live under `dagoldol_private`.
+
+### Private-table fail-closed policy
+
+`dagoldol_private.checkout_requests`, `dagoldol_private.delivery_config`, and `dagoldol_private.delivery_free_zones` have RLS enabled with no browser/client policies. `PUBLIC`, `anon`, and `authenticated` privileges are explicitly revoked. `service_role` is the trusted execution role and has `BYPASSRLS` in hosted Supabase.
+
+The absence of client RLS policies on these private tables is intentional. Do not create permissive policies merely to clear an informational linter message.
+
+### Idempotency and transaction integrity
+
+`checkout_requests` uses `(user_id, idempotency_key UUID)` as its primary key and stores a SHA-256 fingerprint of normalized semantic intent. Same user/key/same intent returns the previously committed response. Same user/key/different intent fails with `IDEMPOTENCY_CONFLICT`.
+
+The commit transaction locks and resolves authoritative commerce state, decrements inventory, consumes the promo, creates the canonical order, optionally saves the address, and completes the idempotency ledger before commit. Any exception rolls all of those changes back together.
+
+### Delivery authority
+
+The Edge Function owns external routing, bounded timeout/retry, origin allowlisting, JWT verification, and request-size limits. It sends route measurements and a database configuration hash; it does not calculate the PHP fee. PostgreSQL owns the configured free-kilometre threshold, free-zone radii, PHP/km rate, fallback fee, and final delivery amount.
+
+The current configured contract is 5 km free, PHP 60 per full road-kilometre when chargeable, and PHP 600 fallback. The Edge Function must consume `freeKmThreshold` returned by `p43_get_routing_config()` and must not hard-code 5 km as routing control logic.
+
+### Payment proof and logging
+
+A submitted payment proof path must start with the authenticated user's UUID namespace. Payment proof storage remains private. Uploading proof is not equivalent to payment verification.
+
+Checkout logs may contain correlation ID, operation, truncated user reference, stable error code, duration, and upstream status when useful. They must not contain access tokens, service keys, payment references, proof paths, full address text, or precise delivery coordinates.
