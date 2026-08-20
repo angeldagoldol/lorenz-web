@@ -47,13 +47,22 @@ with checks as (
     has_function_privilege('authenticated','public.p43_quote_checkout(uuid,jsonb,jsonb,text)','EXECUTE') as auth_quote_exec,
     has_function_privilege('anon','public.p43_commit_checkout(uuid,uuid,jsonb,jsonb,text)','EXECUTE') as anon_commit_exec,
     has_function_privilege('authenticated','public.p43_commit_checkout(uuid,uuid,jsonb,jsonb,text)','EXECUTE') as auth_commit_exec,
-    coalesce((select not p.prosecdef and p.proconfig @> array['search_path=']::text[]
+    coalesce((select not p.prosecdef and exists (
+                select 1 from unnest(coalesce(p.proconfig,'{}'::text[])) cfg
+                where replace(cfg,'"','')='search_path='
+              )
               from pg_proc p join pg_namespace n on n.oid=p.pronamespace
               where n.nspname='public' and p.proname='p43_get_routing_config'),false)
-    and coalesce((select not p.prosecdef and p.proconfig @> array['search_path=']::text[]
+    and coalesce((select not p.prosecdef and exists (
+                select 1 from unnest(coalesce(p.proconfig,'{}'::text[])) cfg
+                where replace(cfg,'"','')='search_path='
+              )
               from pg_proc p join pg_namespace n on n.oid=p.pronamespace
               where n.nspname='public' and p.proname='p43_quote_checkout'),false)
-    and coalesce((select not p.prosecdef and p.proconfig @> array['search_path=']::text[]
+    and coalesce((select not p.prosecdef and exists (
+                select 1 from unnest(coalesce(p.proconfig,'{}'::text[])) cfg
+                where replace(cfg,'"','')='search_path='
+              )
               from pg_proc p join pg_namespace n on n.oid=p.pronamespace
               where n.nspname='public' and p.proname='p43_commit_checkout'),false)
       as public_rpcs_invoker_fixed_path,
