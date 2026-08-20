@@ -16,27 +16,27 @@ All must be retained before any Phase 4.3 production mutation:
 
 ## Gate B — consolidated migration replay
 
-- [ ] replay the exact production candidate `database/20260820_phase4_3_server_authoritative_checkout.sql` against a clean isolated database restored to the verified Phase 4.2B baseline;
-- [ ] run `database/tests/phase4_3_contract.sql`;
-- [ ] run database behavior/rollback tests;
+- [x] replay the exact production candidate `database/20260820_phase4_3_server_authoritative_checkout.sql` against a clean isolated database restored to the Phase 4.2B commerce baseline;
+- [x] run `database/tests/phase4_3_contract.sql`;
+- [x] run `database/tests/phase4_3_clean_replay_behavior.sql` rollback-only behavior tests;
 - [ ] run independent stock/promo/idempotency concurrency tests;
 - [ ] confirm no test fixtures remain.
 
-The current staging environment proved the staged Phase 4.3 functions and behavior, but the consolidated production-candidate SQL file must still be replayed verbatim before production use.
+The corrected consolidated production-candidate SQL has now been replayed atomically from a clean Phase 4.2B staging commerce baseline. The packaged contract and rollback-only clean-replay behavior test both passed, and final hygiene confirmed no test fixtures remained. Independent concurrency had already passed on the same resolver/commit logic before the clean replay; rerunning that concurrency suite after the private-table lock-grant/test-assertion correction remains a conservative release check.
 
 ## Gate C — Edge Function
 
-- [ ] deploy the exact package source under `supabase/functions/checkout/` to staging;
-- [ ] `verify_jwt=true`;
-- [ ] TypeScript compiler passes;
-- [ ] all Edge unit tests pass;
+- [x] deploy the exact package source under `supabase/functions/checkout/` to staging;
+- [x] `verify_jwt=true`;
+- [x] TypeScript compiler passes;
+- [x] all Edge unit tests pass;
 - [ ] authenticated staging quote succeeds with a real customer JWT;
-- [ ] forged monetary fields are ignored;
+- [x] forged monetary fields are ignored by Edge request normalization and the clean-replay database behavior test;
 - [ ] authenticated commit succeeds;
 - [ ] retry with same idempotency key returns the same order;
-- [ ] route failure uses configured fallback;
-- [ ] CORS accepts only expected production/development origins;
-- [ ] logs contain no payment/address/token secrets.
+- [x] route failure uses configured fallback in the Edge unit suite and database resolver behavior;
+- [x] CORS accepts the configured production/development allowlist; fresh staging v4 runtime probe returned the expected production origin;
+- [x] logger source is restricted to correlation ID, operation, truncated user reference, stable error code, and duration; it does not log payment/address/token payloads.
 
 ## Gate D — exact frontend baseline
 

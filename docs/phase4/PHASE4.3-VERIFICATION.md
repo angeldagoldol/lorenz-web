@@ -41,7 +41,7 @@ The required rollback evidence is still not closed in this conversation. Before 
 
 The staging database was reconstructed to the Phase 4.2 commerce contract needed by Phase 4.3 and then exercised with the Phase 4.3 schema/functions.
 
-Fresh clean structural probe after RLS hardening, Edge v2 deployment, and removal of test extensions: **PASS**.
+Fresh clean structural probe after the corrected consolidated migration replay, RLS hardening, Edge v4 restoration, and removal of test extensions: **PASS**.
 
 Verified:
 
@@ -116,14 +116,14 @@ The suite covers request allowlisting, forged monetary fields, confirmed coordin
 
 Checkout Edge Function:
 
-- version: `2`
+- version: `4`
 - status: `ACTIVE`
 - `verify_jwt=true`
 - deployed source SHA reported by Supabase: `051da9f7c1fedd38752733bf1edc90cda50c44c14bd1ccf31ca9e5a4b91fc941`
 
-Version 2 is the modular package source and consumes `config.freeKmThreshold` returned by the database.
+Version 4 is the exact modular package source and consumes `config.freeKmThreshold` returned by the database. Version 3 was a temporary fail-closed maintenance deployment used only while the approved destructive staging reset was in progress.
 
-Fresh runtime probe after version 2 deployment: **PASS for runtime/auth/CORS rejection path**. A non-user anon JWT passed the platform JWT layer, reached the Edge runtime, and the function returned `401 AUTH_REQUIRED`; response headers contained the expected production CORS origin and `x-checkout-request-id` correlation ID. The temporary `pg_net` transport used for the probe was dropped immediately afterward.
+Fresh runtime probe after version 4 restoration: **PASS for runtime/auth/CORS rejection path**. A non-user anon JWT passed the platform JWT layer, reached the Edge runtime, and the function returned `401 AUTH_REQUIRED`; response headers contained the expected production CORS origin and `x-checkout-request-id` correlation ID. The temporary `pg_net` transport used for the probe was dropped immediately afterward.
 
 ### Authenticated Edge quote/commit integration
 
@@ -152,13 +152,17 @@ Supabase may report informational `rls_enabled_no_policy` notices for these priv
 
 Phase 4.3-specific performance finding for the idempotency ledger order foreign key was corrected with `checkout_requests_order_id_idx`.
 
-Remaining staging advisor items are inherited/reconstruction items outside this new Stage A boundary, including the existing `public.is_admin()` authenticated SECURITY DEFINER warning and Phase 4.2 baseline indexes/policy optimization notices. They are not represented as fixed by Phase 4.3.
+Remaining staging advisor items are inherited/reconstruction items outside this new Stage A boundary. The private Phase 4.3 tables intentionally report INFO `rls_enabled_no_policy` because they are RLS-enabled with no client policies. The performance advisor reports the new `checkout_requests_order_id_idx` only as unused because staging retains zero checkout rows; the earlier missing-FK-index finding is resolved. Reconstructed Phase 4.2 baseline notices include public-table policy/index optimization items and SECURITY DEFINER warnings. A read-only comparison with production confirmed that production already denies both `anon` and `authenticated` execution of `guard_customer_order_write()`; that warning is staging scaffold noise. Production intentionally allows authenticated `is_admin()` and denies anonymous execution. None of these inherited notices is represented as fixed by Phase 4.3.
 
 ## Consolidated production candidate
 
 `database/20260820_phase4_3_server_authoritative_checkout.sql` consolidates the additive Stage A schema/functions/grants/RLS into one production-candidate migration.
 
-Important: the individual staged objects and behavior above are verified, but this newly consolidated file has **not yet been replayed verbatim from a clean Phase 4.2B database**. That exact-file replay is a production-promotion gate and is documented in `docs/phase4/PHASE4.3-PRODUCTION-PROMOTION-CHECKLIST.md`.
+The consolidated candidate was destructively clean-replayed in the isolated staging project from a reconstructed Phase 4.2B commerce baseline. The first replay exposed two packaging defects: the service role lacked the lock-capable `UPDATE` privilege required by `FOR SHARE` on the private delivery tables, and the contract test assumed one exact internal `proconfig` representation for `SET search_path=''`. Both were corrected. The corrected candidate migration SHA-256 is `a0e696f5dc67fb0633073a61a141355a04cd7393e13c1ef496129a99f10b5e4c`.
+
+Corrected clean replay evidence: **PASS**. The packaged structural contract returned `phase43_contract_status = PASS`; the rollback-only `database/tests/phase4_3_clean_replay_behavior.sql` returned `phase43_clean_replay_behavior_status = PASS`, proving canonical totals, stock/promo mutation, same-key retry, idempotency conflict, insufficient-stock rollback, and no retained failed-checkout ledger state.
+
+The first corrected replay behavior run exposed the missing lock-capable private delivery-table privilege and therefore failed before certification. The package was corrected to grant `service_role` `SELECT, UPDATE` on `dagoldol_private.delivery_config` and `dagoldol_private.delivery_free_zones`, staging was reset a second time, and the corrected migration was replayed from the clean Phase 4.2B baseline. The final structural and rollback-only behavior runs both passed. Final hygiene showed `orders=0`, `products=0`, `promos=0`, `bundles=0`, `checkout_requests=0`, no replay Auth fixture, and no temporary test extensions.
 
 ## Current gate summary
 
@@ -173,10 +177,10 @@ Stage A stock concurrency: PASS
 Stage A promo concurrency: PASS
 Stage A idempotency concurrency: PASS
 Stage A private-table RLS: PASS
-Stage A Edge v2 deployment: ACTIVE / verify_jwt=true
+Stage A Edge v4 deployment: ACTIVE / verify_jwt=true
 Stage A Edge runtime/auth/CORS probe: PASS
 Stage A authenticated Edge quote/commit integration: NOT PROVEN
-Consolidated candidate SQL clean replay: NOT PROVEN
+Consolidated candidate SQL clean replay: PASS
 Phase 4.1 production rollback evidence: OPEN
 Stage B frontend cutover: BLOCKED
 Production Phase 4.3 mutation: NOT AUTHORIZED
