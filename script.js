@@ -1,5 +1,33 @@
 (function(){
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const authResilience = window.DAGOLDOL_AUTH_RESILIENCE;
+if (!authResilience) {
+  throw new Error("Dagoldol auth resilience module failed to load.");
+}
+
+const { createResilientSupabaseFetch, describeAuthError } = authResilience;
+const resilientSupabaseFetch = createResilientSupabaseFetch({
+  nativeFetch: window.fetch.bind(window),
+  supabaseOrigin: window.SUPABASE_URL,
+  proxyPrefix: "/api/supabase",
+  onFallback: ({ originalUrl, proxyUrl }) => {
+    console.warn("[Dagoldol] Supabase network fallback engaged:", { originalUrl, proxyUrl });
+  }
+});
+
+const supabase = window.supabase.createClient(
+  window.SUPABASE_URL,
+  window.SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    },
+    global: {
+      fetch: resilientSupabaseFetch
+    }
+  }
+);
 
 console.log("[Dagoldol] script.js starting. Supabase client created:", !!supabase);
 window.addEventListener("error", (e) => {
@@ -12,6 +40,30 @@ window.addEventListener("unhandledrejection", (e) => {
 const OWNER_EMAIL = "angelmclorenzdagoldol@gmail.com";
 const DOCUMENT_TITLE_BASE = "DAGOLDOL — Fine Everyday Goods";
 
+const APP_ROUTES = Object.freeze({
+  SHOP: "/",
+  CHECKOUT: "/checkout",
+  ORDERS: "/account/orders",
+  ADMIN: "/admin"
+});
+
+const CHECKOUT_DRAFT_STORAGE_KEY = "dagoldol_checkout_draft_v1";
+
+function normalizeAppPath(pathname = window.location.pathname){
+  let path = String(pathname || "/").replace(/\/{2,}/g, "/");
+  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+  return path || "/";
+}
+
+function navigateAppPath(path, { replace = false } = {}){
+  const normalized = normalizeAppPath(path);
+  const current = normalizeAppPath();
+  if (current === normalized && !window.location.search && !window.location.hash) return;
+  const method = replace ? "replaceState" : "pushState";
+  window.history[method]({}, "", normalized);
+  updateDocumentTitleUnread(unreadChatCount || 0);
+}
+
 const BULK_TIER_1_MIN_QTY = 250;
 const BULK_TIER_1_RATE = 0.05;
 const BULK_TIER_2_MIN_QTY = 256;
@@ -21,19 +73,97 @@ const LOW_STOCK_THRESHOLD = 10;
 
 const DEFAULT_GCASH_NUMBER = "0963 202 0564";
 
-let currentSettings = { gcash_number: DEFAULT_GCASH_NUMBER, gcash_qr_image: null, shop_logo_image: null };
+let currentSettings = {
+  gcash_number: DEFAULT_GCASH_NUMBER,
+  gcash_qr_image: null,
+  bank_name: "",
+  bank_account_name: "",
+  bank_account_number: "",
+  bank_qr_image: null,
+  shop_logo_image: null,
+  delivery_origin_address: "",
+  delivery_origin_latitude: "",
+  delivery_origin_longitude: ""
+};
+
+let catalogueSnapshotPromise = null;
+let fastMobileBootstrapActive = false;
+
+function shouldUseFastMobileBootstrap(){
+  const viewportWidth = Number(window.innerWidth || document.documentElement?.clientWidth || 1024);
+  const hasTouch = Number(navigator.maxTouchPoints || 0) > 0;
+  const coarsePointer = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+  const noHover = typeof window.matchMedia === "function" && window.matchMedia("(hover: none)").matches;
+  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
+  const saveData = Boolean(connection && connection.saveData);
+  const effectiveType = String(connection && connection.effectiveType || "").toLowerCase();
+  const slowNetwork = ["slow-2g", "2g", "3g"].includes(effectiveType);
+  const mobileViewport = viewportWidth <= 768;
+  return (mobileViewport && (hasTouch || coarsePointer || noHover)) || saveData || slowNetwork;
+}
+
+async function loadCatalogueSnapshot(){
+  if (!catalogueSnapshotPromise) {
+    catalogueSnapshotPromise = fetch("./catalogue-snapshot.json", { cache: "force-cache", credentials: "same-origin" })
+      .then(response => {
+        if (!response.ok) throw new Error(`Catalogue snapshot request failed (${response.status}).`);
+        return response.json();
+      })
+      .then(snapshot => {
+        if (!snapshot || !Array.isArray(snapshot.products)) throw new Error("Catalogue snapshot is invalid.");
+        return snapshot;
+      })
+      .catch(error => {
+        catalogueSnapshotPromise = null;
+        console.warn("[Dagoldol] Catalogue snapshot unavailable; using live catalogue.", error);
+        return null;
+      });
+  }
+  return catalogueSnapshotPromise;
+}
+
+function settingsFromRows(rows, baseSettings = currentSettings){
+  const map = {};
+  (rows || []).forEach(row => {
+    if (row && row.key) map[row.key] = row.value;
+  });
+  return {
+    gcash_number: map.gcash_number || baseSettings.gcash_number || DEFAULT_GCASH_NUMBER,
+    gcash_qr_image: map.gcash_qr_image || baseSettings.gcash_qr_image || null,
+    bank_name: map.bank_name || baseSettings.bank_name || "",
+    bank_account_name: map.bank_account_name || baseSettings.bank_account_name || "",
+    bank_account_number: map.bank_account_number || baseSettings.bank_account_number || "",
+    bank_qr_image: map.bank_qr_image || baseSettings.bank_qr_image || null,
+    shop_logo_image: map.shop_logo_image || baseSettings.shop_logo_image || null,
+    delivery_origin_address: map.delivery_origin_address ?? baseSettings.delivery_origin_address ?? "",
+    delivery_origin_latitude: map.delivery_origin_latitude ?? baseSettings.delivery_origin_latitude ?? "",
+    delivery_origin_longitude: map.delivery_origin_longitude ?? baseSettings.delivery_origin_longitude ?? ""
+  };
+}
+
+function applySettingsRows(rows){
+  currentSettings = settingsFromRows(rows, currentSettings);
+  shopOriginCoords = null;
+  applySettingsToDom();
+}
+
+async function primeSettingsFromSnapshot(){
+  const snapshot = await loadCatalogueSnapshot();
+  if (!snapshot) return false;
+  applySettingsRows(snapshot.settings);
+  return true;
+}
+
+async function refreshSettingsLive(){
+  await loadSettings();
+}
 
 async function loadSettings(){
   try {
     const { data, error } = await supabase.from("settings").select("*");
     if (error) { console.error("[Dagoldol] loadSettings error:", error); return; }
-    const map = {};
-    (data || []).forEach(row => { map[row.key] = row.value; });
-    currentSettings = {
-      gcash_number: map.gcash_number || DEFAULT_GCASH_NUMBER,
-      gcash_qr_image: map.gcash_qr_image || null,
-      shop_logo_image: map.shop_logo_image || null
-    };
+    currentSettings = settingsFromRows(data, currentSettings);
+    shopOriginCoords = null;
   } catch (err) {
     console.error("[Dagoldol] loadSettings threw:", err);
   }
@@ -62,6 +192,29 @@ function applySettingsToDom(){
       imgEl.classList.add("hidden");
       imgEl.classList.remove("zoomable-img");
       placeholderEl.classList.remove("hidden");
+    }
+  }
+
+  const bankNameEl = document.getElementById("bank-name-text");
+  const bankAccountNameEl = document.getElementById("bank-account-name-text");
+  const bankAccountNumberEl = document.getElementById("bank-account-number-text");
+  if (bankNameEl) bankNameEl.textContent = currentSettings.bank_name || "Bank details not configured";
+  if (bankAccountNameEl) bankAccountNameEl.textContent = currentSettings.bank_account_name || "Contact the shop owner";
+  if (bankAccountNumberEl) bankAccountNumberEl.textContent = currentSettings.bank_account_number || "Not configured";
+
+  const bankQrImgEl = document.getElementById("bank-qr-img");
+  const bankQrPlaceholderEl = document.getElementById("bank-qr-placeholder");
+  if (bankQrImgEl && bankQrPlaceholderEl) {
+    if (currentSettings.bank_qr_image) {
+      bankQrImgEl.src = currentSettings.bank_qr_image;
+      bankQrImgEl.classList.remove("hidden");
+      bankQrImgEl.classList.add("zoomable-img");
+      bankQrPlaceholderEl.classList.add("hidden");
+    } else {
+      bankQrImgEl.classList.add("hidden");
+      bankQrImgEl.classList.remove("zoomable-img");
+      bankQrImgEl.removeAttribute("src");
+      bankQrPlaceholderEl.classList.remove("hidden");
     }
   }
 
@@ -106,11 +259,36 @@ async function getFreeZoneCoords(){
 const DELIVERY_FREE_KM_THRESHOLD = 5;
 const DELIVERY_RATE_PER_KM = 60;
 const DELIVERY_FALLBACK_FEE = 600;
+const DELIVERY_ESTIMATE_MIN_DAYS = 3;
+const DELIVERY_ESTIMATE_MAX_DAYS = 6;
 
 let shopOriginCoords = null;
 
 async function getShopOriginCoords(){
   if (shopOriginCoords) return shopOriginCoords;
+
+  const configuredLatitude = Number(currentSettings.delivery_origin_latitude);
+  const configuredLongitude = Number(currentSettings.delivery_origin_longitude);
+  const configuredCoordinatesAreValid =
+    Number.isFinite(configuredLatitude) && configuredLatitude >= -90 && configuredLatitude <= 90 &&
+    Number.isFinite(configuredLongitude) && configuredLongitude >= -180 && configuredLongitude <= 180 &&
+    String(currentSettings.delivery_origin_latitude ?? "").trim() !== "" &&
+    String(currentSettings.delivery_origin_longitude ?? "").trim() !== "";
+
+  if (configuredCoordinatesAreValid) {
+    shopOriginCoords = { lat: configuredLatitude, lon: configuredLongitude };
+    return shopOriginCoords;
+  }
+
+  const configuredAddress = cleanAddressValue(currentSettings.delivery_origin_address);
+  if (configuredAddress) {
+    const configuredGeocode = await geocodeAddress(configuredAddress);
+    if (configuredGeocode) {
+      shopOriginCoords = configuredGeocode;
+      return shopOriginCoords;
+    }
+  }
+
   const geocoded = await geocodeAddress(SHOP_ORIGIN_ADDRESS);
   shopOriginCoords = geocoded || SHOP_ORIGIN_FALLBACK_COORDS;
   return shopOriginCoords;
@@ -190,12 +368,17 @@ let currentDeliveryKm = null;
 let deliveryRecalcToken = 0;
 let deliveryDebounceTimer = null;
 
-let appliedPromo = null;
+let checkoutServerQuote = null;
+let checkoutQuoteRequestToken = 0;
+let checkoutQuoteTimer = null;
+let checkoutIdempotencyKey = null;
 
 let pendingQrDataUrl = undefined;
+let pendingBankQrDataUrl = undefined;
 let pendingLogoDataUrl = undefined;
 
-let pendingPaymentProofDataUrl = null;
+let pendingPaymentProofPath = null;
+let pendingPaymentProofPreviewUrl = null;
 
 const GENERIC_ICON = `<circle cx="24" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M18 24 h12 M24 18 v12" stroke="currentColor" stroke-width="2"/>`;
 
@@ -374,6 +557,16 @@ wirePasswordStrengthMeter(document.getElementById("signup-password"), document.g
 wirePasswordStrengthMeter(document.getElementById("reset-password"), document.getElementById("reset-pw-strength-fill"), document.getElementById("reset-pw-strength-label"));
 
 // ===================== Show/hide password toggle =====================
+function resetPasswordVisibility(input){
+  if (!input) return;
+  input.type = "password";
+  document.querySelectorAll(".password-toggle-btn").forEach(btn => {
+    if (btn.dataset.target !== input.id) return;
+    btn.textContent = "Show";
+    btn.setAttribute("aria-label", "Show password");
+  });
+}
+
 document.querySelectorAll(".password-toggle-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     const input = document.getElementById(btn.dataset.target);
@@ -427,6 +620,21 @@ function openImageLightbox(src, caption){
   overlay.classList.remove("hidden");
   document.addEventListener("keydown", lightboxEscHandler);
 }
+async function openPrivatePaymentProof(objectPath, orderId){
+  const normalizedPath = String(objectPath || "").trim();
+  if (!normalizedPath) return false;
+
+  const { data, error } = await supabase.storage.from("payment-proofs").createSignedUrl(normalizedPath, 120);
+  if (error || !data || !data.signedUrl) {
+    console.error("[Dagoldol] Could not create signed payment-proof URL:", error);
+    showErrorBanner("Could not open that payment proof. Check your connection and try again.");
+    return false;
+  }
+
+  openImageLightbox(data.signedUrl, `Payment proof for ${orderId || "order"}`);
+  return true;
+}
+
 function closeImageLightbox(){
   const overlay = document.getElementById("image-lightbox-overlay");
   if (overlay) overlay.classList.add("hidden");
@@ -618,9 +826,9 @@ const sizeModalQtyInput = document.getElementById("size-modal-qty");
 const sizeModalError = document.getElementById("size-modal-error");
 const sizeModalConfirmBtn = document.getElementById("size-modal-confirm");
 
-// ===================== Elements: order modal =====================
-const orderModal = document.getElementById("order-modal");
-const modalClose = document.getElementById("modal-close");
+// ===================== Elements: checkout route =====================
+const checkoutScreen = document.getElementById("checkout-screen");
+const checkoutBackBtn = document.getElementById("checkout-back-btn");
 const orderForm = document.getElementById("order-form");
 const orderNameInput = document.getElementById("order-name");
 const orderPhoneInput = document.getElementById("order-phone");
@@ -668,10 +876,10 @@ const cartTotalEl = document.getElementById("cart-total");
 const cartCheckoutBtn = document.getElementById("cart-checkout-btn");
 const modalItemsList = document.getElementById("modal-items-list");
 
-// ===================== Elements: orders / tracking =====================
+// ===================== Elements: orders / tracking route =====================
 const ordersBtn = document.getElementById("orders-btn");
-const ordersModal = document.getElementById("orders-modal");
-const ordersModalClose = document.getElementById("orders-modal-close");
+const ordersScreen = document.getElementById("orders-screen");
+const ordersBackBtn = document.getElementById("orders-back-btn");
 const ordersList = document.getElementById("orders-list");
 const ordersLoadMoreBtn = document.getElementById("orders-load-more-btn");
 
@@ -684,6 +892,10 @@ const profileUsernameDisplay = document.getElementById("profile-username-display
 const profileNameInput = document.getElementById("profile-name");
 const profileEmailInput = document.getElementById("profile-email");
 const profilePhoneInput = document.getElementById("profile-phone");
+const profileAddressInput = document.getElementById("profile-address");
+const profileCityInput = document.getElementById("profile-city");
+const profilePostalInput = document.getElementById("profile-postal");
+const profileLandmarkInput = document.getElementById("profile-landmark");
 const profileBioInput = document.getElementById("profile-bio");
 const profileSuccess = document.getElementById("profile-success");
 const profileError = document.getElementById("profile-error");
@@ -692,6 +904,362 @@ const profileAvatarPreview = document.getElementById("profile-avatar-preview");
 const profileAvatarRemoveBtn = document.getElementById("profile-avatar-remove");
 const profileAvatarUploadStatus = document.getElementById("profile-avatar-upload-status");
 const headerAvatar = document.getElementById("header-avatar");
+
+// ===================== Reusable delivery map picker =====================
+const checkoutLocationOpenBtn = document.getElementById("checkout-location-open");
+const checkoutLocationCurrentBtn = document.getElementById("checkout-location-current");
+const checkoutLocationCard = document.getElementById("checkout-location-card");
+const profileLocationOpenBtn = document.getElementById("profile-location-open");
+const profileLocationCurrentBtn = document.getElementById("profile-location-current");
+const profileLocationCard = document.getElementById("profile-location-card");
+const deliveryMapModal = document.getElementById("delivery-map-modal");
+const deliveryMapCanvas = document.getElementById("delivery-map-canvas");
+const deliveryMapStatus = document.getElementById("delivery-map-status");
+const deliveryMapSummary = document.getElementById("delivery-map-summary");
+const deliveryMapCloseBtn = document.getElementById("delivery-map-close");
+const deliveryMapCancelBtn = document.getElementById("delivery-map-cancel");
+const deliveryMapConfirmBtn = document.getElementById("delivery-map-confirm");
+const deliveryMapCurrentLocationBtn = document.getElementById("delivery-map-current-location");
+const deliveryMapCenterLocationBtn = document.getElementById("delivery-map-center-location");
+if (deliveryMapCenterLocationBtn) deliveryMapCenterLocationBtn.textContent = "Center on my location";
+
+let deliveryMapModulePromise = null;
+let deliveryMapController = null;
+let deliveryMapTarget = null;
+let deliveryMapPendingSelection = null;
+let deliveryMapLastCurrentLocation = null;
+let pendingCurrentLocationRequest = null;
+let checkoutPinnedLocation = null;
+let profilePinnedLocation = null;
+let adminOriginPinnedLocation = null;
+let adminCustomerPinnedLocation = null;
+
+function cleanAddressValue(value){
+  return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+}
+
+function getDeliveryMapModule(){
+  if (!deliveryMapModulePromise) {
+    deliveryMapModulePromise = import("./delivery-map.js").catch(error => {
+      deliveryMapModulePromise = null;
+      throw error;
+    });
+  }
+  return deliveryMapModulePromise;
+}
+
+function serializePinnedLocation(location){
+  if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) return null;
+  const snapshot = location.addressSnapshot || location.address || {};
+  return {
+    latitude: Number(Number(location.latitude).toFixed(6)),
+    longitude: Number(Number(location.longitude).toFixed(6)),
+    confirmed: true,
+    source: cleanAddressValue(location.source) || "pin",
+    pinnedAt: location.pinnedAt || new Date().toISOString(),
+    ...(Number.isFinite(Number(location.accuracy)) ? { accuracy: Math.round(Number(location.accuracy) * 100) / 100 } : {}),
+    addressSnapshot: {
+      address: cleanAddressValue(snapshot.address),
+      city: cleanAddressValue(snapshot.city),
+      postal: cleanAddressValue(snapshot.postal),
+      landmarkSuggestion: cleanAddressValue(snapshot.landmarkSuggestion)
+    }
+  };
+}
+
+function getDeliveryTargetInputs(target){
+  if (target === "profile") {
+    return {
+      address: profileAddressInput,
+      city: profileCityInput,
+      postal: profilePostalInput,
+      landmark: profileLandmarkInput,
+      suggestionRow: document.getElementById("profile-landmark-suggestion"),
+      suggestionButton: document.getElementById("profile-landmark-use-suggestion"),
+      card: profileLocationCard
+    };
+  }
+  if (target === "admin-origin") {
+    return {
+      address: document.getElementById("admin-delivery-origin-address"),
+      city: null,
+      postal: null,
+      landmark: null,
+      card: document.getElementById("admin-delivery-origin-card")
+    };
+  }
+  if (target === "admin-customer") {
+    return { address: null, city: null, postal: null, landmark: null, card: null };
+  }
+  return {
+    address: orderAddressInput,
+    city: orderCityInput,
+    postal: orderPostalInput,
+    landmark: orderLandmarkInput,
+    suggestionRow: document.getElementById("order-landmark-suggestion"),
+    suggestionButton: document.getElementById("order-landmark-use-suggestion"),
+    card: checkoutLocationCard
+  };
+}
+
+function getPinnedLocationForTarget(target){
+  if (target === "profile") return profilePinnedLocation;
+  if (target === "admin-origin") return adminOriginPinnedLocation;
+  if (target === "admin-customer") return adminCustomerPinnedLocation;
+  return checkoutPinnedLocation;
+}
+
+function setPinnedLocationForTarget(target, location){
+  const serialized = serializePinnedLocation(location);
+  if (target === "profile") profilePinnedLocation = serialized;
+  else if (target === "admin-origin") adminOriginPinnedLocation = serialized;
+  else if (target === "admin-customer") adminCustomerPinnedLocation = serialized;
+  else checkoutPinnedLocation = serialized;
+  updatePinnedLocationCard(target);
+  return serialized;
+}
+
+function updatePinnedLocationCard(target){
+  const inputs = getDeliveryTargetInputs(target);
+  const card = inputs.card;
+  if (!card) return;
+  const location = getPinnedLocationForTarget(target);
+  const title = card.querySelector(".delivery-location-card-title");
+  const copy = card.querySelector(".delivery-location-card-copy");
+  if (!location) {
+    card.dataset.state = "empty";
+    if (title) title.textContent = target === "profile" ? "No saved delivery pin" : "No confirmed delivery pin";
+    if (copy) copy.textContent = "Choose a map pin or use your current location.";
+    return;
+  }
+  card.dataset.state = "saved";
+  if (title) title.textContent = "Exact delivery pin confirmed";
+  if (copy) copy.textContent = `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`;
+}
+
+function autofillAddressInput(input, value){
+  const normalized = cleanAddressValue(value);
+  if (!input || !normalized) return;
+  if (!cleanAddressValue(input.value)) {
+    input.value = normalized;
+    input.dataset.mapAutofilled = "1";
+    input.classList.add("map-autofilled");
+  } else if (input.dataset.mapAutofilled === "1") {
+    input.value = normalized;
+  }
+}
+
+function applyLandmarkSuggestionToTarget(target, suggestion){
+  const inputs = getDeliveryTargetInputs(target);
+  const normalized = cleanAddressValue(suggestion);
+  const row = inputs.suggestionRow;
+  const button = inputs.suggestionButton;
+  if (!row || !button) return;
+  const text = row.querySelector("[data-landmark-suggestion-text]");
+  if (!normalized) {
+    row.classList.add("hidden");
+    button.dataset.suggestion = "";
+    if (text) text.textContent = "";
+    return;
+  }
+  button.dataset.suggestion = normalized;
+  button.textContent = "Use suggested landmark";
+  if (text) text.textContent = normalized;
+  row.classList.remove("hidden");
+}
+
+function applyMapSelectionToTarget(target, selection){
+  if (!selection) return;
+  const inputs = getDeliveryTargetInputs(target);
+  const address = selection.address || selection.addressSnapshot || {};
+  if (target === "admin-origin") {
+    const displayAddress = cleanAddressValue(selection.displayName) || [address.address, address.city, address.postal].filter(Boolean).join(", ");
+    if (inputs.address) inputs.address.value = displayAddress;
+    const latInput = document.getElementById("admin-delivery-origin-latitude");
+    const lonInput = document.getElementById("admin-delivery-origin-longitude");
+    if (latInput) latInput.value = Number(selection.latitude).toFixed(6);
+    if (lonInput) lonInput.value = Number(selection.longitude).toFixed(6);
+  } else {
+    autofillAddressInput(inputs.address, address.address);
+    autofillAddressInput(inputs.city, address.city);
+    autofillAddressInput(inputs.postal, address.postal);
+    applyLandmarkSuggestionToTarget(target, address.landmarkSuggestion);
+  }
+  setPinnedLocationForTarget(target, selection);
+  if (target === "checkout") {
+    invalidateCheckoutServerState({ resetIdempotency: true });
+    scheduleCheckoutQuoteRefresh();
+  }
+}
+
+function setCurrentLocationButtonState(state, label){
+  if (!deliveryMapCurrentLocationBtn) return;
+  deliveryMapCurrentLocationBtn.dataset.state = state || "idle";
+  deliveryMapCurrentLocationBtn.textContent = label || "Use my current location";
+  deliveryMapCurrentLocationBtn.setAttribute("aria-busy", state === "locating" ? "true" : "false");
+}
+
+function closeDeliveryMapPicker(){
+  if (deliveryMapController) {
+    try { deliveryMapController.destroy(); } catch (error) { console.warn("[Dagoldol] map cleanup warning:", error); }
+  }
+  deliveryMapController = null;
+  deliveryMapTarget = null;
+  deliveryMapPendingSelection = null;
+  pendingCurrentLocationRequest = null;
+  if (deliveryMapModal) {
+    deliveryMapModal.classList.add("hidden");
+    deliveryMapModal.setAttribute("aria-hidden", "true");
+  }
+  document.body.classList.remove("modal-open");
+  if (deliveryMapCanvas) deliveryMapCanvas.replaceChildren();
+  setCurrentLocationButtonState("idle", "Use my current location");
+}
+
+async function requestCurrentLocationForMap(){
+  const target = deliveryMapTarget || "checkout";
+  setCurrentLocationButtonState("locating", "Locating…");
+  if (deliveryMapStatus) deliveryMapStatus.textContent = "Getting your current location…";
+  try {
+    const mod = await getDeliveryMapModule();
+    pendingCurrentLocationRequest = mod.getCurrentLocationSelection({
+      onProgress(event){
+        if (event && event.type === "position" && deliveryMapStatus) deliveryMapStatus.textContent = "Location received. Refining accuracy…";
+      }
+    });
+    const selection = await pendingCurrentLocationRequest;
+    deliveryMapLastCurrentLocation = selection;
+    deliveryMapPendingSelection = selection;
+    if (deliveryMapController) await deliveryMapController.setSelection(selection, { center: true });
+    if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = false;
+    if (deliveryMapSummary) deliveryMapSummary.textContent = selection.displayName || `${selection.latitude.toFixed(6)}, ${selection.longitude.toFixed(6)}`;
+    setCurrentLocationButtonState("found", "Current location found");
+    return selection;
+  } catch (error) {
+    console.error("[Dagoldol] current location failed:", error);
+    if (deliveryMapStatus) {
+      deliveryMapStatus.textContent = error.message || "Current location is unavailable. Choose the pin manually.";
+      deliveryMapStatus.classList.add("delivery-map-status-error");
+    }
+    setCurrentLocationButtonState("idle", "Try current location again");
+    return null;
+  } finally {
+    pendingCurrentLocationRequest = null;
+  }
+}
+
+async function openDeliveryMapPicker(target){
+  deliveryMapTarget = target;
+  deliveryMapPendingSelection = null;
+  const readOnly = target === "admin-customer";
+  deliveryMapCurrentLocationBtn.disabled = false;
+  if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.classList.toggle("hidden", readOnly);
+  if (deliveryMapCenterLocationBtn) deliveryMapCenterLocationBtn.classList.toggle("hidden", readOnly);
+  if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.classList.toggle("hidden", readOnly);
+  if (deliveryMapConfirmBtn) {
+    deliveryMapConfirmBtn.disabled = true;
+    deliveryMapConfirmBtn.setAttribute("aria-busy", "false");
+  }
+  if (deliveryMapStatus) {
+    deliveryMapStatus.classList.remove("delivery-map-status-error");
+    deliveryMapStatus.textContent = "Loading the interactive map…";
+  }
+  if (deliveryMapModal) {
+    deliveryMapModal.classList.remove("hidden");
+    deliveryMapModal.setAttribute("aria-hidden", "false");
+  }
+  document.body.classList.add("modal-open");
+
+  try {
+    const mod = await getDeliveryMapModule();
+    if (deliveryMapController) deliveryMapController.destroy();
+    const inputs = getDeliveryTargetInputs(target);
+    const initialLocation = getPinnedLocationForTarget(target);
+    const initialAddress = {
+      address: cleanAddressValue(inputs.address && inputs.address.value),
+      city: cleanAddressValue(inputs.city && inputs.city.value),
+      postal: cleanAddressValue(inputs.postal && inputs.postal.value),
+      landmarkSuggestion: ""
+    };
+    deliveryMapController = await mod.openDeliveryMap({
+      container: deliveryMapCanvas,
+      statusElement: deliveryMapStatus,
+      summaryElement: deliveryMapSummary,
+      initialLocation,
+      initialAddress,
+      readOnly,
+      onLookupStateChange({ resolving }) {
+        if (deliveryMapConfirmBtn) {
+          deliveryMapConfirmBtn.disabled = Boolean(resolving) || !deliveryMapPendingSelection;
+          deliveryMapConfirmBtn.setAttribute("aria-busy", resolving ? "true" : "false");
+        }
+      },
+      onSelectionChange(selection) {
+        deliveryMapPendingSelection = selection;
+        if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.disabled = !selection;
+      }
+    });
+    if (pendingCurrentLocationRequest) {
+      const pendingSelection = await pendingCurrentLocationRequest;
+      if (pendingSelection && deliveryMapController) await deliveryMapController.setSelection(pendingSelection, { center: true });
+    }
+    if (deliveryMapConfirmBtn && initialLocation) deliveryMapConfirmBtn.disabled = false;
+    return deliveryMapController;
+  } catch (error) {
+    console.error("[Dagoldol] delivery map failed to open:", error);
+    if (deliveryMapStatus) {
+      deliveryMapStatus.textContent = error.message || "The map could not be loaded. You can retry or use your current location.";
+      deliveryMapStatus.classList.add("delivery-map-status-error");
+    }
+    return null;
+  }
+}
+
+function openDeliveryMapForCheckout(){
+  return openDeliveryMapPicker("checkout");
+}
+
+function openDeliveryMapForProfile(){
+  return openDeliveryMapPicker("profile");
+}
+
+async function confirmDeliveryMapSelection(){
+  const selection = deliveryMapPendingSelection || (deliveryMapController && deliveryMapController.getSelection());
+  if (!selection || !deliveryMapTarget) return;
+  applyMapSelectionToTarget(deliveryMapTarget, selection);
+  if (deliveryMapTarget === "checkout") scheduleDeliveryRecalc();
+  closeDeliveryMapPicker();
+}
+
+function useLandmarkSuggestion(target){
+  const inputs = getDeliveryTargetInputs(target);
+  const suggestion = cleanAddressValue(inputs.suggestionButton && inputs.suggestionButton.dataset.suggestion);
+  if (!suggestion || !inputs.landmark) return;
+  inputs.landmark.value = suggestion;
+  inputs.landmark.classList.add("map-autofilled");
+  if (inputs.suggestionRow) inputs.suggestionRow.classList.add("is-applied");
+}
+
+if (checkoutLocationOpenBtn) checkoutLocationOpenBtn.addEventListener("click", openDeliveryMapForCheckout);
+if (profileLocationOpenBtn) profileLocationOpenBtn.addEventListener("click", openDeliveryMapForProfile);
+if (checkoutLocationCurrentBtn) checkoutLocationCurrentBtn.addEventListener("click", async () => { await openDeliveryMapForCheckout(); await requestCurrentLocationForMap(); });
+if (profileLocationCurrentBtn) profileLocationCurrentBtn.addEventListener("click", async () => { await openDeliveryMapForProfile(); await requestCurrentLocationForMap(); });
+if (deliveryMapCurrentLocationBtn) deliveryMapCurrentLocationBtn.addEventListener("click", requestCurrentLocationForMap);
+if (deliveryMapCenterLocationBtn) deliveryMapCenterLocationBtn.addEventListener("click", async () => {
+  if (deliveryMapLastCurrentLocation && deliveryMapController) {
+    await deliveryMapController.setSelection(deliveryMapLastCurrentLocation, { center: true });
+  } else {
+    await requestCurrentLocationForMap();
+  }
+});
+if (deliveryMapConfirmBtn) deliveryMapConfirmBtn.addEventListener("click", confirmDeliveryMapSelection);
+if (deliveryMapCloseBtn) deliveryMapCloseBtn.addEventListener("click", closeDeliveryMapPicker);
+if (deliveryMapCancelBtn) deliveryMapCancelBtn.addEventListener("click", closeDeliveryMapPicker);
+if (deliveryMapModal) deliveryMapModal.addEventListener("click", event => { if (event.target === deliveryMapModal) closeDeliveryMapPicker(); });
+const profileLandmarkUseSuggestionBtn = document.getElementById("profile-landmark-use-suggestion");
+const orderLandmarkUseSuggestionBtn = document.getElementById("order-landmark-use-suggestion");
+if (profileLandmarkUseSuggestionBtn) profileLandmarkUseSuggestionBtn.addEventListener("click", () => useLandmarkSuggestion("profile"));
+if (orderLandmarkUseSuggestionBtn) orderLandmarkUseSuggestionBtn.addEventListener("click", () => useLandmarkSuggestion("checkout"));
 
 // ===================== Elements: contact =====================
 const contactBtn = document.getElementById("contact-btn");
@@ -706,6 +1274,119 @@ const contactError = document.getElementById("contact-error");
 let orderItems = [];
 let orderItems_isCartCheckout = false;
 let pendingAvatarUrl = undefined;
+
+function hideCustomerRouteScreens(){
+  if (checkoutScreen) checkoutScreen.classList.add("hidden");
+  if (ordersScreen) ordersScreen.classList.add("hidden");
+}
+
+function showShopScreenOnly(){
+  loginScreen.classList.add("hidden");
+  adminScreen.classList.add("hidden");
+  hideCustomerRouteScreens();
+  shopScreen.classList.remove("hidden");
+}
+
+function showCustomerRouteScreen(screen){
+  loginScreen.classList.add("hidden");
+  adminScreen.classList.add("hidden");
+  shopScreen.classList.add("hidden");
+  hideCustomerRouteScreens();
+  if (screen) screen.classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function serializeCheckoutDraftItem(item){
+  if (item && item.isBundle) {
+    return { isBundle: true, bundleId: item.bundleId, qty: clampQty(item.qty) };
+  }
+  return {
+    isBundle: false,
+    productId: item.productId,
+    feet: item.feet,
+    qty: clampQty(item.qty)
+  };
+}
+
+function saveCheckoutDraft(items, isCartCheckout){
+  try {
+    const safeItems = (items || []).filter(Boolean).map(serializeCheckoutDraftItem);
+    sessionStorage.setItem(CHECKOUT_DRAFT_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      isCartCheckout: Boolean(isCartCheckout),
+      items: safeItems
+    }));
+  } catch (err) {
+    console.warn("[Dagoldol] Could not persist checkout draft:", err);
+  }
+}
+
+function readCheckoutDraft(){
+  try {
+    const raw = sessionStorage.getItem(CHECKOUT_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.items)) return null;
+    return parsed;
+  } catch (err) {
+    console.warn("[Dagoldol] Could not read checkout draft:", err);
+    return null;
+  }
+}
+
+function clearCheckoutDraft(){
+  try { sessionStorage.removeItem(CHECKOUT_DRAFT_STORAGE_KEY); } catch (err) { /* ignore */ }
+}
+
+function rebuildCheckoutItemsFromDraft(draft){
+  if (!draft || !Array.isArray(draft.items)) return [];
+  const rebuilt = [];
+  for (const item of draft.items) {
+    if (item && item.isBundle) {
+      const bundle = findBundle(item.bundleId);
+      if (bundle) rebuilt.push(buildBundleOrderLine(bundle, clampQty(item.qty)));
+      continue;
+    }
+    const product = findProduct(item && item.productId);
+    if (!product) continue;
+    const entry = getSizeEntry(product, item.feet);
+    if (!entry || isSizeOutOfStock(product, item.feet)) continue;
+    const eff = effectivePriceForFeet(product, item.feet);
+    rebuilt.push({
+      productId: product.id,
+      feet: item.feet,
+      name: `${product.name} (${formatUnitValue(product.unitType, item.feet)})`,
+      price: eff.price,
+      qty: clampQty(item.qty)
+    });
+  }
+  return rebuilt;
+}
+
+function buildCheckoutItemsFromCart(){
+  return getCart().map(item => {
+    const info = cartLineInfo(item);
+    if (!info) return null;
+    if (item.isBundle) {
+      const bundle = findBundle(item.bundleId);
+      return bundle ? buildBundleOrderLine(bundle, item.qty) : null;
+    }
+    return {
+      productId: item.productId,
+      feet: item.feet,
+      name: `${info.name} (${info.meta})`,
+      price: info.unitPrice,
+      qty: item.qty
+    };
+  }).filter(Boolean);
+}
+
+function beginCheckout(items, isCartCheckout, loginMessage){
+  const safeItems = (items || []).filter(Boolean);
+  if (!safeItems.length) return;
+  saveCheckoutDraft(safeItems, isCartCheckout);
+  requireLogin(() => openOrderModal(safeItems, isCartCheckout), loginMessage);
+}
 
 function priceToNumber(priceStr){
   return Number(String(priceStr).replace(/[^0-9.]/g, "")) || 0;
@@ -834,22 +1515,6 @@ function computeLowStockItems(){
 }
 
 // ===================== Stock decrement / restore (atomic RPC) =====================
-async function decrementStockForLines(lines){
-  if (!lines.length) return { ok: true };
-  const { error } = await supabase.rpc("decrement_stock_for_order", { p_lines: lines });
-  if (error) {
-    console.error("[Dagoldol] Atomic stock decrement failed:", error);
-    return { ok: false, error };
-  }
-  return { ok: true };
-}
-
-async function restoreStockForLines(lines){
-  if (!lines.length) return;
-  const { error } = await supabase.rpc("restore_stock_for_order", { p_lines: lines });
-  if (error) console.error("[Dagoldol] Stock restore failed:", error);
-}
-
 function expandOrderLinesForStock(items){
   const lines = [];
   items.forEach(item => {
@@ -900,13 +1565,6 @@ function validatePromoCode(codeRaw, subtotal){
   discount = Math.max(0, Math.min(discount, subtotal));
 
   return { ok: true, row, discount };
-}
-
-async function incrementPromoUsage(promoId){
-  const { data, error } = await supabase.from("promo_codes").select("used_count").eq("id", promoId).single();
-  if (error || !data) { console.error("[Dagoldol] Could not read promo usage:", error); return; }
-  const { error: updateError } = await supabase.from("promo_codes").update({ used_count: (Number(data.used_count) || 0) + 1 }).eq("id", promoId);
-  if (updateError) console.error("[Dagoldol] Could not increment promo usage:", updateError);
 }
 
 // ===================== Bundles =====================
@@ -981,9 +1639,11 @@ async function renderBundlesSection(){
       if (!bundle) return;
       const qtyInput = document.getElementById(`bundle-qty-${bundle.id}`);
       const qty = clampQty(qtyInput.value);
-      requireLogin(() => {
-        openOrderModal([buildBundleOrderLine(bundle, qty)]);
-      }, "Log in to place your order — we'll bring you right back to checkout.");
+      beginCheckout(
+        [buildBundleOrderLine(bundle, qty)],
+        false,
+        "Log in to place your order — we'll bring you right back to checkout."
+      );
     });
   });
 }
@@ -1008,34 +1668,31 @@ let coOccurrenceMap = {};
 let trendingScores = {};
 
 async function loadRecommendationData(){
-  const { data, error } = await supabase.from("orders").select("items, placed_at, cancelled").eq("cancelled", false);
-  if (error) { console.error("[Dagoldol] loadRecommendationData error:", error); return; }
+  const { data, error } = await supabase.rpc("get_public_recommendation_signals");
+  if (error) {
+    console.error("[Dagoldol] loadRecommendationData error:", error);
+    coOccurrenceMap = {};
+    trendingScores = {};
+    return;
+  }
 
-  const now = Date.now();
-  const newCoOcc = {};
-  const newTrending = {};
+  const payload = data && typeof data === "object" ? data : {};
+  const cooccurrence = payload.cooccurrence && typeof payload.cooccurrence === "object" ? payload.cooccurrence : {};
+  const trending = payload.trending && typeof payload.trending === "object" ? payload.trending : {};
 
-  (data || []).forEach(row => {
-    const items = Array.isArray(row.items) ? row.items : [];
-    const lines = expandOrderLinesForStock(items);
-    const productIdsInOrder = Array.from(new Set(lines.map(l => l.productId)));
-
-    if (row.placed_at && now - row.placed_at <= TRENDING_WINDOW_MS) {
-      lines.forEach(l => { newTrending[l.productId] = (newTrending[l.productId] || 0) + l.qty; });
-    }
-
-    productIdsInOrder.forEach(a => {
-      productIdsInOrder.forEach(b => {
-        if (a === b) return;
-        if (!newCoOcc[a]) newCoOcc[a] = {};
-        newCoOcc[a][b] = (newCoOcc[a][b] || 0) + 1;
-      });
-    });
-  });
-
-  coOccurrenceMap = newCoOcc;
-  trendingScores = newTrending;
+  coOccurrenceMap = Object.fromEntries(
+    Object.entries(cooccurrence).map(([sourceId, related]) => [
+      sourceId,
+      related && typeof related === "object"
+        ? Object.fromEntries(Object.entries(related).map(([productId, score]) => [productId, Number(score) || 0]))
+        : {}
+    ])
+  );
+  trendingScores = Object.fromEntries(
+    Object.entries(trending).map(([productId, score]) => [productId, Number(score) || 0])
+  );
 }
+
 
 const RECS_MIN_REFRESH_INTERVAL_MS = 30000;
 let recommendationsChannel = null;
@@ -1334,9 +1991,31 @@ profileAvatarRemoveBtn.addEventListener("click", () => {
   renderAvatar(profileAvatarPreview, null, currentUser);
 });
 
-// ===================== Payment proof upload (order modal) =====================
+// ===================== Payment proof upload (private storage) =====================
+async function uploadPaymentProofToPrivateStorage(file){
+  if (!currentUserId) throw new Error("You must be signed in before uploading payment proof.");
+  const blob = await resizeImageToBlob(file, 700);
+  const entropy = window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  const objectPath = `${currentUserId}/${entropy}.jpg`;
+  const { error: uploadError } = await supabase.storage.from("payment-proofs").upload(objectPath, blob, {
+    contentType: "image/jpeg",
+    upsert: false
+  });
+  if (uploadError) {
+    console.error('[Dagoldol] Private payment-proof upload failed:', uploadError);
+    throw uploadError;
+  }
+  return objectPath;
+}
+
 function resetPaymentProofField(){
-  pendingPaymentProofDataUrl = null;
+  pendingPaymentProofPath = null;
+  if (pendingPaymentProofPreviewUrl) {
+    URL.revokeObjectURL(pendingPaymentProofPreviewUrl);
+    pendingPaymentProofPreviewUrl = null;
+  }
   if (orderPaymentRefInput) orderPaymentRefInput.value = "";
   if (paymentProofPreview) paymentProofPreview.innerHTML = "";
   if (orderPaymentProofInput) orderPaymentProofInput.value = "";
@@ -1350,11 +2029,15 @@ if (orderPaymentProofInput) {
     const statusEl = document.getElementById("payment-proof-upload-status");
     try {
       if (statusEl) statusEl.classList.remove("hidden");
-      pendingPaymentProofDataUrl = await uploadImageToStorage(file, "payment-proofs", currentUserId || "guest", 700);
-      paymentProofPreview.innerHTML = `<img src="${escapeHtml(pendingPaymentProofDataUrl)}" alt="Payment screenshot" class="zoomable-img" loading="lazy" decoding="async">`;
+      pendingPaymentProofPath = await uploadPaymentProofToPrivateStorage(file);
+      if (pendingPaymentProofPreviewUrl) URL.revokeObjectURL(pendingPaymentProofPreviewUrl);
+      pendingPaymentProofPreviewUrl = URL.createObjectURL(file);
+      paymentProofPreview.innerHTML = `<img src="${escapeHtml(pendingPaymentProofPreviewUrl)}" alt="Payment screenshot preview" class="zoomable-img" loading="lazy" decoding="async">`;
       orderPaymentProofRemoveBtn.classList.remove("hidden");
       orderError.textContent = "";
+      invalidateCheckoutServerState({ resetIdempotency: true });
     } catch (err) {
+      pendingPaymentProofPath = null;
       orderError.textContent = "Could not upload that screenshot. Try a different photo.";
     } finally {
       if (statusEl) statusEl.classList.add("hidden");
@@ -1364,18 +2047,27 @@ if (orderPaymentProofInput) {
 
 if (orderPaymentProofRemoveBtn) {
   orderPaymentProofRemoveBtn.addEventListener("click", () => {
-    pendingPaymentProofDataUrl = null;
+    pendingPaymentProofPath = null;
+    if (pendingPaymentProofPreviewUrl) {
+      URL.revokeObjectURL(pendingPaymentProofPreviewUrl);
+      pendingPaymentProofPreviewUrl = null;
+    }
     paymentProofPreview.innerHTML = "";
     orderPaymentProofInput.value = "";
     orderPaymentProofRemoveBtn.classList.add("hidden");
+    invalidateCheckoutServerState({ resetIdempotency: true });
   });
 }
 
 // ===================== Products =====================
-async function loadProducts(){
+async function fetchLiveProducts(){
   const { data, error } = await supabase.from("products").select("*").order("name");
   if (error) { reportLoadError("Products", error); return []; }
   return (data || []).map(mapProductRow);
+}
+
+async function loadProducts(){
+  return fetchLiveProducts();
 }
 
 function findProduct(productId){
@@ -1674,9 +2366,63 @@ function renderCatalogueList(){
   });
 }
 
+function ratingsMapFromSnapshot(rows){
+  const map = {};
+  (rows || []).forEach(row => {
+    const productId = row && (row.product_id || row.productId);
+    const value = Number(row && row.value);
+    if (!productId || !Number.isFinite(value)) return;
+    if (!map[productId]) map[productId] = { sum: 0, count: 0 };
+    map[productId].sum += value;
+    map[productId].count += 1;
+  });
+  return map;
+}
+
+async function renderCatalogueFromSnapshotFast(){
+  const snapshot = await loadCatalogueSnapshot();
+  if (!snapshot || !Array.isArray(snapshot.products) || snapshot.products.length === 0) return false;
+
+  products = snapshot.products.map(mapProductRow);
+  brands = Array.isArray(snapshot.brands) ? snapshot.brands.map(mapBrandRow) : [];
+  flashSales = Array.isArray(snapshot.flashSales) ? snapshot.flashSales.map(mapFlashSaleRow) : [];
+  ratingsMap = ratingsMapFromSnapshot(snapshot.ratings);
+  bundles = [];
+  catalogueVisibleCount = CATALOGUE_PAGE_SIZE;
+  populateBrandFilterOptions();
+  renderCatalogueList();
+  return true;
+}
+
+async function hydrateCatalogueLiveAfterFastRender(){
+  const liveProducts = await fetchLiveProducts();
+  if (liveProducts.length) products = liveProducts;
+  await Promise.all([loadRatingsMap(), loadBrands(), loadFlashSales(), loadBundles()]);
+  await renderBundlesSection();
+  populateBrandFilterOptions();
+  catalogueVisibleCount = CATALOGUE_PAGE_SIZE;
+  renderCatalogueList();
+
+  await loadRecommendationData();
+  await Promise.all([renderTrendingSection(), renderRecommendedSection()]);
+}
+
+async function renderCatalogueForSessionStart(){
+  if (fastMobileBootstrapActive) {
+    const rendered = await renderCatalogueFromSnapshotFast();
+    if (rendered) {
+      void hydrateCatalogueLiveAfterFastRender().catch(error => {
+        console.warn("[Dagoldol] Live catalogue hydration failed after snapshot render:", error);
+      });
+      return;
+    }
+  }
+  await renderCatalogue();
+}
+
 async function renderCatalogue(){
   catalogue.innerHTML = buildSkeletonCards(CATALOGUE_PAGE_SIZE);
-  products = await loadProducts();
+  products = await fetchLiveProducts();
   await Promise.all([loadRatingsMap(), loadBrands(), loadFlashSales(), loadBundles()]);
   await renderBundlesSection();
   populateBrandFilterOptions();
@@ -1822,15 +2568,13 @@ sizeModalConfirmBtn.addEventListener("click", async () => {
     showToast(`Added ${product.name} (${formatUnitValue(product.unitType, feet)}) to your cart.`);
   } else {
     closeSizeModal();
-    requireLogin(() => {
-      openOrderModal([{
-        productId: product.id,
-        feet,
-        name: `${product.name} (${formatUnitValue(product.unitType, feet)})`,
-        price: eff.price,
-        qty
-      }]);
-    }, "Log in to place your order — we'll bring you right back to checkout.");
+    beginCheckout([{
+      productId: product.id,
+      feet,
+      name: `${product.name} (${formatUnitValue(product.unitType, feet)})`,
+      price: eff.price,
+      qty
+    }], false, "Log in to place your order — we'll bring you right back to checkout.");
   }
 });
 
@@ -1985,12 +2729,10 @@ cartCheckoutBtn.addEventListener("click", () => {
     };
   });
   closeCartModal();
-  requireLogin(() => {
-    openOrderModal(items, true);
-  }, "Log in to check out — your cart will be right here waiting.");
+  beginCheckout(items, true, "Log in to check out — your cart will be right here waiting.");
 });
 
-// ===================== Order modal: payment method + cost breakdown =====================
+// ===================== Phase 4.3 server-authoritative checkout =====================
 function getSelectedPaymentMethod(){
   const checked = orderForm.querySelector("input[name='payment-method']:checked");
   return checked ? checked.value : "gcash";
@@ -2006,61 +2748,219 @@ function isHalfPaymentChecked(){
   return !!(orderHalfPaymentCheckbox && orderHalfPaymentCheckbox.checked);
 }
 
-function currentOrderSubtotal(){
-  return orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+function buildCheckoutSemanticItems(){
+  return orderItems.map(item => item.isBundle
+    ? { kind: "bundle", bundleId: String(item.bundleId), quantity: clampQty(item.qty) }
+    : { kind: "product", productId: String(item.productId), variant: String(item.feet), quantity: clampQty(item.qty) }
+  );
 }
 
-function updateOrderCostBreakdown(){
-  const subtotal = currentOrderSubtotal();
-  const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
+function buildCheckoutDeliveryDetails(){
+  const location = serializePinnedLocation(checkoutPinnedLocation);
+  if (!location || location.confirmed !== true) return null;
+  return {
+    name: orderNameInput.value.trim(),
+    phone: orderPhoneInput.value.trim(),
+    address: orderAddressInput.value.trim(),
+    city: orderCityInput.value.trim(),
+    postal: orderPostalInput.value.trim(),
+    landmark: orderLandmarkInput.value.trim(),
+    location: {
+      latitude: Number(location.latitude),
+      longitude: Number(location.longitude),
+      confirmed: true,
+      ...(Number.isFinite(Number(location.accuracy)) ? { accuracy: Number(location.accuracy) } : {})
+    }
+  };
+}
 
-  const bulkRate = getBulkFeeRate(totalQty);
-  const bulkFee = subtotal * bulkRate;
+function ensureCheckoutIdempotencyKey(){
+  if (checkoutIdempotencyKey) return checkoutIdempotencyKey;
+  if (!window.crypto || typeof crypto.randomUUID !== "function") {
+    throw new Error("Secure checkout requires a browser with crypto.randomUUID support.");
+  }
+  checkoutIdempotencyKey = crypto.randomUUID();
+  return checkoutIdempotencyKey;
+}
 
-  const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
+function buildCheckoutEdgeRequest(operation){
+  const delivery = buildCheckoutDeliveryDetails();
+  if (!delivery) throw new Error("Confirm the exact delivery pin before checkout.");
+  const promoCode = orderPromoCodeInput && orderPromoCodeInput.value.trim()
+    ? orderPromoCodeInput.value.trim().toUpperCase()
+    : null;
+  const request = {
+    operation,
+    items: buildCheckoutSemanticItems(),
+    delivery,
+    promoCode
+  };
+  if (operation === "quote") {
+    request.halfPayment = isHalfPaymentChecked();
+    return request;
+  }
+  request.idempotencyKey = ensureCheckoutIdempotencyKey();
+  request.payment = {
+    method: getSelectedPaymentMethod(),
+    reference: orderPaymentRefInput ? orderPaymentRefInput.value.trim() : "",
+    proofPath: pendingPaymentProofPath || null,
+    halfPayment: isHalfPaymentChecked()
+  };
+  request.saveAddress = Boolean(orderSaveCheckbox && orderSaveCheckbox.checked);
+  return request;
+}
 
-  const total = Math.max(0, subtotal - promoDiscount + currentDeliveryFee + bulkFee);
-  const halfPayment = isHalfPaymentChecked();
+function renderServerCheckoutQuote(quote){
+  if (!quote || typeof quote !== "object") return;
+  checkoutServerQuote = quote;
+  const subtotal = Number(quote.subtotal) || 0;
+  const deliveryFee = Number(quote.deliveryFee) || 0;
+  const bulkFee = Number(quote.bulkFee) || 0;
+  const bulkRate = Number(quote.bulkFeeRate) || 0;
+  const promoDiscount = Number(quote.promoDiscount) || 0;
+  const total = Number(quote.total) || 0;
+  const amountDueNow = Number(quote.amountDueNow) || 0;
+  const amountDueLater = Number(quote.amountDueLater) || 0;
+  const halfPayment = Boolean(quote.halfPayment);
 
   costSubtotalEl.textContent = formatPrice(subtotal);
-
-  costPromoRow.classList.toggle("hidden", !appliedPromo);
-  if (appliedPromo) {
-    costPromoLabel.textContent = `Discount (${appliedPromo.row.code})`;
-    costPromoEl.textContent = `-${formatPrice(promoDiscount)}`;
-  }
-
-  costDeliveryEl.textContent = formatPrice(currentDeliveryFee);
-
-  costBulkRow.classList.toggle("hidden", bulkRate === 0);
+  costDeliveryEl.textContent = formatPrice(deliveryFee);
+  costBulkRow.classList.toggle("hidden", bulkFee <= 0);
   costBulkLabel.textContent = `Bulk order fee (${Math.round(bulkRate * 100)}%)`;
   costBulkEl.textContent = formatPrice(bulkFee);
-
+  costPromoRow.classList.toggle("hidden", promoDiscount <= 0);
+  costPromoLabel.textContent = quote.promoCode ? `Discount (${quote.promoCode})` : "Discount";
+  costPromoEl.textContent = `-${formatPrice(promoDiscount)}`;
   costTotalEl.textContent = formatPrice(total);
-
   costDueNowRow.classList.toggle("hidden", !halfPayment);
   costDueLaterRow.classList.toggle("hidden", !halfPayment);
-  if (halfPayment) {
-    const dueNow = total / 2;
-    const dueLater = total - dueNow;
-    costDueNowEl.textContent = formatPrice(dueNow);
-    costDueLaterEl.textContent = formatPrice(dueLater);
+  costDueNowEl.textContent = formatPrice(amountDueNow);
+  costDueLaterEl.textContent = formatPrice(amountDueLater);
+
+  if (Array.isArray(quote.items) && quote.items.length) {
+    modalItemsList.innerHTML = quote.items.map(item => `
+      <div class="cart-line">
+        <div class="cart-line-info">
+          <span class="cart-line-name">${escapeHtml(item.name || "Item")}</span>
+          <span class="cart-line-meta">Qty ${clampQty(item.qty)} · ${formatPrice((Number(item.price) || 0) * clampQty(item.qty))}</span>
+        </div>
+      </div>
+    `).join("");
   }
 
+  const deliveryQuote = quote.deliveryQuote || {};
+  const km = Number(deliveryQuote.mainRoadDistanceKm);
+  if (deliveryQuote.reason === "fallback") {
+    deliveryStatusEl.textContent = `Routing was unavailable. The authoritative fallback delivery fee is ${formatPrice(deliveryFee)}.`;
+    deliveryStatusEl.classList.add("delivery-status-error");
+  } else if (Number.isFinite(km)) {
+    deliveryStatusEl.textContent = `${km.toFixed(1)} km road distance · ${deliveryFee === 0 ? "Free delivery" : `${formatPrice(deliveryFee)} delivery fee`}`;
+    deliveryStatusEl.classList.remove("delivery-status-error");
+  } else {
+    deliveryStatusEl.textContent = deliveryFee === 0 ? "Free delivery" : `${formatPrice(deliveryFee)} delivery fee`;
+    deliveryStatusEl.classList.remove("delivery-status-error");
+  }
+
+  const requestedPromo = orderPromoCodeInput ? orderPromoCodeInput.value.trim() : "";
+  if (promoStatusEl && requestedPromo) {
+    promoStatusEl.textContent = promoDiscount > 0
+      ? `"${quote.promoCode || requestedPromo.toUpperCase()}" applied — ${formatPrice(promoDiscount)} off.`
+      : `"${quote.promoCode || requestedPromo.toUpperCase()}" validated.`;
+    promoStatusEl.classList.remove("promo-status-error");
+    promoStatusEl.classList.add("promo-status-ok");
+  }
   updatePaymentDetailPanels();
 }
 
-document.querySelectorAll("input[name='payment-method']").forEach(radio => {
-  radio.addEventListener("change", updateOrderCostBreakdown);
-});
-
-if (orderHalfPaymentCheckbox) {
-  orderHalfPaymentCheckbox.addEventListener("change", updateOrderCostBreakdown);
+function updateCheckoutQuoteStatus(message, isError = false){
+  if (!deliveryStatusEl) return;
+  deliveryStatusEl.textContent = message;
+  deliveryStatusEl.classList.toggle("delivery-status-error", Boolean(isError));
 }
 
-// ===================== Promo code apply (order modal) =====================
+function invalidateCheckoutServerState({ resetIdempotency = false } = {}){
+  checkoutQuoteRequestToken += 1;
+  checkoutServerQuote = null;
+  clearTimeout(checkoutQuoteTimer);
+  checkoutQuoteTimer = null;
+  if (resetIdempotency) checkoutIdempotencyKey = null;
+  for (const el of [costSubtotalEl, costDeliveryEl, costTotalEl]) {
+    if (el) el.textContent = "—";
+  }
+  costPromoRow.classList.add("hidden");
+  costBulkRow.classList.add("hidden");
+  costDueNowRow.classList.add("hidden");
+  costDueLaterRow.classList.add("hidden");
+}
+
+async function checkoutFunctionError(error){
+  let code = "CHECKOUT_UNAVAILABLE";
+  let message = "Checkout is temporarily unavailable. Please try again.";
+  try {
+    const context = error && error.context;
+    if (context && typeof context.clone === "function") {
+      const payload = await context.clone().json();
+      if (payload && payload.error) {
+        code = payload.error.code || code;
+        message = payload.error.message || message;
+      }
+    }
+  } catch (parseError) { /* keep safe fallback */ }
+  if (error && error.message && message.startsWith("Checkout is temporarily")) message = error.message;
+  const normalized = new Error(message);
+  normalized.code = code;
+  return normalized;
+}
+
+async function invokeCheckoutEdge(request){
+  const { data, error } = await supabase.functions.invoke("checkout", { body: request });
+  if (error) throw await checkoutFunctionError(error);
+  if (!data || data.ok !== true) {
+    const failure = new Error(data && data.error && data.error.message ? data.error.message : "Checkout is temporarily unavailable. Please try again.");
+    failure.code = data && data.error && data.error.code ? data.error.code : "CHECKOUT_UNAVAILABLE";
+    throw failure;
+  }
+  return data;
+}
+
+function checkoutQuoteReadyForRequest(){
+  if (!currentUserId || !orderItems.length) return false;
+  const delivery = buildCheckoutDeliveryDetails();
+  return Boolean(delivery && delivery.name && delivery.phone && delivery.address && delivery.city && delivery.postal);
+}
+
+async function refreshCheckoutServerQuote(){
+  const token = ++checkoutQuoteRequestToken;
+  checkoutServerQuote = null;
+  if (!checkoutQuoteReadyForRequest()) {
+    updateCheckoutQuoteStatus("Complete the delivery details and confirm the exact map pin to calculate the authoritative total.");
+    return null;
+  }
+  updateCheckoutQuoteStatus("Calculating authoritative checkout total…");
+  try {
+    const response = await invokeCheckoutEdge(buildCheckoutEdgeRequest("quote"));
+    if (token !== checkoutQuoteRequestToken) return null;
+    renderServerCheckoutQuote(response.quote);
+    return response.quote;
+  } catch (error) {
+    if (token !== checkoutQuoteRequestToken) return null;
+    console.error("[Dagoldol] Checkout quote failed:", error);
+    updateCheckoutQuoteStatus(error.message || "Could not calculate checkout. Please try again.", true);
+    if (promoStatusEl && orderPromoCodeInput && orderPromoCodeInput.value.trim()) {
+      promoStatusEl.textContent = error.message || "Promo could not be validated.";
+      promoStatusEl.classList.remove("promo-status-ok");
+      promoStatusEl.classList.add("promo-status-error");
+    }
+    return null;
+  }
+}
+
+function scheduleCheckoutQuoteRefresh(delay = 450){
+  clearTimeout(checkoutQuoteTimer);
+  checkoutQuoteTimer = setTimeout(() => { void refreshCheckoutServerQuote(); }, delay);
+}
+
 function resetPromoField(){
-  appliedPromo = null;
   if (orderPromoCodeInput) orderPromoCodeInput.value = "";
   if (promoStatusEl) {
     promoStatusEl.textContent = "";
@@ -2069,26 +2969,37 @@ function resetPromoField(){
 }
 
 if (orderPromoApplyBtn) {
-  orderPromoApplyBtn.addEventListener("click", async () => {
-    await loadPromoCodes();
-    const subtotal = currentOrderSubtotal();
-    const result = validatePromoCode(orderPromoCodeInput.value, subtotal);
-
-    if (!result.ok) {
-      appliedPromo = null;
-      promoStatusEl.textContent = result.message;
-      promoStatusEl.classList.remove("promo-status-ok");
-      promoStatusEl.classList.add("promo-status-error");
-      updateOrderCostBreakdown();
-      return;
-    }
-
-    appliedPromo = { row: result.row, discountAmount: result.discount };
-    promoStatusEl.textContent = `"${result.row.code}" applied — ${formatPrice(result.discount)} off.`;
-    promoStatusEl.classList.remove("promo-status-error");
-    promoStatusEl.classList.add("promo-status-ok");
-    updateOrderCostBreakdown();
+  orderPromoApplyBtn.addEventListener("click", () => {
+    invalidateCheckoutServerState({ resetIdempotency: true });
+    void refreshCheckoutServerQuote();
   });
+}
+
+if (orderPromoCodeInput) {
+  orderPromoCodeInput.addEventListener("input", () => invalidateCheckoutServerState({ resetIdempotency: true }));
+}
+
+document.querySelectorAll("input[name='payment-method']").forEach(radio => {
+  radio.addEventListener("change", () => {
+    updatePaymentDetailPanels();
+    invalidateCheckoutServerState({ resetIdempotency: true });
+    scheduleCheckoutQuoteRefresh(150);
+  });
+});
+
+if (orderHalfPaymentCheckbox) {
+  orderHalfPaymentCheckbox.addEventListener("change", () => {
+    invalidateCheckoutServerState({ resetIdempotency: true });
+    scheduleCheckoutQuoteRefresh(150);
+  });
+}
+
+if (orderPaymentRefInput) {
+  orderPaymentRefInput.addEventListener("input", () => { checkoutIdempotencyKey = null; });
+}
+
+if (orderSaveCheckbox) {
+  orderSaveCheckbox.addEventListener("change", () => { checkoutIdempotencyKey = null; });
 }
 
 // ===================== FIX #6: delivery distance recalculation w/ caching =====================
@@ -2156,74 +3067,50 @@ async function getRoadDistanceKm(origin, dest){
 }
 
 async function recalcDeliveryFee(){
-  const address = orderAddressInput.value.trim();
-  const city = orderCityInput.value.trim();
-  const postal = orderPostalInput.value.trim();
-  const pinnedLocation = window.DagoldolDeliveryLocation && window.DagoldolDeliveryLocation.getSelectedLocation
-    ? window.DagoldolDeliveryLocation.getSelectedLocation()
-    : null;
-
-  if ((!address || !city) && !pinnedLocation) {
-    deliveryStatusEl.textContent = "Enter your address to calculate the delivery fee.";
-    deliveryStatusEl.classList.remove("delivery-status-error");
-    currentDeliveryFee = DELIVERY_FALLBACK_FEE;
-    currentDeliveryKm = null;
-    updateOrderCostBreakdown();
-    return;
-  }
-
-  const fullAddress = `${address}, ${city}${postal ? ", " + postal : ""}, Philippines`;
-  const myToken = ++deliveryRecalcToken;
-
-  deliveryStatusEl.textContent = "Calculating delivery distance…";
-  deliveryStatusEl.classList.remove("delivery-status-error");
-
-  const result = pinnedLocation
-    ? await calculateDeliveryFeeForCoords(pinnedLocation)
-    : await calculateDeliveryFee(fullAddress);
-
-  if (myToken !== deliveryRecalcToken) return;
-
-  currentDeliveryFee = result.fee;
-  currentDeliveryKm = result.km;
-
-  if (result.km != null) {
-    if (result.fee === 0) {
-      deliveryStatusEl.textContent = `${result.km.toFixed(1)} km from the shop · Free delivery`;
-    } else {
-      deliveryStatusEl.textContent = `${result.km.toFixed(1)} km from the shop · ${formatPrice(result.fee)} delivery fee`;
-    }
-    deliveryStatusEl.classList.remove("delivery-status-error");
-  } else {
-    deliveryStatusEl.textContent = `Couldn't pinpoint that address — using the standard delivery fee of ${formatPrice(DELIVERY_FALLBACK_FEE)}.`;
-    deliveryStatusEl.classList.add("delivery-status-error");
-  }
-
-  updateOrderCostBreakdown();
+  return refreshCheckoutServerQuote();
 }
 
 function scheduleDeliveryRecalc(){
-  clearTimeout(deliveryDebounceTimer);
-  deliveryDebounceTimer = setTimeout(recalcDeliveryFee, 700);
+  invalidateCheckoutServerState({ resetIdempotency: true });
+  scheduleCheckoutQuoteRefresh();
 }
 
-[orderAddressInput, orderCityInput, orderPostalInput].forEach(input => {
-  input.addEventListener("input", scheduleDeliveryRecalc);
+[orderNameInput, orderPhoneInput, orderAddressInput, orderCityInput, orderPostalInput, orderLandmarkInput].forEach(input => {
+  if (!input) return;
+  input.addEventListener("input", () => {
+    if (input.dataset.mapAutofilled === "1") delete input.dataset.mapAutofilled;
+    scheduleDeliveryRecalc();
+  });
 });
 
-// ===================== Order modal =====================
-function openOrderModal(items, isCartCheckout){
-  orderItems = items;
+[profileAddressInput, profileCityInput, profilePostalInput].forEach(input => {
+  if (!input) return;
+  input.addEventListener("input", () => {
+    if (input.dataset.mapAutofilled === "1") delete input.dataset.mapAutofilled;
+  });
+});
+
+// ===================== Routed checkout =====================
+function openOrderModal(items, isCartCheckout, { replaceRoute = false } = {}){
+  const safeItems = (items || []).filter(Boolean);
+  if (!safeItems.length) {
+    showToast("There is nothing to check out yet.");
+    showShopScreenOnly();
+    navigateAppPath(APP_ROUTES.SHOP, { replace: true });
+    return false;
+  }
+
+  orderItems = safeItems;
   orderItems_isCartCheckout = !!isCartCheckout;
   orderError.textContent = "";
   resetPaymentProofField();
   resetPromoField();
 
-  modalItemsList.innerHTML = items.map(item => `
+  modalItemsList.innerHTML = safeItems.map(item => `
     <div class="cart-line">
       <div class="cart-line-info">
         <span class="cart-line-name">${escapeHtml(item.name)}</span>
-        <span class="cart-line-meta">Qty ${item.qty} · ${formatPrice(item.price * item.qty)}</span>
+        <span class="cart-line-meta">Qty ${item.qty} · Verifying price…</span>
       </div>
     </div>
   `).join("");
@@ -2241,40 +3128,66 @@ function openOrderModal(items, isCartCheckout){
   orderLandmarkInput.value = saved ? (saved.landmark || "") : "";
   orderSaveCheckbox.checked = true;
 
-  if (window.DagoldolDeliveryLocation) {
-    window.DagoldolDeliveryLocation.resetCheckout();
-    window.setTimeout(() => {
-      window.DagoldolDeliveryLocation.initCheckout();
-      if (saved) window.DagoldolDeliveryLocation.loadSavedLocation(saved);
-    }, 90);
-  }
+  checkoutPinnedLocation = saved && saved.location ? serializePinnedLocation(saved.location) : null;
+  updatePinnedLocationCard("checkout");
+  applyLandmarkSuggestionToTarget("checkout", checkoutPinnedLocation && checkoutPinnedLocation.addressSnapshot
+    ? checkoutPinnedLocation.addressSnapshot.landmarkSuggestion
+    : "");
 
-  currentDeliveryFee = DELIVERY_FALLBACK_FEE;
-  currentDeliveryKm = null;
-  updateOrderCostBreakdown();
+  invalidateCheckoutServerState({ resetIdempotency: true });
+  updatePaymentDetailPanels();
 
-  if (saved && saved.address && saved.city) {
-    recalcDeliveryFee();
+  if (saved && saved.address && saved.city && checkoutPinnedLocation) {
+    scheduleCheckoutQuoteRefresh(100);
   } else {
-    deliveryStatusEl.textContent = "Enter your address to calculate the delivery fee.";
-    deliveryStatusEl.classList.remove("delivery-status-error");
+    updateCheckoutQuoteStatus("Complete the delivery details and confirm the exact map pin to calculate the authoritative total.");
   }
 
-  openModalAccessible(orderModal, orderNameInput);
+  saveCheckoutDraft(orderItems, orderItems_isCartCheckout);
+  showCustomerRouteScreen(checkoutScreen);
+  navigateAppPath(APP_ROUTES.CHECKOUT, { replace: replaceRoute });
+  requestAnimationFrame(() => orderNameInput.focus({ preventScroll: true }));
+  return true;
 }
 
-function closeOrderModal(){
-  closeModalAccessible(orderModal);
+function resetCheckoutUiState(){
+  clearTimeout(deliveryDebounceTimer);
   orderForm.reset();
   orderItems = [];
+  orderItems_isCartCheckout = false;
   resetPaymentProofField();
   resetPromoField();
+  invalidateCheckoutServerState({ resetIdempotency: true });
 }
 
-modalClose.addEventListener("click", closeOrderModal);
-orderModal.addEventListener("click", (e) => {
-  if (e.target === orderModal) closeOrderModal();
-});
+function closeOrderModal({ replaceRoute = false, preserveDraft = true } = {}){
+  resetCheckoutUiState();
+  if (!preserveDraft) clearCheckoutDraft();
+  showShopScreenOnly();
+  navigateAppPath(APP_ROUTES.SHOP, { replace: replaceRoute });
+}
+
+async function openCheckoutFromPersistedState({ replaceRoute = true } = {}){
+  const draft = readCheckoutDraft();
+  let items = rebuildCheckoutItemsFromDraft(draft);
+  let isCartCheckout = Boolean(draft && draft.isCartCheckout);
+  if (!items.length) {
+    items = buildCheckoutItemsFromCart();
+    isCartCheckout = items.length > 0;
+  }
+  if (!items.length) {
+    clearCheckoutDraft();
+    showShopScreenOnly();
+    navigateAppPath(APP_ROUTES.SHOP, { replace: true });
+    showToast("Your checkout has no items. Add something to your cart first.");
+    return false;
+  }
+  return openOrderModal(items, isCartCheckout, { replaceRoute });
+}
+
+if (checkoutBackBtn) {
+  checkoutBackBtn.addEventListener("click", () => closeOrderModal({ replaceRoute: true, preserveDraft: true }));
+}
 
 let isSubmittingOrder = false;
 
@@ -2294,121 +3207,67 @@ orderForm.addEventListener("submit", async (e) => {
     const postal = orderPostalInput.value.trim();
     const landmark = orderLandmarkInput.value.trim();
     const paymentReference = orderPaymentRefInput ? orderPaymentRefInput.value.trim() : "";
-    const selectedDeliveryLocation = window.DagoldolDeliveryLocation && window.DagoldolDeliveryLocation.getSelectedLocation
-      ? window.DagoldolDeliveryLocation.getSelectedLocation()
-      : null;
-    const confirmedDeliveryLocation = window.DagoldolDeliveryLocation && window.DagoldolDeliveryLocation.getConfirmedLocation
-      ? window.DagoldolDeliveryLocation.getConfirmedLocation()
-      : null;
+    const confirmedDeliveryLocation = serializePinnedLocation(checkoutPinnedLocation);
 
-    if (!name || !phone || !address || !city || !postal || (!landmark && !confirmedDeliveryLocation)) {
-      orderError.textContent = "Please complete your name, phone, street, city/municipality and postal code. Add a landmark, or confirm the exact map pin so the rider can find you.";
+    if (!name || !phone || !address || !city || !postal) {
+      orderError.textContent = "Please complete your name, phone, street, city/municipality and postal code.";
       return;
     }
-
-    if (selectedDeliveryLocation && !confirmedDeliveryLocation) {
-      orderError.textContent = "You placed a delivery pin. Please tap ‘Confirm this delivery pin’ before confirming the order.";
-      const confirmPinBtn = document.getElementById("delivery-pin-confirm");
-      if (confirmPinBtn) confirmPinBtn.focus();
+    if (!confirmedDeliveryLocation) {
+      orderError.textContent = "Confirm the exact delivery pin before placing the order.";
       return;
     }
-
     if (!paymentReference) {
       orderError.textContent = "Please send your payment first, then enter the reference number from your GCash / bank receipt before confirming your order.";
       orderPaymentRefInput.focus();
       return;
     }
 
-    const stockCheck = await verifyStockAvailable(orderItems);
-    if (!stockCheck.ok) {
-      orderError.textContent = stockCheck.message;
+    clearTimeout(checkoutQuoteTimer);
+    const quote = checkoutServerQuote || await refreshCheckoutServerQuote();
+    if (!quote) {
+      orderError.textContent = orderError.textContent || "Could not verify the authoritative checkout total. Please review the details and try again.";
       return;
     }
 
-    clearTimeout(deliveryDebounceTimer);
-    await recalcDeliveryFee();
+    orderError.textContent = "";
+    const response = await invokeCheckoutEdge(buildCheckoutEdgeRequest("commit"));
+    const order = response.order;
+    if (!order || !order.orderId) throw new Error("Checkout completed without a valid order response.");
 
-    if (orderSaveCheckbox.checked) {
-      const newAddress = { name, phone, address, city, postal, landmark, ...(confirmedDeliveryLocation ? { location: confirmedDeliveryLocation } : {}) };
-      currentUserProfile.address = newAddress;
-      await supabase.from("profiles").update({ address: newAddress }).eq("id", currentUserId);
+    if (orderSaveCheckbox.checked && currentUserProfile) {
+      currentUserProfile.address = {
+        name, phone, address, city, postal, landmark,
+        location: confirmedDeliveryLocation
+      };
     }
 
-    const paymentMethod = getSelectedPaymentMethod();
-    const halfPayment = isHalfPaymentChecked();
-    const subtotal = currentOrderSubtotal();
-    const totalQty = orderItems.reduce((sum, item) => sum + item.qty, 0);
-    const bulkFeeRate = getBulkFeeRate(totalQty);
-    const bulkFee = subtotal * bulkFeeRate;
-    const deliveryFee = currentDeliveryFee;
-    const promoDiscount = appliedPromo ? appliedPromo.discountAmount : 0;
-    const total = Math.max(0, subtotal - promoDiscount + deliveryFee + bulkFee);
-    const amountDueNow = halfPayment ? total / 2 : total;
-    const amountDueLater = halfPayment ? total - amountDueNow : 0;
-    const deliveryDays = 3 + Math.floor(Math.random() * 4);
-    const placedAt = Date.now();
-
-    const row = {
-      id: "ORD-" + Date.now().toString(36).toUpperCase(),
-      user_id: currentUserId,
-      username: currentUser,
-      items: orderItems.map(item => item.isBundle
-        ? { isBundle: true, bundleId: item.bundleId, name: item.name, price: item.price, qty: item.qty, components: item.components }
-        : { productId: item.productId, feet: item.feet, name: item.name, price: item.price, qty: item.qty }),
-      subtotal,
-      delivery_fee: deliveryFee,
-      bulk_fee_rate: bulkFeeRate,
-      bulk_fee: bulkFee,
-      promo_code: appliedPromo ? appliedPromo.row.code : null,
-      promo_discount: promoDiscount,
-      total,
-      payment_method: paymentMethod,
-      payment_reference: paymentReference,
-      payment_proof: pendingPaymentProofDataUrl || null,
-      half_payment: halfPayment,
-      amount_due_now: amountDueNow,
-      amount_due_later: amountDueLater,
-      address: { name, phone, address, city, postal, landmark, ...(confirmedDeliveryLocation ? { location: confirmedDeliveryLocation } : {}) },
-      placed_at: placedAt,
-      delivery_days: deliveryDays,
-      status_override: null,
-      cancelled: false,
-      rated: {}
-    };
-
-    const stockLines = expandOrderLinesForStock(orderItems);
-    const decrementResult = await decrementStockForLines(stockLines);
-    if (!decrementResult.ok) {
-      orderError.textContent = "Sorry — one or more items just sold out while you were checking out. Please adjust quantities and try again.";
-      return;
-    }
-
-    const { error } = await supabase.from("orders").insert(row);
-
-    if (error) {
-      await restoreStockForLines(stockLines);
-      console.error(error);
-      orderError.textContent = "Something went wrong placing your order. Please try again.";
-      return;
-    }
-
-    if (appliedPromo) await incrementPromoUsage(appliedPromo.row.id);
-
-    const eta = new Date(placedAt + deliveryDays * 24 * 60 * 60 * 1000);
-    const label = orderItems.length === 1 ? orderItems[0].name : `${orderItems.length} items`;
-    const kmNote = currentDeliveryKm != null ? ` (${currentDeliveryKm.toFixed(1)} km delivery)` : "";
-    const halfNote = halfPayment ? ` · Pay ${formatPrice(amountDueNow)} now, ${formatPrice(amountDueLater)} on delivery` : "";
-    const promoNote = appliedPromo ? ` · Code ${appliedPromo.row.code} saved ${formatPrice(promoDiscount)}` : "";
-    showToast(`Order placed for ${label} · ${paymentMethodLabel(paymentMethod)} · Total ${formatPrice(total)}${halfNote}${promoNote}${kmNote}. Estimated delivery ${formatDate(eta)}.`);
+    const label = Array.isArray(order.items) && order.items.length === 1
+      ? (order.items[0].name || "1 item")
+      : `${Array.isArray(order.items) ? order.items.length : orderItems.length} items`;
+    const halfNote = order.halfPayment
+      ? ` · Pay ${formatPrice(order.amountDueNow)} now, ${formatPrice(order.amountDueLater)} on delivery`
+      : "";
+    const promoNote = order.promoCode
+      ? ` · Code ${order.promoCode} saved ${formatPrice(order.promoDiscount)}`
+      : "";
+    showToast(`Order ${order.orderId} placed for ${label} · ${paymentMethodLabel(getSelectedPaymentMethod())} · Total ${formatPrice(order.total)}${halfNote}${promoNote}. Estimated delivery in ${DELIVERY_ESTIMATE_MIN_DAYS}–${DELIVERY_ESTIMATE_MAX_DAYS} days.`);
 
     if (orderItems_isCartCheckout) {
       await saveCart([]);
       updateCartBadge();
     }
 
-    closeOrderModal();
+    closeOrderModal({ replaceRoute: true, preserveDraft: false });
     await renderCatalogue();
     updateCartBadge();
+  } catch (error) {
+    console.error("[Dagoldol] Server-authoritative checkout failed:", error);
+    const code = error && error.code ? String(error.code) : "CHECKOUT_ERROR";
+    orderError.textContent = error && error.message
+      ? error.message
+      : "Something went wrong placing your order. Please try again.";
+    orderError.dataset.errorCode = code;
   } finally {
     isSubmittingOrder = false;
     submitBtn.disabled = false;
@@ -2508,8 +3367,7 @@ async function cancelOrder(orderId){
   const { error } = await supabase.from("orders").update({ cancelled: true }).eq("id", orderId).eq("user_id", currentUserId);
   if (error) { console.error(error); return; }
 
-  await restoreStockForLines(expandOrderLinesForStock(order.items));
-
+  // Inventory restoration is transaction-authoritative in the database cancellation trigger.
   await renderOrdersModal();
   showToast(`Order ${orderId} has been cancelled.`);
 }
@@ -2688,20 +3546,20 @@ async function submitRating(orderId, productId, value){
   updateCartBadge();
 }
 
-async function openOrdersModal(){
+async function openOrdersModal({ replaceRoute = false } = {}){
   myOrdersVisibleCount = MY_ORDERS_PAGE_SIZE;
   await renderOrdersModal();
-  openModalAccessible(ordersModal, ordersModalClose);
+  showCustomerRouteScreen(ordersScreen);
+  navigateAppPath(APP_ROUTES.ORDERS, { replace: replaceRoute });
+  requestAnimationFrame(() => ordersBackBtn && ordersBackBtn.focus({ preventScroll: true }));
 }
-function closeOrdersModal(){
-  closeModalAccessible(ordersModal);
+function closeOrdersModal({ replaceRoute = false } = {}){
+  showShopScreenOnly();
+  navigateAppPath(APP_ROUTES.SHOP, { replace: replaceRoute });
 }
 
-ordersBtn.addEventListener("click", () => requireLogin(openOrdersModal, "Log in to view your orders."));
-ordersModalClose.addEventListener("click", closeOrdersModal);
-ordersModal.addEventListener("click", (e) => {
-  if (e.target === ordersModal) closeOrdersModal();
-});
+ordersBtn.addEventListener("click", () => requireLogin(() => openOrdersModal(), "Log in to view your orders."));
+if (ordersBackBtn) ordersBackBtn.addEventListener("click", () => closeOrdersModal({ replaceRoute: true }));
 
 // ===================== Profile =====================
 function openProfileModal(){
@@ -2712,6 +3570,16 @@ function openProfileModal(){
   profileNameInput.value = profile.name || "";
   profileEmailInput.value = profile.email || "";
   profilePhoneInput.value = profile.phone || "";
+  const savedAddress = (currentUserProfile && currentUserProfile.address) || {};
+  profileAddressInput.value = savedAddress.address || "";
+  profileCityInput.value = savedAddress.city || "";
+  profilePostalInput.value = savedAddress.postal || "";
+  profileLandmarkInput.value = savedAddress.landmark || "";
+  profilePinnedLocation = savedAddress.location ? serializePinnedLocation(savedAddress.location) : null;
+  updatePinnedLocationCard("profile");
+  applyLandmarkSuggestionToTarget("profile", profilePinnedLocation && profilePinnedLocation.addressSnapshot
+    ? profilePinnedLocation.addressSnapshot.landmarkSuggestion
+    : "");
   profileBioInput.value = profile.bio || "";
   profileError.textContent = "";
   profileSuccess.classList.add("hidden");
@@ -2736,13 +3604,22 @@ profileForm.addEventListener("submit", async (e) => {
   const name = profileNameInput.value.trim();
   const email = profileEmailInput.value.trim();
   const phone = profilePhoneInput.value.trim();
+  const savedAddress = {
+    name,
+    phone,
+    address: profileAddressInput.value.trim(),
+    city: profileCityInput.value.trim(),
+    postal: profilePostalInput.value.trim(),
+    landmark: profileLandmarkInput.value.trim(),
+    ...(profilePinnedLocation ? { location: serializePinnedLocation(profilePinnedLocation) } : {})
+  };
   const bio = profileBioInput.value.trim();
 
   const existingAvatar = (currentUserProfile.profile && currentUserProfile.profile.avatar) || null;
   const avatar = pendingAvatarUrl === undefined ? existingAvatar : pendingAvatarUrl;
 
   const newProfile = { name, email, phone, bio, avatar };
-  const { error } = await supabase.from("profiles").update({ profile: newProfile }).eq("id", currentUserId);
+  const { error } = await supabase.from("profiles").update({ profile: newProfile, address: savedAddress }).eq("id", currentUserId);
 
   if (error) {
     profileError.textContent = "Could not save your profile. Please try again.";
@@ -2750,6 +3627,7 @@ profileForm.addEventListener("submit", async (e) => {
   }
 
   currentUserProfile.profile = newProfile;
+  currentUserProfile.address = savedAddress;
   accountMenuLabel.textContent = name || currentUser;
   renderAvatar(headerAvatar, avatar, currentUser);
   profileError.textContent = "";
@@ -2862,8 +3740,6 @@ function closeTopModal(){
     "size-modal": closeSizeModal,
     "profile-modal": closeProfileModal,
     "cart-modal": closeCartModal,
-    "order-modal": closeOrderModal,
-    "orders-modal": closeOrdersModal,
     "contact-modal": closeContactModal,
     "chat-modal": () => closeModalAccessible(chatModal)
   };
@@ -3268,65 +4144,13 @@ function showChatNotification(title, body){
   }
 }
 
-// ---- People you may know (random friend suggestions) ----
-const SUGGESTIONS_COUNT = 5;
-const SUGGESTIONS_POOL_SIZE = 60;
-let suggestedPeopleCache = [];
-
-function shuffleArray(arr){
-  const copy = arr.slice();
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-async function fetchSuggestedPeople(){
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, username")
-    .neq("id", currentUserId)
-    .limit(SUGGESTIONS_POOL_SIZE);
-  if (error) { console.error("[Dagoldol] fetchSuggestedPeople:", error); return []; }
-
-  const alreadyContacted = new Set(dmThreadsCache.map(t => otherPartyOfThread(t).id));
-  const pool = (data || []).filter(p => p.id !== currentUserId && !alreadyContacted.has(p.id));
-  return shuffleArray(pool).slice(0, SUGGESTIONS_COUNT);
-}
-
-async function refreshSuggestedPeople(){
-  suggestedPeopleCache = await fetchSuggestedPeople();
-  renderSuggestedPeople();
-}
-
-function renderSuggestedPeople(){
+// ---- Direct messaging discovery ----
+// Random profile suggestions were removed in Phase 3. The chat UI supports
+// explicit username lookup and direct seller messaging only.
+function renderDirectMessageDiscoveryHint(){
   const listEl = document.getElementById("chat-suggestions-inner");
   if (!listEl) return;
-  if (!suggestedPeopleCache.length) {
-    listEl.innerHTML = `<p class="suggestions-empty">No new people to suggest right now.</p>`;
-    return;
-  }
-  listEl.innerHTML = suggestedPeopleCache.map(p => `
-    <div class="suggestion-item" data-user="${p.id}">
-      <span class="suggestion-avatar">${escapeHtml((p.username || "?").trim().charAt(0).toUpperCase() || "?")}</span>
-      <span class="suggestion-name">${escapeHtml(p.username)}</span>
-      <button type="button" class="btn-secondary suggestion-add-btn" data-id="${p.id}" data-username="${escapeHtml(p.username)}">Message</button>
-    </div>
-  `).join("");
-
-  listEl.querySelectorAll(".suggestion-add-btn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      const thread = await ensureDmThread(btn.dataset.id, btn.dataset.username);
-      btn.disabled = false;
-      if (!thread) { showToast("Could not start that chat. Please try again."); return; }
-      suggestedPeopleCache = suggestedPeopleCache.filter(p => p.id !== btn.dataset.id);
-      renderSuggestedPeople();
-      await refreshDmThreadList();
-      await openDmThreadById(thread.id);
-    });
-  });
+  listEl.innerHTML = `<p class="suggestions-empty">Search for a username above, or message the seller directly.</p>`;
 }
 
 async function openChatModal2(){
@@ -3336,7 +4160,7 @@ async function openChatModal2(){
   currentDmThread = null;
   renderDmConversationPanel();
   await refreshDmThreadList();
-  await refreshSuggestedPeople();
+  renderDirectMessageDiscoveryHint();
   openModalAccessible(chatModal, chatNewUsernameInput);
 }
 
@@ -3354,8 +4178,6 @@ if (chatNewStartBtn) {
     if (!thread) { chatNewErrorEl.textContent = "Could not start that chat — check the browser console (F12). This usually means the dm_threads/dm_messages tables haven't been created in Supabase yet."; return; }
 
     chatNewUsernameInput.value = "";
-    suggestedPeopleCache = suggestedPeopleCache.filter(p => p.id !== profile.id);
-    renderSuggestedPeople();
     await refreshDmThreadList();
     await openDmThreadById(thread.id);
   });
@@ -3377,8 +4199,6 @@ if (chatMessageSellerBtn) {
       showToast("Could not start that chat — check the browser console (F12). This usually means the dm_threads/dm_messages tables haven't been created in Supabase yet.");
       return;
     }
-    suggestedPeopleCache = suggestedPeopleCache.filter(p => p.id !== seller.id);
-    renderSuggestedPeople();
     await refreshDmThreadList();
     await openDmThreadById(thread.id);
   });
@@ -3532,7 +4352,7 @@ function renderAdminOrdersTab(){
           ? `<br><strong>Payment reference:</strong> ${escapeHtml(order.paymentReference)}`
           : `<br><span style="color:var(--rust)">No payment reference on file</span>`;
         const proofThumb = order.paymentProof
-          ? `<br><span class="admin-payment-proof-thumb"><img src="${escapeHtml(order.paymentProof)}" alt="Payment proof for ${escapeHtml(order.id)}" class="zoomable-img" loading="lazy" decoding="async"></span>`
+          ? `<br><button type="button" class="btn-secondary admin-payment-proof-btn" data-action="view-payment-proof" data-order="${escapeHtml(order.id)}">View payment proof</button>`
           : "";
         const statusSection = order.cancelled
           ? `<p class="order-cancelled-badge">Cancelled by customer</p>`
@@ -3580,6 +4400,21 @@ function renderAdminOrdersTab(){
 
   panel.querySelectorAll(".admin-status-btn").forEach(btn => {
     btn.addEventListener("click", () => setOrderStatus(btn.dataset.order, Number(btn.dataset.step)));
+  });
+  panel.querySelectorAll("[data-action='view-payment-proof']").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const entry = adminOrdersCache.find(({ order }) => String(order.id) === String(btn.dataset.order));
+      if (!entry || !entry.order.paymentProof) return;
+      const previousLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Opening…";
+      try {
+        await openPrivatePaymentProof(entry.order.paymentProof, entry.order.id);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = previousLabel;
+      }
+    });
   });
   panel.querySelectorAll("[data-action='delivery-route']").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -4605,6 +5440,7 @@ function renderAdminMessagesTab(){
 
 // ---------- Accounts tab ----------
 let adminAccountsCache = [];
+const adminLatestDeliveryByUserId = new Map();
 
 async function deleteAuthUserViaEdgeFunction(userId){
   try {
@@ -4642,29 +5478,76 @@ async function deleteAccount(username, profileId){
 
 async function renderAdminAccounts(){
   if (adminTabPanels.accounts) adminTabPanels.accounts.innerHTML = `<h2 class="admin-section-title">Accounts</h2>${buildSkeletonRows(3)}`;
-  const { data, error } = await supabase.from("profiles").select("*").eq("role", "customer");
-  if (error) reportLoadError("Accounts", error);
-  adminAccountsCache = error ? [] : (data || []);
+
+  const [profilesResult, latestOrdersResult] = await Promise.all([
+    supabase.from("profiles").select("*").eq("role", "customer"),
+    supabase.from("orders").select("user_id, username, address, placed_at").order("placed_at", { ascending: false }).limit(1000)
+  ]);
+
+  if (profilesResult.error) reportLoadError("Accounts", profilesResult.error);
+  if (latestOrdersResult.error) reportLoadError("Account delivery pins", latestOrdersResult.error);
+
+  adminAccountsCache = profilesResult.error ? [] : (profilesResult.data || []);
+  adminLatestDeliveryByUserId.clear();
+  (latestOrdersResult.error ? [] : (latestOrdersResult.data || [])).forEach(row => {
+    const userId = row && row.user_id ? String(row.user_id) : "";
+    if (userId && !adminLatestDeliveryByUserId.has(userId)) {
+      adminLatestDeliveryByUserId.set(userId, {
+        address: row.address || {},
+        placedAt: Number(row.placed_at || 0),
+        username: row.username || ""
+      });
+    }
+  });
+
   renderAdminAccountsTab();
 }
 
-function resolveAdminAccountDelivery(account){
-  const accountOrders = adminOrdersCache
-    .filter(entry => String(entry.username) === String(account && account.username))
-    .slice()
-    .sort((a, b) => Number(b.order && b.order.placedAt || 0) - Number(a.order && a.order.placedAt || 0));
-  const orderAddresses = accountOrders.map(entry => entry.order && entry.order.address).filter(Boolean);
-  const api = window.DagoldolDeliveryLocation;
-  const location = api && api.resolveAccountLocation
-    ? api.resolveAccountLocation(account && account.address, orderAddresses)
-    : (api && api.locationFromAddress ? api.locationFromAddress(account && account.address) : null);
-  if (!location) return { location: null, address: account && account.address ? account.address : {}, provenance: null };
+function savedDeliveryLocationFromAddress(address){
+  const raw = address && address.location;
+  if (!raw || typeof raw !== "object") return null;
+  const latitude = Number(raw.latitude ?? raw.lat);
+  const longitude = Number(raw.longitude ?? raw.lon ?? raw.lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  return serializePinnedLocation({
+    latitude,
+    longitude,
+    confirmed: raw.confirmed !== false,
+    source: raw.source || "saved-delivery",
+    pinnedAt: raw.pinnedAt || null,
+    accuracy: raw.accuracy,
+    addressSnapshot: raw.addressSnapshot || {
+      address: address.address || "",
+      city: address.city || "",
+      postal: address.postal || "",
+      landmarkSuggestion: address.landmark || ""
+    }
+  });
+}
 
-  if (location.provenance === "latest-order") {
-    const sourceEntry = accountOrders.find(entry => api.locationFromAddress(entry.order && entry.order.address));
-    return { location, address: sourceEntry && sourceEntry.order ? (sourceEntry.order.address || {}) : {}, provenance: "latest-order" };
+function resolveAdminAccountDelivery(account){
+  const latest = adminLatestDeliveryByUserId.get(String(account && account.id || ""));
+  const latestLocation = savedDeliveryLocationFromAddress(latest && latest.address);
+  if (latestLocation) {
+    return { location: latestLocation, address: latest.address || {}, provenance: "latest-order" };
   }
-  return { location, address: account && account.address ? account.address : {}, provenance: "profile" };
+  const profileLocation = savedDeliveryLocationFromAddress(account && account.address);
+  if (profileLocation) {
+    return { location: profileLocation, address: account.address || {}, provenance: "profile" };
+  }
+  return { location: null, address: account && account.address ? account.address : {}, provenance: null };
+}
+
+async function openAdminCustomerDeliveryLocation(accountId){
+  const account = adminAccountsCache.find(item => String(item.id) === String(accountId));
+  if (!account) return;
+  const resolvedDelivery = resolveAdminAccountDelivery(account);
+  if (!resolvedDelivery.location) {
+    showToast("No saved delivery pin for this customer.");
+    return;
+  }
+  adminCustomerPinnedLocation = serializePinnedLocation(resolvedDelivery.location);
+  await openDeliveryMapPicker("admin-customer");
 }
 
 function renderAdminAccountsTab(){
@@ -4683,20 +5566,17 @@ function renderAdminAccountsTab(){
         const username = account.username;
         const orderCount = adminOrdersCache.filter(o => o.username === username).length;
         const cart = account.cart || [];
-        const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-        const addr = account.address ? `${escapeHtml(account.address.city)}, ${escapeHtml(account.address.postal)}` : "No saved address";
+        const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+        const address = account.address || {};
+        const addressLabel = address.city || address.postal
+          ? `${escapeHtml(address.city || "")}${address.city && address.postal ? ", " : ""}${escapeHtml(address.postal || "")}`
+          : "No saved address";
         const resolvedDelivery = resolveAdminAccountDelivery(account);
         const accountDeliveryLocation = resolvedDelivery.location;
         const locationSourceLabel = resolvedDelivery.provenance === "latest-order" ? "Latest order pin" : "Saved customer pin";
         const accountPinLine = accountDeliveryLocation
-          ? `<br><span class="admin-delivery-pin-line"><span class="admin-delivery-pin-badge">${locationSourceLabel}</span> ${accountDeliveryLocation.lat.toFixed(6)}, ${accountDeliveryLocation.lon.toFixed(6)}</span>`
-          : `<br><span class="admin-delivery-pin-line">No exact customer pin saved yet.</span>`;
-        const accountMapPreview = accountDeliveryLocation
-          ? `<div class="admin-customer-location-block">
-               <div class="admin-customer-location-title">Customer pinpoint map</div>
-               <div class="admin-customer-map-preview" data-customer-location-preview data-lat="${accountDeliveryLocation.lat}" data-lon="${accountDeliveryLocation.lon}" data-label="${escapeHtml(username)} — ${locationSourceLabel}"></div>
-             </div>`
-          : "";
+          ? `<br><span class="admin-delivery-pin-line"><span class="admin-delivery-pin-badge">${locationSourceLabel}</span> ${accountDeliveryLocation.latitude.toFixed(6)}, ${accountDeliveryLocation.longitude.toFixed(6)}</span>`
+          : `<br><span class="admin-delivery-pin-line">No saved delivery pin</span>`;
         const profile = account.profile || {};
         const profileLine = (profile.name || profile.email || profile.phone)
           ? `<br>Profile: ${[profile.name, profile.email, profile.phone].filter(Boolean).map(escapeHtml).join(" · ")}`
@@ -4707,9 +5587,9 @@ function renderAdminAccountsTab(){
               <span class="admin-card-title">${escapeHtml(username)}</span>
               <span class="admin-card-meta">${orderCount} order${orderCount === 1 ? "" : "s"}</span>
             </div>
-            <div class="admin-card-body">${addr} · ${cartCount} item${cartCount === 1 ? "" : "s"} currently in cart${profileLine}${accountPinLine}${accountMapPreview}</div>
+            <div class="admin-card-body">${addressLabel} · ${cartCount} item${cartCount === 1 ? "" : "s"} currently in cart${profileLine}${accountPinLine}</div>
             <div class="admin-card-actions">
-              ${accountDeliveryLocation ? `<button type="button" class="btn-secondary" data-id="${account.id}" data-action="customer-pin">View customer location</button>` : ""}
+              ${accountDeliveryLocation ? `<button type="button" class="btn-secondary" data-id="${account.id}" data-action="view-customer-location">View delivery pin</button>` : ""}
               <button type="button" class="admin-btn-danger" data-username="${escapeHtml(username)}" data-id="${account.id}" data-action="delete-account">Delete account</button>
             </div>
           </div>
@@ -4718,23 +5598,8 @@ function renderAdminAccountsTab(){
     </div>
   `;
 
-  if (window.DagoldolDeliveryLocation && window.DagoldolDeliveryLocation.renderAdminAccountLocationMaps) {
-    window.DagoldolDeliveryLocation.renderAdminAccountLocationMaps(panel);
-  }
-
-  panel.querySelectorAll("[data-action='customer-pin']").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const account = adminAccountsCache.find(item => String(item.id) === String(btn.dataset.id));
-      if (account && window.DagoldolDeliveryLocation) {
-        const resolvedDelivery = resolveAdminAccountDelivery(account);
-        if (resolvedDelivery.location) {
-          window.DagoldolDeliveryLocation.openAdminRoute({
-            label: `Customer: ${account.username || "customer"}`,
-            address: resolvedDelivery.address || {}
-          });
-        }
-      }
-    });
+  panel.querySelectorAll("[data-action='view-customer-location']").forEach(btn => {
+    btn.addEventListener("click", () => openAdminCustomerDeliveryLocation(btn.dataset.id));
   });
 
   panel.querySelectorAll("[data-action='delete-account']").forEach(btn => {
@@ -4990,6 +5855,7 @@ async function renderAdminSettings(){
 function renderAdminSettingsTab(){
   const panel = adminTabPanels.settings;
   pendingQrDataUrl = undefined;
+  pendingBankQrDataUrl = undefined;
   pendingLogoDataUrl = undefined;
 
   panel.innerHTML = `
@@ -5013,6 +5879,61 @@ function renderAdminSettingsTab(){
             <button type="button" class="link-btn avatar-remove-btn" id="admin-qr-remove">Remove QR photo</button>
             <span class="avatar-upload-status hidden" id="admin-qr-upload-status">Uploading…</span>
           </div>
+        </div>
+      </div>
+
+      <div class="admin-sizes-field" style="margin-top:22px;">
+        <p class="admin-form-title">Bank Transfer</p>
+        <label class="field">
+          <span>Bank name</span>
+          <input type="text" id="admin-bank-name" value="${escapeHtml(currentSettings.bank_name || "")}" autocomplete="organization">
+        </label>
+        <label class="field">
+          <span>Account holder name</span>
+          <input type="text" id="admin-bank-account-name" value="${escapeHtml(currentSettings.bank_account_name || "")}" autocomplete="name">
+        </label>
+        <label class="field">
+          <span>Account number</span>
+          <input type="text" id="admin-bank-account-number" value="${escapeHtml(currentSettings.bank_account_number || "")}" inputmode="numeric" autocomplete="off">
+        </label>
+
+        <span class="field-label-standalone">Bank / QR Ph payment QR image</span>
+        <div class="avatar-field" style="align-items:flex-start;">
+          <div class="size-thumb" id="admin-bank-qr-preview" style="width:120px; height:120px;">
+            ${currentSettings.bank_qr_image ? `<img src="${escapeHtml(currentSettings.bank_qr_image)}" alt="Bank payment QR code" class="zoomable-img" loading="lazy" decoding="async">` : ""}
+          </div>
+          <div class="avatar-field-controls">
+            <label class="link-btn avatar-upload-label" for="admin-bank-qr-input">Choose bank QR photo</label>
+            <input type="file" id="admin-bank-qr-input" accept="image/*" class="hidden">
+            <button type="button" class="link-btn avatar-remove-btn" id="admin-bank-qr-remove">Remove bank QR photo</button>
+            <span class="avatar-upload-status hidden" id="admin-bank-qr-upload-status">Uploading…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-sizes-field" style="margin-top:22px;">
+        <p class="admin-form-title">Delivery Origin</p>
+        <p class="field-hint" style="margin:0 0 14px;">Set the shop dispatch point used for delivery routing. A confirmed map pin takes priority over the typed address.</p>
+        <label class="field">
+          <span>Origin address</span>
+          <input type="text" id="admin-delivery-origin-address" value="${escapeHtml(currentSettings.delivery_origin_address || SHOP_ORIGIN_ADDRESS)}" autocomplete="street-address">
+        </label>
+        <div class="delivery-location-card" id="admin-delivery-origin-card" data-state="empty">
+          <div>
+            <strong class="delivery-location-card-title">No confirmed shop origin pin</strong>
+            <p class="delivery-location-card-copy">Choose the exact dispatch point on the map.</p>
+          </div>
+          <button type="button" class="link-btn" id="admin-delivery-origin-open">Choose origin on map</button>
+        </div>
+        <div class="admin-two-column-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+          <label class="field">
+            <span>Latitude</span>
+            <input type="text" id="admin-delivery-origin-latitude" value="${escapeHtml(currentSettings.delivery_origin_latitude || "")}" inputmode="decimal" readonly>
+          </label>
+          <label class="field">
+            <span>Longitude</span>
+            <input type="text" id="admin-delivery-origin-longitude" value="${escapeHtml(currentSettings.delivery_origin_longitude || "")}" inputmode="decimal" readonly>
+          </label>
         </div>
       </div>
 
@@ -5049,6 +5970,37 @@ function renderAdminSettingsTab(){
   const saveBtn = document.getElementById("admin-settings-save");
   const errEl = document.getElementById("admin-settings-error");
   const successEl = document.getElementById("admin-settings-success");
+  const bankQrInput = document.getElementById("admin-bank-qr-input");
+  const bankQrPreview = document.getElementById("admin-bank-qr-preview");
+  const bankQrRemoveBtn = document.getElementById("admin-bank-qr-remove");
+  const bankQrUploadStatus = document.getElementById("admin-bank-qr-upload-status");
+  const deliveryOriginOpenBtn = document.getElementById("admin-delivery-origin-open");
+  const deliveryOriginAddressInput = document.getElementById("admin-delivery-origin-address");
+  const deliveryOriginLatitudeInput = document.getElementById("admin-delivery-origin-latitude");
+  const deliveryOriginLongitudeInput = document.getElementById("admin-delivery-origin-longitude");
+
+  const savedOriginLatitude = Number(currentSettings.delivery_origin_latitude);
+  const savedOriginLongitude = Number(currentSettings.delivery_origin_longitude);
+  if (
+    String(currentSettings.delivery_origin_latitude || "").trim() &&
+    String(currentSettings.delivery_origin_longitude || "").trim() &&
+    Number.isFinite(savedOriginLatitude) && Number.isFinite(savedOriginLongitude)
+  ) {
+    adminOriginPinnedLocation = serializePinnedLocation({
+      latitude: savedOriginLatitude,
+      longitude: savedOriginLongitude,
+      confirmed: true,
+      source: "admin-origin",
+      addressSnapshot: { address: currentSettings.delivery_origin_address || SHOP_ORIGIN_ADDRESS }
+    });
+  } else {
+    adminOriginPinnedLocation = null;
+  }
+  updatePinnedLocationCard("admin-origin");
+
+  if (deliveryOriginOpenBtn) {
+    deliveryOriginOpenBtn.addEventListener("click", () => openDeliveryMapPicker("admin-origin"));
+  }
 
   qrInput.addEventListener("change", async () => {
     const file = qrInput.files[0];
@@ -5069,6 +6021,26 @@ function renderAdminSettingsTab(){
     qrPreview.innerHTML = "";
   });
 
+  bankQrInput.addEventListener("change", async () => {
+    const file = bankQrInput.files[0];
+    if (!file) return;
+    try {
+      if (bankQrUploadStatus) bankQrUploadStatus.classList.remove("hidden");
+      pendingBankQrDataUrl = await uploadImageToStorage(file, "payment-settings", "bank-qr", 600);
+      bankQrPreview.innerHTML = `<img src="${escapeHtml(pendingBankQrDataUrl)}" alt="Bank payment QR code" class="zoomable-img" loading="lazy" decoding="async">`;
+    } catch (err) {
+      console.error("[Dagoldol] bank QR upload failed:", err);
+      errEl.textContent = "Could not upload the bank QR image. Try a different photo.";
+    } finally {
+      if (bankQrUploadStatus) bankQrUploadStatus.classList.add("hidden");
+    }
+  });
+
+  bankQrRemoveBtn.addEventListener("click", () => {
+    pendingBankQrDataUrl = null;
+    bankQrPreview.innerHTML = "";
+  });
+
   saveBtn.addEventListener("click", async () => {
     const number = document.getElementById("admin-gcash-number").value.trim();
     if (!number) {
@@ -5081,18 +6053,53 @@ function renderAdminSettingsTab(){
     successEl.classList.add("hidden");
 
     const qrImage = pendingQrDataUrl === undefined ? currentSettings.gcash_qr_image : pendingQrDataUrl;
+    const bankName = document.getElementById("admin-bank-name").value.trim();
+    const bankAccountName = document.getElementById("admin-bank-account-name").value.trim();
+    const bankAccountNumber = document.getElementById("admin-bank-account-number").value.trim();
+    const bankQrImage = pendingBankQrDataUrl === undefined ? currentSettings.bank_qr_image : pendingBankQrDataUrl;
+    const deliveryOriginAddress = deliveryOriginAddressInput ? deliveryOriginAddressInput.value.trim() : "";
+    const deliveryOriginLatitude = deliveryOriginLatitudeInput ? deliveryOriginLatitudeInput.value.trim() : "";
+    const deliveryOriginLongitude = deliveryOriginLongitudeInput ? deliveryOriginLongitudeInput.value.trim() : "";
 
-    const numberError = await saveSetting("gcash_number", number);
-    const qrError = await saveSetting("gcash_qr_image", qrImage || "");
-
-    saveBtn.disabled = false;
-
-    if (numberError || qrError) {
-      errEl.textContent = "Could not save settings. Make sure your Supabase project has a \"settings\" table with (key text primary key, value text), and that supabase_rls.sql has been run.";
+    if ((deliveryOriginLatitude && !deliveryOriginLongitude) || (!deliveryOriginLatitude && deliveryOriginLongitude)) {
+      saveBtn.disabled = false;
+      errEl.textContent = "Choose the shop origin on the map so both coordinates are saved together.";
       return;
     }
 
-    currentSettings = { ...currentSettings, gcash_number: number, gcash_qr_image: qrImage || null };
+    const numberError = await saveSetting("gcash_number", number);
+    const qrError = await saveSetting("gcash_qr_image", qrImage || "");
+    const bankNameError = await saveSetting("bank_name", bankName);
+    const bankAccountNameError = await saveSetting("bank_account_name", bankAccountName);
+    const bankAccountNumberError = await saveSetting("bank_account_number", bankAccountNumber);
+    const bankQrError = await saveSetting("bank_qr_image", bankQrImage || "");
+    const deliveryOriginAddressError = await saveSetting("delivery_origin_address", deliveryOriginAddress || SHOP_ORIGIN_ADDRESS);
+    const deliveryOriginLatitudeError = await saveSetting("delivery_origin_latitude", deliveryOriginLatitude);
+    const deliveryOriginLongitudeError = await saveSetting("delivery_origin_longitude", deliveryOriginLongitude);
+
+    saveBtn.disabled = false;
+
+    if (
+      numberError || qrError || bankNameError || bankAccountNameError || bankAccountNumberError || bankQrError ||
+      deliveryOriginAddressError || deliveryOriginLatitudeError || deliveryOriginLongitudeError
+    ) {
+      errEl.textContent = "Could not save payment settings. Verify the settings table, Storage permissions, and admin RLS policies.";
+      return;
+    }
+
+    currentSettings = {
+      ...currentSettings,
+      gcash_number: number,
+      gcash_qr_image: qrImage || null,
+      bank_name: bankName,
+      bank_account_name: bankAccountName,
+      bank_account_number: bankAccountNumber,
+      bank_qr_image: bankQrImage || null,
+      delivery_origin_address: deliveryOriginAddress || SHOP_ORIGIN_ADDRESS,
+      delivery_origin_latitude: deliveryOriginLatitude,
+      delivery_origin_longitude: deliveryOriginLongitude
+    };
+    shopOriginCoords = null;
     applySettingsToDom();
     successEl.textContent = "Payment settings saved. Customers will see this immediately.";
     successEl.classList.remove("hidden");
@@ -5149,9 +6156,65 @@ function renderAdminSettingsTab(){
 
 }
 
+let appRouteReady = false;
+
+async function applyCurrentAppRoute(){
+  const path = normalizeAppPath();
+  const isAdmin = Boolean(currentUserProfile && currentUserProfile.role === "admin");
+
+  if (isAdmin) {
+    if (path !== APP_ROUTES.ADMIN) navigateAppPath(APP_ROUTES.ADMIN, { replace: true });
+    loginScreen.classList.add("hidden");
+    shopScreen.classList.add("hidden");
+    hideCustomerRouteScreens();
+    adminScreen.classList.remove("hidden");
+    return;
+  }
+
+  if (path === APP_ROUTES.CHECKOUT) {
+    if (!currentUserId) {
+      saveCheckoutDraft(buildCheckoutItemsFromCart(), true);
+      showLoginGate("Log in to continue checkout.");
+      return;
+    }
+    await openCheckoutFromPersistedState({ replaceRoute: true });
+    return;
+  }
+
+  if (path === APP_ROUTES.ORDERS) {
+    if (!currentUserId) {
+      showLoginGate("Log in to view your orders.");
+      return;
+    }
+    await openOrdersModal({ replaceRoute: true });
+    return;
+  }
+
+  if (path === APP_ROUTES.ADMIN) {
+    showShopScreenOnly();
+    navigateAppPath(APP_ROUTES.SHOP, { replace: true });
+    return;
+  }
+
+  showShopScreenOnly();
+  if (path !== APP_ROUTES.SHOP) navigateAppPath(APP_ROUTES.SHOP, { replace: true });
+}
+
+window.addEventListener("popstate", () => {
+  if (appRouteReady) void applyCurrentAppRoute();
+});
+
 // ===================== Restore session on page load =====================
 async function initSession(){
-  await loadSettings();
+  fastMobileBootstrapActive = shouldUseFastMobileBootstrap();
+  if (fastMobileBootstrapActive) {
+    await primeSettingsFromSnapshot();
+    void refreshSettingsLive().catch(error => {
+      console.warn("[Dagoldol] Live settings refresh failed after snapshot prime:", error);
+    });
+  } else {
+    await refreshSettingsLive();
+  }
   updateDocumentTitleUnread(0);
 
   const { data } = await supabase.auth.getSession();
@@ -5163,7 +6226,7 @@ async function initSession(){
 
   const profile = await fetchProfile(session.user.id);
   if (!profile) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     await enterGuestShop();
     return;
   }
@@ -5213,7 +6276,7 @@ async function enterShop(){
     await mergeGuestCartIntoProfile();
     setHeaderCustomerState(profile.name || currentUser, profile.avatar || null);
     shopScreen.classList.remove("hidden");
-    await renderCatalogue();
+    await renderCatalogueForSessionStart();
     updateCartBadge();
 
     initPresenceGeneric();
@@ -5226,6 +6289,9 @@ async function enterShop(){
     updateChatBadge();
     updateDocumentTitleUnread(unreadChatCount);
   }
+
+  appRouteReady = true;
+  await applyCurrentAppRoute();
 
   if (account.role !== "admin" && pendingLoginIntent) {
     const intent = pendingLoginIntent;
@@ -5241,12 +6307,14 @@ async function enterGuestShop(){
   adminScreen.classList.add("hidden");
   shopScreen.classList.remove("hidden");
   setHeaderGuestState();
-  await renderCatalogue();
+  await renderCatalogueForSessionStart();
   updateCartBadge();
+  appRouteReady = true;
+  await applyCurrentAppRoute();
 }
 
 async function backToLogin(){
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   teardownChatRealtime();
   teardownRecommendationsRealtime();
   currentUser = null;
@@ -5254,6 +6322,7 @@ async function backToLogin(){
   currentUserProfile = null;
   closeAccountMenu();
   adminScreen.classList.add("hidden");
+  navigateAppPath(APP_ROUTES.SHOP, { replace: true });
   await enterGuestShop();
 }
 
@@ -5286,7 +6355,8 @@ loginForm.addEventListener("submit", async (e) => {
   } catch (err) {
     console.error("[Dagoldol] signInWithPassword threw an exception:", err);
     submitBtn.disabled = false;
-    errorMessage.textContent = "Could not reach the server. Check your connection and try again.";
+    resetPasswordVisibility(passwordInput);
+    errorMessage.textContent = describeAuthError(err, "login");
     return;
   }
 
@@ -5294,7 +6364,8 @@ loginForm.addEventListener("submit", async (e) => {
 
   if (error || !data.user) {
     submitBtn.disabled = false;
-    errorMessage.textContent = "Incorrect email or password. Try again.";
+    resetPasswordVisibility(passwordInput);
+    errorMessage.textContent = describeAuthError(error || new Error("Missing authenticated user."), "login");
     errorMessage.classList.remove("shake");
     void errorMessage.offsetWidth;
     errorMessage.classList.add("shake");
@@ -5310,7 +6381,7 @@ loginForm.addEventListener("submit", async (e) => {
 
   if (!profile) {
     errorMessage.textContent = "Your account isn't fully set up yet. Please contact the shop owner.";
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return;
   }
 
@@ -5398,12 +6469,21 @@ signupForm.addEventListener("submit", async (e) => {
   const submitBtn = signupForm.querySelector("button[type='submit']");
   submitBtn.disabled = true;
 
-  const { data, error } = await supabase.auth.signUp({ email: newEmail, password: newPassword });
+  let data, error;
+  try {
+    const result = await supabase.auth.signUp({ email: newEmail, password: newPassword });
+    data = result.data;
+    error = result.error;
+  } catch (err) {
+    console.error("[Dagoldol] signUp threw an exception:", err);
+    data = null;
+    error = err;
+  }
   console.log("[Dagoldol] signUp result:", { data, error });
 
   if (error) {
     submitBtn.disabled = false;
-    signupError.textContent = error.message || "Could not create that account.";
+    signupError.textContent = describeAuthError(error, "signup");
     return;
   }
 

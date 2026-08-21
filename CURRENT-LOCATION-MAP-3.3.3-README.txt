@@ -1,0 +1,92 @@
+DAGOLDOL 3.3.3 — CURRENT LOCATION + PHONE MAP FIX
+==================================================
+
+PURPOSE
+-------
+This release fixes the two failures shown on the deployed site:
+
+1. iPhone/Safari could remain on "Loading map..." while the old MapLibre/WebGL
+   map waited for remote vector-style resources.
+2. "Use my current location" was coupled to successful map initialization, so
+   the button could be disabled or useless while the map was still loading.
+
+WHAT CHANGED
+------------
+
+A. DELIVERY MAP RENDERER
+- Replaced the delivery picker's WebGL-only MapLibre renderer with Leaflet 1.9.4.
+- Uses raster OpenStreetMap tiles for the delivery picker.
+- The picker becomes interactive immediately after Leaflet initializes; it does
+  not wait for every remote tile to finish.
+- Leaflet loads lazily only when the delivery-location modal is opened.
+- Primary CDN: jsDelivr.
+- Fallback CDN: unpkg.
+- Tile failures show a warning but do not block pinning or geolocation.
+- The map uses invalidateSize() after modal/orientation/viewport changes.
+- Closing the modal removes the marker, accuracy circle, tile layer, map, and
+  active location watch.
+
+B. CURRENT LOCATION
+- Current-location acquisition no longer depends on map readiness.
+- The current-location button remains usable while the map renderer initializes.
+- If the map renderer fails entirely, the browser can still acquire coordinates
+  and the customer/admin can confirm those coordinates.
+- A high-accuracy watch starts before the fast cached/network one-shot request.
+- The pin moves as soon as the browser reports a valid position.
+- A visible accuracy circle shows how precise the browser/device says the fix is.
+- The location watch can refine the marker for several seconds after the first
+  fix and stops automatically or when the map closes.
+- Reverse geocoding is deliberately limited to avoid unnecessary requests.
+
+C. MOBILE LAYOUT
+- Delivery map height on <=720px screens is reduced to keep controls visible:
+  height: min(42dvh, 360px); min-height: 240px.
+- Existing iPhone safe-area padding and modal containment are preserved.
+
+D. SECURITY / CSP
+- Existing Permissions-Policy continues to allow geolocation only for self.
+- CSP now permits the Leaflet fallback CDN and OpenStreetMap raster tile host.
+- No location is requested automatically; it only begins after the user presses
+  "Use my current location".
+
+WHAT DID NOT CHANGE
+-------------------
+- Delivery pricing remains unchanged:
+    Free-distance threshold: 5 km
+    Distance rate:           PHP 60/km
+    Fallback delivery fee:   PHP 600
+- Admin delivery origin behavior remains available.
+- Supabase auth/session sync remains unchanged.
+- Bank/GCash payment settings remain unchanged.
+- Product catalogue, checkout authority, LiquidChrome, PixelTrail, My Info,
+  database schema, Supabase functions, and desktop visual design are preserved.
+
+IMPORTANT LIMITATION
+--------------------
+A web page receives whatever position the operating system/browser can provide.
+On an iPhone with GPS and permission enabled, this can be precise. A Windows PC
+without GPS may only provide a Wi-Fi/network-derived location, or Windows may
+return no position at all. Dagoldol now displays the reported accuracy and lets
+users drag the pin to the exact rider entrance when needed.
+
+DEPLOYMENT
+----------
+If updating from Dagoldol 3.3.2, copy the files from the paste ZIP into the same
+relative paths, then run:
+
+  npm run verify
+  npm run build
+
+Push to GitHub/Vercel. On phone and desktop, fully close old Dagoldol tabs and
+open a new tab so version 3.3.3 assets are fetched.
+
+WINDOWS LOCATION CHECK
+----------------------
+Windows Settings -> Privacy & security -> Location -> Location services ON.
+Then Chrome/Edge site settings for the Dagoldol domain -> Location -> Allow.
+Keep Wi-Fi enabled because desktop geolocation commonly uses network signals.
+
+IPHONE LOCATION CHECK
+---------------------
+Settings -> Privacy & Security -> Location Services -> ON.
+Allow Safari/Chrome location access and allow the Dagoldol website when prompted.

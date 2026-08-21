@@ -1,0 +1,36 @@
+DAGOLDOL PIXEL TRAIL VIDEO-MATCH — VERIFICATION
+================================================
+
+Reference inspected:
+- Supplied MP4: 1128x480, ~4.57 seconds, 30 fps.
+- Dominant saturated trail color sampled from reference frames is approximately
+  RGB(26, 0, 254), implemented as #1A00FE.
+
+TDD red state:
+- New PixelTrail contract test failed against the old implementation because:
+  * old maxAge was 250 instead of 420
+  * old cells had visible gaps
+  * old trail was gone by 300 ms
+
+TDD green state:
+- tests/pixel-trail-video-contract.mjs: 5/5 passed after implementation.
+
+Verified behavior:
+- Reference-video defaults: PASS
+- Connected no-gap square cells: PASS
+- Tail remains visible around 300 ms: PASS
+- Tail expires after configured maxAge: PASS
+- Coarse/touch device gating: PASS
+- Reduced-motion CSS gating: PASS
+- pointer-events:none control pass-through contract: PASS
+- JavaScript syntax: PASS
+- Existing Dagoldol npm run verify: PASS
+- CSS parse: PASS, zero top-level parse errors
+- Existing production files changed: pixel-trail.js and pixel-trail.css only
+
+Visual/runtime note:
+- The actual production JavaScript was executed in a deterministic Canvas 2D
+  VM harness at the reference 1128x480 viewport. The simulated curved pointer
+  path produced a dense connected block ribbon using the configured indigo.
+- Headless Chromium navigation is blocked by the execution environment's admin
+  policy, so no claim is made that a full real-browser screenshot test ran here.

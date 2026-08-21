@@ -1,0 +1,105 @@
+DAGOLDOL 3.3.2 — CURRENT LOCATION FIX VERIFICATION
+=================================================
+
+BASELINE
+--------
+Dagoldol 3.3.1 owner-origin/mobile-map release.
+
+TDD EVIDENCE
+------------
+Before implementation, tests/geolocation-reliability.test.mjs was created and
+run against 3.3.1. Result: 0/8 passed because the new helpers/behavior did not
+exist.
+
+After implementing the resilient location acquisition and adding the
+reasonable-fix settle behavior, the geolocation suite reports:
+- 9 tests
+- 9 passed
+- 0 failed
+
+The suite verifies:
+- exported reliability helpers
+- Permissions API state handling
+- immediate use of a usable cached/network position
+- watchPosition recovery after one-shot timeout
+- best-position fallback at the bounded deadline
+- permission-denied requests are not retried
+- Windows/iPhone actionable failure guidance
+- HTTPS/secure-context guard
+- reasonable coarse fix settles before the full GPS deadline
+
+FULL SOURCE VERIFICATION
+------------------------
+Command:
+  npm run verify
+
+Result:
+  PASS
+
+Included regression suites:
+- Multi-device auth: 4/4 PASS
+- Device auth resilience: 9/9 PASS
+- Payment settings: 5/5 PASS
+- Mobile fast bootstrap: 8/8 PASS
+- Delivery map: 8/8 PASS
+- Owner delivery origin: 5/5 PASS
+- Mobile map reliability: 8/8 PASS
+- Geolocation reliability: 9/9 PASS
+- Source contract verifier: PASS
+
+STATIC CHECKS
+-------------
+- JavaScript syntax checks: PASS
+- CSS files parsed: 8
+- CSS top-level parse errors: 0
+- index.html IDs inspected: 222
+- Duplicate IDs: 0
+
+DELIVERY PRICE REGRESSION
+-------------------------
+Confirmed unchanged in script.js:
+  const DELIVERY_FREE_KM_THRESHOLD = 5;
+  const DELIVERY_RATE_PER_KM = 60;
+  const DELIVERY_FALLBACK_FEE = 600;
+
+BUILD ATTEMPT
+-------------
+Command:
+  npm run build
+
+Result in this sandbox:
+  NOT COMPLETED because the environment cannot resolve the live Supabase host:
+  getaddrinfo EAI_AGAIN rvrjkfbenramappteuae.supabase.co
+
+This is an environment/network limitation, not reported as a successful build.
+Run npm run build on the user's network/Vercel before deployment.
+
+BROWSER RUNTIME LIMITATION
+--------------------------
+A Chromium runtime geolocation test was attempted with Playwright and the
+system Chromium binary. The sandbox policy blocked navigation to the local test
+server with net::ERR_BLOCKED_BY_ADMINISTRATOR. Therefore no claim is made that
+the physical Windows/iPhone browser path was executed inside this sandbox.
+
+FINAL DEVICE ACCEPTANCE TEST
+----------------------------
+After deploying 3.3.2:
+1. Windows Chrome/Edge
+   - Site Location permission = Allow
+   - Windows Location services = On
+   - Click Use my current location
+   - Verify map moves to current/approximate device position
+   - Verify status shows accuracy and pin can be refined
+2. iPhone Safari/Chrome
+   - iOS Location Services = On
+   - Website/browser permission = Allow
+   - Click Use my current location
+   - Keep the map open while first GPS fix is acquired
+   - Verify pin/address fill and accuracy message
+3. Denied permission
+   - Verify actionable OS/browser instructions are shown
+   - Verify manual pinning still works
+4. Slow location acquisition
+   - Verify button says Locating…
+   - Verify request can continue beyond the old 6s/10s one-shot limits
+   - Verify a reasonable position is accepted instead of discarded

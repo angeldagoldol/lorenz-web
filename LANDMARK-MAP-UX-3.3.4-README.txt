@@ -1,0 +1,98 @@
+DAGOLDOL 3.3.4 — Landmark Auto-Fill + Delivery Map Control Polish
+=================================================================
+
+PURPOSE
+-------
+This release improves the existing Delivery Location picker without redesigning Dagoldol.
+It extends the current 3.3.3 profile/checkout map system with nearby-landmark suggestions,
+manual-entry preservation, clearer current-location states, and a phone-friendly sticky action bar.
+
+WHAT THE CUSTOMER SEES
+----------------------
+When the customer taps the map, drags the pin, or uses "Use my current location":
+
+1. Street address is auto-filled when reverse-geocoding data is available.
+2. City/Municipality is auto-filled when available.
+3. Postal code is auto-filled when available.
+4. Dagoldol derives a nearby-landmark suggestion from named places/buildings/shops/
+   amenities/neighbourhood data when available.
+5. If Landmark is empty, the suggestion is filled automatically.
+6. If the customer already typed a Landmark, Dagoldol preserves that text.
+7. "Use suggested landmark" lets the customer restore the current map suggestion later.
+
+The same behavior is used in Profile/My Info and Checkout.
+
+MAP CONTROL IMPROVEMENTS
+------------------------
+- Current-location button has explicit states:
+  "◎ Use my current location" -> "◌ Locating…" -> "✓ Current location pinned"
+  and "↻ Retry current location" on failure.
+- "Center on my location" appears after Dagoldol has a device location fix.
+- Fields filled from the map receive a subtle visual auto-filled state.
+- On phones the Cancel / Use-this-location action area is sticky at the bottom of the
+  delivery picker and respects iPhone safe-area insets.
+- On <=420px screens the primary "✓ Use this location" action is shown before Cancel.
+- Manual address editing continues to mark a previously confirmed pin stale until reconfirmed.
+- Map/geocoding failure still does not block manual address entry or checkout.
+
+UNCHANGED DELIVERY PRICING
+--------------------------
+The cancelled PHP 399 request remains excluded. This release retains:
+- Free-distance threshold: 5 km
+- Distance rate: PHP 60 per km
+- Fallback delivery fee: PHP 600
+
+NO DATABASE MIGRATION
+---------------------
+The feature uses the existing address JSON and existing settings/profile infrastructure.
+No table or column migration is required.
+
+FILES CHANGED FOR RUNTIME
+-------------------------
+REPLACE:
+- index.html
+- config.js
+- script.js
+- delivery-map.js
+- phase3-fixes.css
+- package.json
+- scripts/verify-source.mjs
+
+TEST/DEVELOPMENT FILES UPDATED OR ADDED
+---------------------------------------
+- tests/delivery-map-contract.test.mjs
+- tests/mobile-fast-bootstrap.test.mjs
+- tests/delivery-location-runtime.spec.py
+- tests/landmark-map-ux.test.mjs   (new)
+- docs/superpowers/plans/2026-08-18-landmark-autofill-map-buttons.md
+
+FILES NOT CHANGED FOR THIS FEATURE
+----------------------------------
+- style.css
+- style1.css
+- script1.js
+- pill-buttons.css
+- liquid-chrome.js
+- pixel-trail.js / pixel-trail.css
+- auth-resilience.js
+- vercel.json
+- database/*
+- supabase/functions/*
+- product pages / catalogue snapshot
+
+DEPLOYMENT
+----------
+1. Back up the current project.
+2. Copy the replacement/additive files while preserving paths.
+3. Run:
+     npm run verify
+     npm run build
+4. Push to GitHub / deploy to Vercel.
+5. Fully close existing Dagoldol tabs on iPhone/Android/desktop and reopen the site so
+   asset version 3.3.4 is loaded instead of a cached older version.
+
+LIVE-SERVICE NOTE
+-----------------
+The local verification environment cannot reach the project's Supabase hostname, so the
+real catalogue-generation build must be run from a network that can resolve/reach Supabase.
+Physical-phone GPS, tile, and geocoding behavior should also be confirmed after deployment.

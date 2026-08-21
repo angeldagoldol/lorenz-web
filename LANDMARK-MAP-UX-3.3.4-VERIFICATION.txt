@@ -1,0 +1,62 @@
+DAGOLDOL 3.3.4 — Verification Record
+====================================
+
+Verified against the exact 3.3.4 release working tree before packaging.
+
+AUTOMATED SOURCE / CONTRACT SUITE
+---------------------------------
+Command: npm run verify
+Result: PASS
+
+Included passing suites:
+- Multi-device authentication: 4/4
+- Device auth resilience: 9/9
+- Payment/admin regression: 5/5
+- Mobile fast bootstrap: 8/8
+- Delivery map contract: 8/8
+- Owner delivery-origin contract: 5/5
+- Mobile-map reliability: 7/7
+- Geolocation reliability: 9/9
+- Current-location map v2: 5/5
+- Landmark/map UX: 6/6
+- Source verifier: PASS
+
+RUNTIME BROWSER TESTS
+---------------------
+- delivery-location-runtime.spec.py: PASS
+  320 / 390 / 430 / 1440 px; current-location controls, landmark auto-fill,
+  manual landmark preservation, suggestion restore, sticky mobile action bar,
+  profile save, checkout direct-pin routing, stale-pin protection, no overflow.
+- mobile-matrix.spec.py: PASS (320 / 360 / 390 / 414 / 430; no overflow)
+- mobile-resilience.spec.py: PASS
+- payment-settings-runtime.spec.py: PASS
+- device-auth-runtime.spec.py: PASS (320 / 390 / 430 / 1280)
+- desktop-regression.spec.py: PASS; 1440px screenshot byte-identical to baseline
+- runtime_mobile_fast.py: PASS at 320 / 360 / 390 / 414 / 430 with 3 snapshot cards and 0 overflow
+
+STATIC VALIDATION
+-----------------
+- CSS files parsed: 9
+- CSS parser errors: 0
+- HTML files checked: 13
+- Duplicate-ID files: 0
+
+DELIVERY PRICING REGRESSION
+---------------------------
+Compared with 3.3.3 baseline:
+- DELIVERY_FREE_KM_THRESHOLD = 5 (unchanged)
+- DELIVERY_RATE_PER_KM = 60 (unchanged)
+- DELIVERY_FALLBACK_FEE = 600 (unchanged)
+
+LIVE BUILD ATTEMPT
+------------------
+Command: npm run build
+Result in sandbox: NOT COMPLETED due environment DNS/network failure:
+  getaddrinfo EAI_AGAIN rvrjkfbenramappteuae.supabase.co
+This is not reported as a successful live build. Run it on the user's PC/Vercel network.
+
+LIMITATIONS
+-----------
+Controlled browser tests can simulate location/map responses but cannot prove the physical
+GPS/Wi-Fi location or third-party tile/geocoding availability on the user's actual devices.
+A post-deploy phone/desktop smoke test remains required.

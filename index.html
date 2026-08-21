@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
 <title>DAGOLDOL — Fine Everyday Goods</title>
 <meta name="description" content="Dagoldol Trading Co. — a small, considered catalogue of fine everyday goods sold by the foot, kept behind the members' counter.">
 <link rel="canonical" href="https://lorenz-web-six.vercel.app/">
+<link rel="preconnect" href="https://rvrjkfbenramappteuae.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="//rvrjkfbenramappteuae.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
@@ -34,8 +37,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="pill-buttons.css">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <link rel="stylesheet" href="delivery-location.css">
+<link rel="stylesheet" href="./phase2-fixes.css?v=3.3.5">
+<link rel="stylesheet" href="./phase3-fixes.css?v=3.3.5">
 </head>
 <body>
 
@@ -544,6 +548,51 @@
       </label>
 
       <label class="field">
+        <span>Saved delivery street address</span>
+        <input type="text" id="profile-address" placeholder="House no., street">
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>City / Municipality</span>
+          <input type="text" id="profile-city" placeholder="City or municipality">
+        </label>
+        <label class="field">
+          <span>Postal code</span>
+          <input type="text" id="profile-postal" placeholder="Postal code">
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Delivery landmark</span>
+        <textarea id="profile-landmark" rows="2" placeholder="Optional nearby landmark"></textarea>
+      </label>
+      <div class="landmark-suggestion-row hidden" id="profile-landmark-suggestion">
+        <div class="landmark-suggestion-copy">
+          <span class="landmark-suggestion-label">Nearby landmark suggestion</span>
+          <span class="landmark-suggestion-text" data-landmark-suggestion-text></span>
+        </div>
+        <button type="button" class="btn-secondary landmark-suggestion-btn" id="profile-landmark-use-suggestion">Use suggested landmark</button>
+      </div>
+
+      <section class="delivery-location-section" aria-label="Saved delivery pin">
+        <div class="delivery-location-heading-row">
+          <div>
+            <strong>Exact saved delivery pin</strong>
+            <p class="field-hint">Save the exact entrance so future checkout and the rider can use the same destination.</p>
+          </div>
+          <button type="button" class="btn-secondary delivery-location-open-btn" id="profile-location-open">Choose on map</button>
+        </div>
+        <div class="delivery-map-location-actions">
+          <button type="button" class="btn-secondary" id="profile-location-current">Use my current location</button>
+        </div>
+        <div class="delivery-location-card" id="profile-location-card" data-state="empty">
+          <span class="delivery-location-card-title">No saved delivery pin</span>
+          <span class="delivery-location-card-copy">Choose a map pin or use your current location.</span>
+        </div>
+      </section>
+
+      <label class="field">
         <span>About you (optional)</span>
         <textarea id="profile-bio" rows="3" placeholder="Anything you'd like the owner to know — favorite items, sizing notes, etc."></textarea>
       </label>
@@ -577,14 +626,17 @@
   </div>
 </div>
 
-<!-- ===================== ORDER MODAL ===================== -->
-<div id="order-modal" class="modal-overlay hidden">
-  <div class="modal-panel">
-    <button type="button" class="modal-close" id="modal-close" aria-label="Close">&times;</button>
-
-    <p class="eyebrow">Place Order</p>
-    <h2 class="modal-item-name">Order summary</h2>
-
+<!-- ===================== CHECKOUT ROUTE ===================== -->
+<section id="checkout-screen" class="screen route-screen hidden" aria-labelledby="checkout-title" data-nosnippet>
+  <header class="route-screen-header">
+    <button type="button" class="route-back-btn" id="checkout-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
+    <div class="brand-mark"><span>Dagoldol</span></div>
+    <span class="route-screen-kicker">Checkout</span>
+  </header>
+  <main class="route-screen-main">
+    <div class="route-panel checkout-route-panel">
+      <p class="eyebrow">Place Order</p>
+      <h1 class="route-screen-title" id="checkout-title">Order summary</h1>
     <div id="modal-items-list" class="cart-items-list modal-items-list">
       <!-- order line items injected by script.js -->
     </div>
@@ -618,33 +670,34 @@
 
 
 
-      <section class="delivery-location-card" aria-labelledby="delivery-location-title">
-        <div class="delivery-location-head">
+      <section class="delivery-location-section" aria-labelledby="delivery-location-title">
+        <div class="delivery-location-heading-row">
           <div>
             <h3 class="delivery-location-title" id="delivery-location-title">Exact delivery location</h3>
-            <p class="delivery-location-copy">Use your phone or computer location, or tap/drag the pin. We will automatically fill the street, city/municipality and postal code when map data provides them.</p>
+            <p class="field-hint">Confirm the exact entrance pin. The map is loaded only when you open it.</p>
           </div>
+          <button type="button" class="btn-secondary delivery-location-open-btn" id="checkout-location-open">Choose on map</button>
         </div>
-        <div class="delivery-location-actions">
-          <button type="button" class="btn-primary" id="delivery-use-current">Use my current location</button>
-          <button type="button" class="btn-secondary" id="delivery-pin-clear">Clear pin</button>
+        <div class="delivery-map-location-actions">
+          <button type="button" class="btn-secondary" id="checkout-location-current">Use my current location</button>
         </div>
-        <div id="delivery-pin-map" class="delivery-pin-map" role="application" aria-label="Map for choosing the exact delivery location"></div>
-        <p id="delivery-pin-status" class="delivery-pin-status" aria-live="polite">For fastest delivery, use your current location or tap the map to place the exact pin.</p>
-        <div id="delivery-pin-summary" class="delivery-location-summary hidden">
-          <div class="delivery-location-summary-row">
-            <span class="delivery-location-summary-label">Pinned coordinates</span>
-            <strong id="delivery-pin-coordinates"></strong>
-          </div>
-          <button type="button" class="btn-primary" id="delivery-pin-confirm">Confirm this delivery pin</button>
+        <div class="delivery-location-card" id="checkout-location-card" data-state="empty">
+          <span class="delivery-location-card-title">No confirmed delivery pin</span>
+          <span class="delivery-location-card-copy">Choose a pin or use your current location before placing the order.</span>
         </div>
-        <p class="delivery-map-helper">You can still edit the address fields after they are filled. With a confirmed exact pin, the landmark becomes optional.</p>
       </section>
 
       <label class="field">
         <span>Landmark / how to find your place <small>(optional with a confirmed pin)</small></span>
         <textarea id="order-landmark" rows="3" placeholder="e.g. Blue gate beside Mang Tomas store, 2nd house after the chapel, white house with a mango tree out front..."></textarea>
       </label>
+      <div class="landmark-suggestion-row hidden" id="order-landmark-suggestion">
+        <div class="landmark-suggestion-copy">
+          <span class="landmark-suggestion-label">Nearby landmark suggestion</span>
+          <span class="landmark-suggestion-text" data-landmark-suggestion-text></span>
+        </div>
+        <button type="button" class="btn-secondary landmark-suggestion-btn" id="order-landmark-use-suggestion">Use suggested landmark</button>
+      </div>
       <p class="field-hint">If you confirm the exact pin, the landmark is optional. Without a pin, add a landmark so the rider can identify your door.</p>
 
       <p id="delivery-distance-status" class="delivery-status">Enter your address to calculate the delivery fee.</p>
@@ -705,9 +758,16 @@
         </div>
 
         <div class="payment-detail hidden" id="payment-detail-bank">
+          <div class="gcash-qr-wrap">
+            <img id="bank-qr-img" class="gcash-qr-img hidden" alt="Bank payment QR code" loading="lazy" decoding="async">
+            <div id="bank-qr-placeholder" class="gcash-qr-placeholder">
+              <span>Bank QR</span>
+            </div>
+          </div>
           <p>Send a bank transfer to:<br>
-          <strong>BDO Unibank</strong> — Dagoldol Trading Co.<br>
-          Account number: <strong>0012 3456 7890</strong></p>
+          <strong id="bank-name-text">Bank details not configured</strong> — <span id="bank-account-name-text">Contact the shop owner</span><br>
+          Account number: <strong id="bank-account-number-text">Not configured</strong></p>
+          <p class="field-hint">Use only the bank details shown here. The shop owner manages these values in Admin &gt; Payment Settings.</p>
         </div>
 
         <div class="payment-proof-block" id="payment-proof-block">
@@ -744,17 +804,22 @@
 
       <button type="submit" class="btn-primary">Confirm order</button>
     </form>
-  </div>
-</div>
 
-<!-- ===================== MY ORDERS / TRACKING MODAL ===================== -->
-<div id="orders-modal" class="modal-overlay hidden">
-  <div class="modal-panel modal-panel-wide">
-    <button type="button" class="modal-close" id="orders-modal-close" aria-label="Close">&times;</button>
+    </div>
+  </main>
+</section>
 
-    <p class="eyebrow">Order History</p>
-    <h2 class="modal-item-name">My Orders</h2>
-
+<!-- ===================== MY ORDERS / TRACKING ROUTE ===================== -->
+<section id="orders-screen" class="screen route-screen hidden" aria-labelledby="orders-title" data-nosnippet>
+  <header class="route-screen-header">
+    <button type="button" class="route-back-btn" id="orders-back-btn" aria-label="Back to shop">&larr; Back to shop</button>
+    <div class="brand-mark"><span>Dagoldol</span></div>
+    <span class="route-screen-kicker">Account</span>
+  </header>
+  <main class="route-screen-main">
+    <div class="route-panel route-panel-wide">
+      <p class="eyebrow">Order History</p>
+      <h1 class="route-screen-title" id="orders-title">My Orders</h1>
     <div id="orders-list" class="orders-list">
       <!-- order cards injected by script.js -->
     </div>
@@ -762,8 +827,10 @@
     <div class="load-more-row">
       <button type="button" class="btn-secondary load-more-btn hidden" id="orders-load-more-btn">Load more orders</button>
     </div>
-  </div>
-</div>
+
+    </div>
+  </main>
+</section>
 
 <!-- ===================== CONTACT MODAL ===================== -->
 <div id="contact-modal" class="modal-overlay hidden">
@@ -833,6 +900,32 @@
 
 
 
+<!-- ===================== REUSABLE DELIVERY MAP PICKER ===================== -->
+<div id="delivery-map-modal" class="modal-overlay hidden" aria-hidden="true">
+  <div class="modal-panel delivery-map-panel" role="dialog" aria-modal="true" aria-labelledby="delivery-map-title">
+    <button type="button" class="modal-close" id="delivery-map-close" aria-label="Close delivery map">&times;</button>
+    <p class="eyebrow">Exact Delivery Pin</p>
+    <h2 class="modal-item-name" id="delivery-map-title">Choose the delivery entrance</h2>
+    <div class="delivery-map-toolbar">
+      <div class="delivery-map-location-actions">
+        <button type="button" class="btn-secondary delivery-map-location-btn" id="delivery-map-current-location" data-state="idle">Use my current location</button>
+        <button type="button" class="btn-secondary delivery-map-center-btn" id="delivery-map-center-location">Center on my location</button>
+      </div>
+      <p class="delivery-map-privacy-note">Your exact pin is stored only with your Dagoldol delivery details.</p>
+    </div>
+    <div class="delivery-map-canvas-wrap">
+      <div id="delivery-map-canvas" class="delivery-map-canvas" role="application" aria-label="Map for choosing an exact delivery pin"></div>
+      <div class="delivery-map-loading">Loading interactive map…</div>
+    </div>
+    <p id="delivery-map-status" class="delivery-map-status" aria-live="polite">The pin moves as soon as your device reports a position. You can refine it on the map before confirming.</p>
+    <div id="delivery-map-summary" class="delivery-map-summary">No pin selected yet.</div>
+    <div class="delivery-map-actions">
+      <button type="button" class="btn-secondary" id="delivery-map-cancel">Cancel</button>
+      <button type="button" class="btn-primary delivery-map-confirm-btn" id="delivery-map-confirm" disabled>✓ Use this location</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== LIVE DELIVERY ROUTE ===================== -->
 <div id="delivery-route-modal" class="modal-overlay hidden" aria-hidden="true" data-nosnippet>
   <div class="modal-panel delivery-route-panel" role="dialog" aria-modal="true" aria-labelledby="delivery-route-order">
@@ -873,11 +966,11 @@
 
 <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 <script src="config.js"></script>
 <script type="module" src="liquid-chrome.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="delivery-location.js"></script>
-<script src="script.js"></script>
+<script src="auth-resilience.js?v=3.3.5" defer></script>
+<script src="script.js?v=3.3.5" defer></script>
 </body>
 </html>

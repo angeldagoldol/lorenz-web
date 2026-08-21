@@ -1,0 +1,115 @@
+DAGOLDOL 3.3.5 — VERIFICATION RECORD
+=====================================
+
+SOURCE BASELINE
+---------------
+User-uploaded: web - project.zip
+Detected package version: 3.3.4
+Implementation target: 3.3.5
+
+TDD RED/GREEN
+-------------
+Initial new contract suite intentionally failed on 3.3.4:
+- sparse display_name did not recover full street
+- raw GPS position was published before reverse lookup completed
+- admin customer pin UI did not exist
+- read-only admin map mode did not exist
+- package version was still 3.3.4
+
+After implementation:
+  node --test tests/smart-address-admin-pin.test.mjs
+  Result: 6/6 PASS
+
+FULL NODE/SOURCE VERIFICATION
+-----------------------------
+  npm run verify
+  Result: PASS
+
+Included suites:
+- multi-device authentication: 4/4 PASS
+- device auth resilience: 9/9 PASS
+- payment/admin contract: 5/5 PASS
+- mobile bootstrap: 8/8 PASS
+- delivery-map contract: 8/8 PASS
+- owner-origin contract: 5/5 PASS
+- mobile-map reliability: 7/7 PASS
+- geolocation reliability: 9/9 PASS
+- current-location v2: 5/5 PASS
+- landmark/map UX: 6/6 PASS
+- smart delivery/admin pin: 6/6 PASS
+- source contract: PASS
+
+BROWSER RUNTIME
+---------------
+  python tests/smart-delivery-runtime.spec.py
+  PASS
+  Verified:
+  - delayed reverse geocode keeps confirm disabled
+  - CTA shows Finding address… while lookup is active
+  - sparse Philippine result recovers Street + City
+  - manual landmark is preserved
+  - Admin Accounts shows profile pin
+  - Admin Accounts falls back to latest-order pin
+  - View delivery pin opens map
+  - admin customer marker is non-draggable
+  - admin current-location/confirm controls are hidden
+
+  python tests/delivery-location-runtime.spec.py
+  PASS
+  Widths: 320 / 390 / 430 / 1440
+  Verified profile save, checkout routing, landmark behavior, stale-pin safety,
+  mobile sticky actions, and no page-level horizontal overflow.
+
+REGRESSION RUNTIME
+------------------
+  python tests/desktop-regression.spec.py
+  PASS — 1440px screenshot byte-identical
+
+  python tests/mobile-matrix.spec.py
+  PASS — 320 / 360 / 390 / 414 / 430, no horizontal overflow
+
+  python tests/mobile-resilience.spec.py
+  PASS
+
+  python tests/device-auth-runtime.spec.py
+  PASS — 320 / 390 / 430 / 1280
+
+  python tests/payment-settings-runtime.spec.py
+  PASS
+
+CSS PARSING
+-----------
+8 CSS files parsed with tinycss2:
+style.css
+style1.css
+phase2-fixes.css
+phase3-fixes.css
+pill-buttons.css
+product-page.css
+info-page.css
+LiquidChrome.css
+Result: 0 top-level parse errors
+
+DELIVERY PRICING REGRESSION
+---------------------------
+Confirmed source contract remains:
+- 5 km free threshold
+- ₱60/km
+- ₱600 fallback
+No ₱399 minimum/base change is present.
+
+PRODUCTION CATALOGUE BUILD
+--------------------------
+  npm run build
+  Result in this sandbox: FAILED due external DNS/network only
+  Error: getaddrinfo EAI_AGAIN rvrjkfbenramappteuae.supabase.co
+
+This is NOT recorded as a build pass. Run npm run build on the user's PC or
+Vercel environment where the linked Supabase project is reachable.
+
+LIMITATION
+----------
+Physical iPhone/Android GPS accuracy and the live Nominatim/OSRM/Supabase
+network path must still be validated after deployment. Controlled browser
+runtime tests verify the application behavior and failure boundaries but cannot
+prove the physical device's external location providers.

@@ -1,0 +1,86 @@
+DAGOLDOL 3.3.3 — CURRENT LOCATION + PHONE MAP VERIFICATION
+==========================================================
+
+Baseline
+--------
+Dagoldol 3.3.2 current-location release.
+
+TDD / regression evidence
+-------------------------
+A new tests/current-location-map-v2.test.mjs contract was created before the
+production implementation and observed failing 5/5 against the 3.3.2 baseline.
+After implementation, the same suite passes 5/5.
+
+Fresh exact-tree source verification
+------------------------------------
+Command:
+  npm run verify
+
+Result:
+  PASS
+
+Suites included:
+  - multi-device authentication: 4/4 PASS
+  - device auth resilience: 9/9 PASS
+  - payment/admin settings: 5/5 PASS
+  - mobile fast bootstrap: 8/8 PASS
+  - delivery-map contract: 8/8 PASS
+  - owner delivery origin: 5/5 PASS
+  - mobile-map reliability: 7/7 PASS
+  - geolocation reliability: 9/9 PASS
+  - current-location/map v2: 5/5 PASS
+  - source contract verifier: PASS
+
+Browser/runtime verification
+----------------------------
+  delivery-location-runtime.spec.py: PASS
+    - widths: 320 / 390 / 430 / 1440
+    - Leaflet map initialization
+    - simulated live current-location pin movement
+    - accuracy display/path
+    - profile location restore/save
+    - checkout routes from confirmed pin
+    - stale-pin protection after manual address edit
+    - no page-level horizontal overflow
+
+  desktop-regression.spec.py: PASS
+    - 1440px controlled desktop screenshot byte-identical to baseline
+
+  mobile-matrix.spec.py: PASS
+    - widths: 320 / 360 / 390 / 414 / 430
+    - snapshot products render
+    - header remains bounded/aligned
+    - no page-level horizontal overflow
+
+CSS syntax verification
+-----------------------
+Parsed all 8 shipped root CSS files with tinycss2.
+Result: 0 top-level parse errors.
+
+Live catalogue build attempt
+----------------------------
+Command:
+  npm run build
+
+Result in this sandbox:
+  FAILED before generation because DNS could not resolve the live Supabase host:
+  getaddrinfo EAI_AGAIN rvrjkfbenramappteuae.supabase.co
+
+This is an environment/network limitation. It is not reported as a successful
+build. Run npm run build on the deployment/Windows environment where Supabase
+is reachable.
+
+Physical-device limitation
+--------------------------
+The sandbox cannot prove the location returned by a real iPhone or Windows
+machine. The implementation uses the browser Geolocation API and moves the pin
+as soon as the browser/OS reports a valid position, then refines the marker and
+accuracy circle if a better fix arrives. Actual precision/availability depends
+on OS/browser permission, Location Services, hardware (GPS where present), and
+available Wi-Fi/cellular/network location signals.
+
+Release integrity
+-----------------
+The final full and paste-only release ZIPs are generated only after a SHA-256
+manifest check and unzip integrity test. See the release package manifest for
+exact file hashes.

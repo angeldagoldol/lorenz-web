@@ -1,0 +1,129 @@
+DAGOLDOL 3.3.5 — SMART DELIVERY ADDRESS + ADMIN CUSTOMER PIN
+==============================================================
+
+BASELINE
+--------
+This release was built directly from the user-uploaded "web - project.zip",
+which is Dagoldol 3.3.4 (Landmark Map UX baseline).
+
+WHAT THIS FIXES
+---------------
+1. Customer map/current-location pin could be confirmed before reverse geocoding
+   had finished. On phones this could leave Street Address and City blank while
+   only Postal Code appeared.
+
+2. Philippine reverse-geocoding results can be sparse. 3.3.5 now falls back to
+   useful components from Nominatim display_name when structured road/city
+   fields are missing.
+
+3. Admin → Accounts previously showed only a short city/postal summary and did
+   not expose the customer's saved map pin.
+
+CUSTOMER LOCATION BEHAVIOR
+--------------------------
+- Tapping the map, dragging the marker, or using current location immediately
+  moves the visual marker.
+- The final "Use this location" button is disabled while Dagoldol is still
+  resolving the address and temporarily reads "Finding address…".
+- When reverse geocoding completes, Dagoldol fills available:
+    • Street Address
+    • City / Municipality
+    • Postal Code
+    • Landmark suggestion (only when Landmark is empty)
+- A customer-written landmark is never overwritten.
+- If Street/City are still missing at final confirmation, Dagoldol performs one
+  forced reverse-geocode retry before accepting the pin.
+- If a mapping provider genuinely cannot identify a required field, the exact
+  coordinates remain usable and Dagoldol asks the customer to type only the
+  missing address field.
+- Optional GPS accuracy is saved with device-derived pins.
+
+ADMIN / OWNER BEHAVIOR
+----------------------
+Admin → Accounts now shows, per customer:
+- full saved delivery address when available
+- landmark / rider instruction
+- latitude and longitude when a pin exists
+- optional device accuracy
+- source: Saved profile or Latest order
+- "View delivery pin" button when a pin exists
+
+The admin map is READ-ONLY:
+- marker cannot be dragged
+- clicking the map cannot replace the customer's pin
+- Use my current location is hidden
+- Use this location is hidden
+
+If the customer has no pinned profile address but has placed an order with a
+pin, the Accounts tab falls back to that customer's most recent order pin.
+No live/background customer location tracking was added.
+
+DATABASE / SECURITY
+-------------------
+No schema migration is required.
+The feature reuses existing JSON data:
+- profiles.address.location
+- orders.address.location
+
+Location information is rendered from data already available to authenticated
+admins under the existing Supabase RLS model. It is not made public.
+
+DELIVERY PRICING — UNCHANGED
+----------------------------
+The cancelled ₱399 change is NOT included.
+- Free-distance threshold: 5 km
+- Distance rate: ₱60/km
+- Fallback delivery fee: ₱600
+
+FILES TO REPLACE (from paste-only ZIP)
+--------------------------------------
+config.js
+index.html
+package.json
+phase3-fixes.css
+script.js
+delivery-map.js
+scripts/verify-source.mjs
+tests/mobile-fast-bootstrap.test.mjs
+
+FILES TO ADD
+------------
+tests/smart-address-admin-pin.test.mjs
+tests/smart-delivery-runtime.spec.py
+docs/superpowers/plans/2026-08-18-smart-delivery-address-admin-pin.md
+SMART-DELIVERY-3.3.5-README.txt
+SMART-DELIVERY-3.3.5-VERIFICATION.txt
+
+NOT REPLACED BY THIS FEATURE
+----------------------------
+style.css
+style1.css
+script1.js
+pill-buttons.css
+pixel-trail.js
+pixel-trail.css
+liquid-chrome.js
+phase2-core.js
+phase2-accessibility.js
+phase2-fixes.css
+auth-resilience.js
+vercel.json
+database/*
+supabase/functions/*
+products/*
+catalogue-snapshot.json
+
+DEPLOYMENT
+----------
+1. Back up the current repository.
+2. Copy the replacement/additive files while preserving folder paths.
+3. Run:
+       npm run verify
+       npm run build
+4. Push to GitHub / deploy to Vercel.
+5. Fully close old phone/desktop Dagoldol tabs and reopen the deployed site so
+   browsers fetch asset version 3.3.5.
+
+The sandbox used to prepare this release cannot resolve the live Supabase DNS
+hostname, so npm run build cannot be certified here. See the verification file
+for the exact result and the runtime tests that did pass.

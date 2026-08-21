@@ -1,0 +1,9 @@
+Dagoldol 3.3.4 Exact Pin Live Route - Patch Only
+
+Copy these files into your existing Dagoldol 3.3.4 project and replace matching files.
+
+Files included:
+- index.html
+- script.js
+
+Backup your current files before replacing.

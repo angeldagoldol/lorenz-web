@@ -1,0 +1,113 @@
+DAGOLDOL 3.3.1 — OWNER ORIGIN / MOBILE MAP VERIFICATION
+=======================================================
+
+BASELINE
+--------
+Dagoldol 3.3.0 delivery-map release:
+  /mnt/data/DAGOLDOL-PHASE3-3-DELIVERY-MAP-FULL
+
+DELIVERY PRICE INVARIANT
+------------------------
+Compared the production constant declarations directly with the 3.3.0 baseline.
+All three declarations are identical:
+
+  const DELIVERY_FREE_KM_THRESHOLD = 5;     IDENTICAL
+  const DELIVERY_RATE_PER_KM = 60;          IDENTICAL
+  const DELIVERY_FALLBACK_FEE = 600;        IDENTICAL
+
+No ₱399 delivery rule was added.
+
+TDD / CONTRACT TESTS
+--------------------
+Before implementation, the new owner-origin/mobile-map suite was executed and
+12 of 13 assertions failed as expected because the feature/reliability contract
+did not exist. The existing delivery-price invariant was the one passing assertion.
+
+After implementation, fresh `npm run verify` output:
+
+  JavaScript syntax checks                         PASS
+  Multi-device auth                               4/4 PASS
+  Device auth resilience                          9/9 PASS
+  Payment/admin                                   5/5 PASS
+  Mobile fast bootstrap                           8/8 PASS
+  Delivery-map contract                           8/8 PASS
+  Owner delivery-origin                           5/5 PASS
+  Mobile-map reliability                          8/8 PASS
+  Source contract                                 PASS
+
+BROWSER / RESPONSIVE FIXTURES
+-----------------------------
+Controlled Chromium fixtures with external services replaced by deterministic
+fixtures:
+
+  Delivery location runtime:
+    320px                                         PASS
+    390px                                         PASS
+    430px                                         PASS
+    1440px                                        PASS
+    profile restore/save                          PASS
+    pin → reverse-address fill                    PASS
+    checkout direct-pin routing                   PASS
+    stale-pin protection                          PASS
+    page-level overflow                           NONE
+
+  Mobile catalogue matrix:
+    320px                                         PASS
+    360px                                         PASS
+    390px                                         PASS
+    414px                                         PASS
+    430px                                         PASS
+    snapshot products/logo/header                 PASS
+    page-level overflow                           NONE
+
+  Desktop 1440px controlled screenshot:
+    PASS — byte-identical to the established desktop regression baseline.
+
+CSS PARSER
+----------
+Parsed all 8 root CSS files with tinycss2:
+  Top-level parse errors                          0
+
+MAP RELIABILITY CONTRACT
+------------------------
+Verified source/runtime policy includes:
+  explicit WebGL capability probe                 PASS
+  bounded library load timeout                    PASS
+  failed script retry/reset                       PASS
+  bounded render timeout                          PASS
+  phone DPR/tile-cache limits                     PASS
+  WebGL context lost/restored handling            PASS
+  delayed/visual-viewport resize handling         PASS
+  fast + accurate bounded geolocation attempts    PASS
+  touch-safe/dynamic-viewport CSS                 PASS
+  lazy map initialization                         PASS
+  teardown on modal close                         PASS
+
+OWNER ORIGIN CONTRACT
+---------------------
+Verified:
+  settings parser/state has owner origin           PASS
+  Admin Payment Settings renders origin controls   PASS
+  shared map target supports admin origin           PASS
+  save action persists address/lat/lon              PASS
+  checkout prefers valid saved owner coordinates   PASS
+  legacy Davao origin remains fallback              PASS
+  public settings snapshot allowlist updated        PASS
+  existing delivery pricing unchanged               PASS
+
+LIVE BUILD ATTEMPT
+------------------
+`npm run build` was attempted in the sandbox and FAILED before catalogue generation
+because this environment could not resolve the Supabase host:
+
+  getaddrinfo EAI_AGAIN rvrjkfbenramappteuae.supabase.co
+
+This is a sandbox DNS/network limitation. It is NOT reported as a successful live
+Supabase build. Run `npm run build` on the actual development/deployment environment
+where Supabase is reachable.
+
+LIMITATIONS
+-----------
+The deterministic browser tests exercise mobile layouts and map behavior using a
+controlled MapLibre/network fixture. A physical iPhone/Android browser plus the
+live tile/geocoding/routing services still needs deployment verification.

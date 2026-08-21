@@ -1,0 +1,8 @@
+85c0790f704b746c989a60033adad4fe5195ccdad1e462dc10e034e8496ce4f2  ./MULTIDEVICE-AUTH-README.txt
+45188b482a1ec6ad40da0feae7b43827eb4f12d56cf2f88785793366e27e9e86  ./MULTIDEVICE-AUTH-VERIFICATION.txt
+e58c57cd6814c86732d231a6f679b133d39836e87a847bbd44a602f884c2f379  ./index.html
+7cfb7a88f6651d9892f7face6385bf6a45be03f940ffe7f2ee691b9a3f240ed5  ./package.json
+8473eb0ae75b9cb892f67edba24f485a5299411d586c6aa11569fc32c633c1fd  ./script.js
+f9aa0efd1e4dc93fd68d0ebffbc2ceb75ca4c4357a3f3008cdd34c8d808ee0aa  ./scripts/verify-source.mjs
+86cc7a35270e68c2d117931e19f08987838c4882f2de99574e7bde56710d80ab  ./tests/mobile-fast-bootstrap.test.mjs
+0ab64bf8ff3f3e475710aa997b91c2641d87f746d5c74c9427cb21cf0341f68d  ./tests/multidevice-auth-contract.test.mjs
