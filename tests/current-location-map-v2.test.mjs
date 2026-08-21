@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = fileURLToPath(new URL('..', import.meta.url));
 const mapPath = path.join(root, 'delivery-map.js');
 const source = fs.readFileSync(mapPath, 'utf8');
 const scriptSource = fs.readFileSync(path.join(root, 'script.js'), 'utf8');

@@ -1,9 +1,10 @@
 import test from 'node:test';
+import { fileURLToPath } from "node:url";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (name) => readFileSync(resolve(root, name), 'utf8');
 
 const html = read('index.html');

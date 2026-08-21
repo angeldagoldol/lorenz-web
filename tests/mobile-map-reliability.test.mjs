@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = fileURLToPath(new URL('..', import.meta.url));
 const source = fs.readFileSync(path.join(root, 'delivery-map.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'phase3-fixes.css'), 'utf8');
 const vercel = fs.readFileSync(path.join(root, 'vercel.json'), 'utf8');
