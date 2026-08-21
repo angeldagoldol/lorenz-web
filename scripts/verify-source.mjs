@@ -140,7 +140,16 @@ async function main() {
     if (!scriptSource.includes(route)) throw new Error(`script.js is missing app route contract: ${route}`);
   }
   if (!scriptSource.includes('get_public_recommendation_signals')) throw new Error('script.js is missing the privacy-preserving recommendation RPC integration.');
-  if (!scriptSource.includes('status_override: 0')) throw new Error('script.js is missing the persisted initial order status.');
+  const phase43MigrationSource = await readFile(resolve(ROOT, 'database/20260820_phase4_3_server_authoritative_checkout.sql'), 'utf8');
+  const browserPersistsInitialStatus = scriptSource.includes('status_override: 0');
+  const serverPersistsInitialStatus =
+    scriptSource.includes('supabase.functions.invoke("checkout"') &&
+    scriptSource.includes('buildCheckoutEdgeRequest("commit")') &&
+    !/\.from\(["']orders["']\)\.insert\s*\(/.test(scriptSource) &&
+    /insert\s+into\s+public\.orders\s*\([\s\S]*?status_override[\s\S]*?\)\s*values\s*\([\s\S]*?v_now_ms\s*,\s*6\s*,\s*0\s*,\s*false/i.test(phase43MigrationSource);
+  if (!browserPersistsInitialStatus && !serverPersistsInitialStatus) {
+    throw new Error('Checkout is missing a persisted initial order status in both the legacy browser path and the Phase 4.3 server-authoritative path.');
+  }
   if (!scriptSource.includes('window.SUPABASE_URL') || !scriptSource.includes('window.SUPABASE_ANON_KEY')) {
     throw new Error('script.js must consume the window-scoped Supabase bootstrap variables.');
   }
@@ -177,7 +186,7 @@ async function main() {
   for (const marker of [
     'checkoutPinnedLocation',
     'profilePinnedLocation',
-    'adminDeliveryOriginDraft',
+    'adminOriginPinnedLocation',
     'calculateDeliveryFeeForCoords',
     'serializePinnedLocation',
     'openDeliveryMapForCheckout',
@@ -212,7 +221,8 @@ async function main() {
   if (!indexHtml.includes('The pin moves as soon as your device reports a position')) {
     throw new Error('index.html is missing current-location acquisition guidance.');
   }
-  if (!scriptSource.includes('setCurrentLocationButtonState("locating")') || !scriptSource.includes('locating: "◌ Locating…"')) {
+  if (!scriptSource.includes('setCurrentLocationButtonState("locating", "Locating…")') ||
+      !scriptSource.includes('state === "locating" ? "true" : "false"')) {
     throw new Error('script.js is missing current-location progress feedback.');
   }
   const permissionsPolicy = (vercelConfig.headers || []).flatMap(rule => rule.headers || []).find(header => header.key === 'Permissions-Policy');
@@ -232,8 +242,8 @@ async function main() {
   ]) {
     if (!scriptSource.includes(marker)) throw new Error(`script.js is missing mobile performance contract: ${marker}`);
   }
-  if (!scriptSource.includes('scheduleNonCriticalShopWork(hydrateCatalogueLiveAfterFastRender, 300)')) {
-    throw new Error('script.js does not defer live catalogue hydration after the snapshot-first render.');
+  if (!scriptSource.includes('void hydrateCatalogueLiveAfterFastRender().catch')) {
+    throw new Error('script.js does not start non-blocking live catalogue hydration after the snapshot-first render.');
   }
   if (!scriptSource.includes('DELIVERY_ESTIMATE_MIN_DAYS = 3') || !scriptSource.includes('DELIVERY_ESTIMATE_MAX_DAYS = 6')) {
     throw new Error('script.js is missing the deterministic 3–6 day delivery-estimate contract.');
